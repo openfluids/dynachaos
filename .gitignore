@@ -1,0 +1,32 @@
+# LaTeX support/build artifacts for paper/
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.toc
+paper/compile_*.log
+paper/pdflatex_probe.log
+paper/rerun_check.log
+paper/main.pdf
+paper/.DS_Store
+
+# OS / filesystem noise
+.DS_Store
+
+# Python bytecode / cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.venv/
+venv/

@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""
+delayed_logistic: Oscillation and doubling of torus in the delayed logistic map.
+
+Reproduces Kaneko (1984) "Oscillation and Doubling of Torus", PTP 72(2), 202-215.
+
+Map (Eq. 2.1):
+    x_{n+1} = A x_n + (1 - A)(1 - D y_n^2)
+    y_{n+1} = x_n
+
+Fixed point: x = y = (sqrt(1+4D) - 1) / (2D)
+Hopf bifurcation at D = 1/(1-A), torus appears for D > D_c.
+
+Figures:
+  - Attractor portraits at A=0.3 for twelve D values from 1.55 to 2.16
+    (extending Kaneko's Fig. 1 with finer progression)
+  - Lyapunov exponents along the D path
+  - Animated GIF of attractor evolution across D
+
+OUTPUTS: figures/sec05_oscillation/attractors.npz,
+         figures/sec05_oscillation/attractors.png,
+         figures/sec05_oscillation/lyapunov_vs_D.npz,
+         figures/sec05_oscillation/lyapunov_vs_D.png,
+         figures/sec05_oscillation/attractors_animation.gif
+USAGE:   python src/dynachaos/maps/delayed_logistic.py
+"""
+
+from dynachaos.io.paths import section_dir
+import numpy as np
+
+FIG_DIR = section_dir("sec05_oscillation")
+ATTR_NPZ = FIG_DIR / "attractors.npz"
+ATTR_PNG = FIG_DIR / "attractors.png"
+LYAP_NPZ = FIG_DIR / "lyapunov_vs_D.npz"
+LYAP_PNG = FIG_DIR / "lyapunov_vs_D.png"
+ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
+ANIM_GIF = FIG_DIR / "attractors_animation.gif"
+
+
+def _safe_load(path):
+    """Load .npz safely (no deserialization of arbitrary objects)."""
+    return np.load(path, allow_pickle = False)
+
+
+# ---------------------------------------------------------------------------
+# Map definition
+# ---------------------------------------------------------------------------
+
+def delayed_logistic(state, A, D):
+    """One iteration: state = (x, y) -> (x', y')."""
+    x, y = state
+    x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
+    y_new = x
+    return np.array([x_new, y_new])
+
+
+def delayed_logistic_jac(state, A, D):
+    """Jacobian of the delayed logistic map."""
+    x, y = state
+    return np.array([
+        [A, -2.0 * (1.0 - A) * D * y],
+        [1.0, 0.0]
+    ])
+
+
+# ---------------------------------------------------------------------------
+# Attractor computation
+# ---------------------------------------------------------------------------
+
+def compute_attractor(A, D, n_transient=10_000, n_plot=50_000, x0=None):
+    """Iterate the map and return the attractor points (None if diverged)."""
+    if x0 is None:
+        # Start near the fixed point
+        fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
+        x0 = np.array([fp + 0.01, fp - 0.01])
+
+    state = x0.copy()
+    for _ in range(n_transient):
+        state = delayed_logistic(state, A, D)
+        if np.any(np.abs(state) > 1e10):
+            return None
+
+    traj = np.empty((n_plot, 2))
+    for i in range(n_plot):
+        state = delayed_logistic(state, A, D)
+        if np.any(np.abs(state) > 1e10):
+            return None
+        traj[i] = state
+
+    return traj
+
+
+def compute_attractors():
+    """Compute attractors for twelve D values spanning torus to chaos."""
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    A = 0.3
+    D_values = [1.55, 1.65, 1.75, 1.82, 1.86, 1.90,
+                1.92, 1.94, 1.95, 2.00, 2.09, 2.16]
+    labels = ["(a) torus", "(b) torus", "(c) torus", "(d) torus",
+              "(e) torus", "(f) locking",
+              "(g) near-locking", "(h) chaos", "(i) chaos",
+              "(j) chaos", "(k) chaos", "(l) chaos"]
+
+    results = {}
+    for D, label in zip(D_values, labels):
+        print(f"  D={D} {label}")
+        traj = compute_attractor(A, D, n_transient=20_000, n_plot=100_000)
+        results[f"D_{D:.2f}_x"] = traj[:, 0]
+        results[f"D_{D:.2f}_y"] = traj[:, 1]
+
+    results["D_values"] = np.array(D_values)
+    results["A"] = np.array([A])
+    np.savez_compressed(ATTR_NPZ, **results)
+    print(f"Saved {ATTR_NPZ}")
+
+
+# ---------------------------------------------------------------------------
+# Lyapunov spectrum computation
+# ---------------------------------------------------------------------------
+
+def compute_lyapunov_spectrum():
+    """Sweep D and compute Lyapunov spectrum."""
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+
+    A = 0.3
+    n_params = 2000
+    D_values = np.linspace(1.3, 2.5, n_params)
+
+    spectra = np.empty((n_params, 2))
+    for i, D in enumerate(D_values):
+        fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
+        x0 = np.array([fp + 0.01, fp - 0.01])
+        f = lambda state, _D=D: delayed_logistic(state, A, _D)
+        jac = lambda state, _D=D: delayed_logistic_jac(state, A, _D)
+        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000,
+                                       n_transient=10_000)
+        if (i + 1) % 500 == 0:
+            print(f"  Lyapunov: {i + 1}/{n_params}")
+            np.savez_compressed(LYAP_NPZ, D=D_values[:i+1],
+                                spectra=spectra[:i+1])
+
+    np.savez_compressed(LYAP_NPZ, D=D_values, spectra=spectra)
+    print(f"Saved {LYAP_NPZ}")
+
+
+# ---------------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------------
+
+def plot_attractors(data):
+    """Plot the twelve attractor portraits in a 3x4 grid."""
+    import matplotlib.pyplot as plt
+    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    setup()
+
+    D_values = data["D_values"]
+    labels_short = ["torus", "torus", "torus", "torus",
+                    "torus", "locking",
+                    "near-locking", "chaos", "chaos",
+                    "chaos", "chaos", "chaos"]
+    panel_labels = list("abcdefghijkl")
+
+    n_panels = len(D_values)
+
+    # Compute shared axis limits from all panels' data
+    all_x, all_y = [], []
+    for D in D_values:
+        all_x.append(data[f"D_{D:.2f}_x"])
+        all_y.append(data[f"D_{D:.2f}_y"])
+    all_x = np.concatenate(all_x)
+    all_y = np.concatenate(all_y)
+    pad = 0.05
+    x_range = all_x.max() - all_x.min()
+    y_range = all_y.max() - all_y.min()
+    xlim = (all_x.min() - pad * x_range, all_x.max() + pad * x_range)
+    ylim = (all_y.min() - pad * y_range, all_y.max() + pad * y_range)
+
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(3, 4, figsize=(spec.figsize[0], spec.figsize[1] + 0.8))
+    fig.subplots_adjust(hspace=0.55, wspace=0.34)
+    axes_flat = axes.flatten()
+
+    for idx, D in enumerate(D_values):
+        ax = axes_flat[idx]
+        x = data[f"D_{D:.2f}_x"]
+        y = data[f"D_{D:.2f}_y"]
+        ax.scatter(x, y, s=0.01, c="black", alpha=0.3, rasterized=True)
+        ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels_short[idx]}", loc="left")
+        ax.set_xlabel("$x$")
+        ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left")
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.grid(False)
+
+    # Hide unused subplots
+    for idx in range(n_panels, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
+    fig.suptitle(
+        r"Delayed logistic map, $\alpha = 0.3$",
+        x=0.01,
+        ha="left",
+        y=1.02,
+        fontsize=spec.title_size,
+    )
+    fig.savefig(ATTR_PNG, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {ATTR_PNG}")
+
+
+def plot_lyapunov(data):
+    """Plot Lyapunov spectrum vs D."""
+    import matplotlib.pyplot as plt
+    from dynachaos.utils.style import (
+        apply_axes_polish,
+        figure_spec,
+        finalize_legend,
+        setup,
+    )
+    setup()
+
+    D = data["D"]
+    spectra = data["spectra"]
+
+    spec = figure_spec("double")
+    fig, ax = plt.subplots(figsize=spec.figsize)
+    ax.plot(D, spectra[:, 0], "k-", lw=0.8, label=r"$\lambda_1$")
+    ax.plot(D, spectra[:, 1], "b-", lw=0.8, label=r"$\lambda_2$")
+    ax.axhline(0, color="red", lw=0.7, ls="--")
+    ax.set_xlabel(r"$D$")
+    ax.set_ylabel(r"Lyapunov exponent")
+    ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
+    apply_axes_polish(ax, kind="double", title_loc="left")
+    finalize_legend(ax, kind="double", loc="upper right")
+
+    # Mark key transitions
+    D_hopf = 1.0 / (1.0 - 0.3)  # approx 1.4286
+    ax.axvline(D_hopf, color="grey", lw=0.5, ls=":", alpha=0.7)
+    ax.text(D_hopf + 0.02, ax.get_ylim()[1] * 0.8,
+            r"$D_c = \frac{1}{1-\alpha}$", fontsize=spec.tick_size, color="grey")
+
+    fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {LYAP_PNG}")
+
+
+# ---------------------------------------------------------------------------
+# Animation
+# ---------------------------------------------------------------------------
+
+def compute_animation_data():
+    """Sweep D from 1.4 to 3.5 and store attractor trajectories for animation."""
+    from dynachaos.utils.animation import compute_animation_sweep
+
+    A = 0.3
+    D_sweep = np.linspace(1.4, 3.5, 200)
+
+    def iterate_fn(D):
+        return compute_attractor(A, D, n_transient=20_000, n_plot=5_000)
+
+    compute_animation_sweep(iterate_fn, D_sweep, ANIM_NPZ, n_plot=5_000)
+
+
+def make_animation_gif(data):
+    """Create GIF animation of attractors evolving across D."""
+    from dynachaos.utils.animation import make_attractor_gif
+
+    make_attractor_gif(
+        data["param_values"], data["all_x"], data["all_y"], ANIM_GIF,
+        title_template=r"Delayed logistic map, $\alpha = 0.3$, $D = {param_value}$",
+        param_name="D", param_fmt=".3f",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Attractors
+    try:
+        attr_data = _safe_load(ATTR_NPZ)
+        print(f"Loaded {ATTR_NPZ}")
+    except FileNotFoundError:
+        print("Computing attractors...")
+        compute_attractors()
+        attr_data = _safe_load(ATTR_NPZ)
+    plot_attractors(attr_data)
+
+    # Lyapunov
+    try:
+        lyap_data = _safe_load(LYAP_NPZ)
+        print(f"Loaded {LYAP_NPZ}")
+    except FileNotFoundError:
+        print("Computing Lyapunov spectrum...")
+        compute_lyapunov_spectrum()
+        lyap_data = _safe_load(LYAP_NPZ)
+    plot_lyapunov(lyap_data)
+
+    # Animation
+    try:
+        anim_data = _safe_load(ANIM_NPZ)
+        print(f"Loaded {ANIM_NPZ}")
+    except FileNotFoundError:
+        print("Computing animation data...")
+        compute_animation_data()
+        anim_data = _safe_load(ANIM_NPZ)
+    make_animation_gif(anim_data)
+
+
+if __name__ == "__main__":
+    main()

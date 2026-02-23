@@ -1,0 +1,37 @@
+[project]
+name = "dynachaos"
+version = "0.1.0"
+description = "Celebrating Kaneko: From Torus Collapse to Spatiotemporal Chaos"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "pillow",
+]
+
+[project.scripts]
+dynachaos = "dynachaos.cli:main"
+
+[tool.hatch.build]
+dev-mode-dirs = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dynachaos"]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

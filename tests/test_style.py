@@ -1,0 +1,161 @@
+from pathlib import Path
+import re
+
+import matplotlib
+matplotlib.use("Agg", force=True)
+import matplotlib.pyplot as plt
+import pytest
+
+from dynachaos.config import DEFAULT_FIGURE_THEME
+from dynachaos.utils.style import (
+    CMAP_DIVERGING,
+    CMAP_SEQUENTIAL,
+    CMAP_SPACETIME,
+    COLOR_CYCLE,
+    COLORS,
+    MARKER_CYCLE,
+    available_themes,
+    apply_axes_polish,
+    color_for,
+    figure_spec,
+    finalize_legend,
+    marker_for,
+    save_theme_previews,
+    series_style,
+    setup,
+    theme_description,
+)
+
+
+def test_swiss_style_contract():
+    setup()
+
+    assert "red" in COLORS
+    assert "black" in COLORS
+    assert len(COLOR_CYCLE) >= 6
+    assert len(MARKER_CYCLE) == len(COLOR_CYCLE)
+
+    assert matplotlib.rcParams["axes.grid"] is True
+    assert matplotlib.rcParams["axes.spines.top"] is False
+    assert matplotlib.rcParams["axes.spines.right"] is False
+    assert matplotlib.rcParams["font.family"][0] == "sans-serif"
+
+    assert CMAP_DIVERGING
+    assert CMAP_SEQUENTIAL
+    assert CMAP_SPACETIME
+
+
+def test_style_cycles_repeat_consistently():
+    n = len(COLOR_CYCLE)
+    for i in range(2 * n):
+        assert color_for(i) == COLOR_CYCLE[i % n]
+        assert marker_for(i) == MARKER_CYCLE[i % n]
+
+
+
+def test_style_preview_render(tmp_path):
+    setup()
+
+    fig, ax = plt.subplots(figsize=(6.0, 3.6))
+    x = [0, 1, 2, 3, 4]
+    for idx in range(4):
+        y = [v + idx for v in x]
+        sty = series_style(idx)
+        ax.plot(x, y, label=f"series {idx+1}", **sty)
+
+    ax.set_title("Swiss Style Preview")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.legend()
+
+    out = Path(tmp_path) / "swiss_style_preview.png"
+    fig.savefig(out)
+    plt.close(fig)
+
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
+def test_theme_registry_contract():
+    themes = available_themes()
+    assert set(themes) == {
+        "editorial-grid",
+        "zurich-transit",
+        "alpine-modern",
+        "bauhaus-pop",
+    }
+    for theme in themes:
+        assert theme_description(theme)
+        setup(theme)
+        assert color_for(0, theme=theme)
+        assert marker_for(0, theme=theme)
+
+
+def test_default_theme_is_editorial_grid():
+    assert DEFAULT_FIGURE_THEME == "editorial-grid"
+
+
+def test_env_override_changes_global_theme(monkeypatch):
+    monkeypatch.setenv("DYNACHAOS_THEME", "zurich-transit")
+    setup()
+    assert color_for(0) == color_for(0, theme="zurich-transit")
+    assert marker_for(0) == marker_for(0, theme="zurich-transit")
+    setup("editorial-grid")
+
+
+def test_save_theme_previews_renders_all(tmp_path):
+    paths = save_theme_previews(tmp_path)
+    assert len(paths) == len(available_themes())
+    for path in paths:
+        assert path.exists()
+        assert path.suffix == ".png"
+        assert path.stat().st_size > 0
+
+
+def test_figure_spec_contract():
+    for kind in ("single", "double", "grid"):
+        spec = figure_spec(kind)
+        assert spec.kind == kind
+        assert spec.figsize[0] > 0
+        assert spec.figsize[1] > 0
+        assert spec.label_size > 0
+        assert spec.title_size > 0
+        assert spec.tick_size > 0
+        assert spec.legend_size > 0
+
+    with pytest.raises(ValueError):
+        figure_spec("poster")
+
+
+def test_axes_polish_and_legend_helpers():
+    setup()
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0], [0.0, 1.0], label="series")
+    ax.set_title("Test")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+    spec = apply_axes_polish(ax, kind="single")
+    legend = finalize_legend(ax, kind="single", loc="upper left")
+
+    assert legend is not None
+    assert legend.get_texts()
+    assert ax.get_title(loc="left") == "Test"
+    assert ax._left_title.get_fontsize() == spec.title_size
+    assert ax.xaxis.get_label().get_fontsize() == spec.label_size
+    plt.close(fig)
+
+
+def test_harmonized_sections_avoid_hardcoded_fontsize_numbers():
+    repo = Path(__file__).resolve().parents[1]
+    files = [
+        repo / "src/dynachaos/cml/globally_coupled.py",
+        repo / "src/dynachaos/diagnostics/compare_all.py",
+        repo / "src/dynachaos/maps/coupled_logistic.py",
+        repo / "src/dynachaos/maps/torus_doubling.py",
+        repo / "src/dynachaos/maps/delayed_logistic.py",
+    ]
+    pattern = re.compile(r"fontsize\s*=\s*[0-9]")
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert not pattern.search(text), f"Hardcoded numeric fontsize found in {path}"
