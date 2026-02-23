@@ -296,20 +296,32 @@ def compute_rqa():
 def plot_01_test(data):
     """Plot 0-1 test K vs a for the logistic map."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    ax.plot(data["a"], data["K"], "k.", ms=0.5, rasterized=True)
-    ax.axhline(0.5, color="red", lw=0.7, ls="--", alpha=0.55)
+    ax.plot(data["a"], data["K"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
+    ax.axhline(0.5, color=COLORS["red"], lw=0.7, ls="--", alpha=0.55)
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"$K_{01}$ (0-1 test)")
     ax.set_title(r"0-1 test for chaos: logistic map $f(x) = 1 - ax^2$", loc="left")
     apply_axes_polish(ax, kind="double", title_loc="left")
     ax.set_ylim(-0.1, 1.1)
-    ax.text(1.5, 0.6, "$K_{01} \\approx 1$: chaos", fontsize=spec.tick_size, color="red")
-    ax.text(1.1, 0.15, "$K_{01} \\approx 0$: regular", fontsize=spec.tick_size, color="blue")
+    ax.text(
+        1.5,
+        0.6,
+        "$K_{01} \\approx 1$: chaos",
+        fontsize=spec.tick_size,
+        color=COLORS["red"],
+    )
+    ax.text(
+        1.1,
+        0.15,
+        "$K_{01} \\approx 0$: regular",
+        fontsize=spec.tick_size,
+        color=COLORS["blue"],
+    )
 
     fig.savefig(TEST01_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -321,6 +333,7 @@ def plot_sali(data):
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
         apply_axes_polish,
+        COLORS,
         color_for,
         figure_spec,
         finalize_legend,
@@ -347,7 +360,7 @@ def plot_sali(data):
             marker=marker_for(idx),
             markersize=3.0,
             markevery=max(len(s) // 14, 1),
-            markerfacecolor="white",
+            markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.8,
             label=f"$D_2={D2}$ ({labels[idx]})",
         )
@@ -369,20 +382,20 @@ def plot_sali(data):
 def plot_permutation_entropy(data):
     """Plot permutation entropy sweeps."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     spec = figure_spec("double")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
 
-    ax1.plot(data["a"], data["H_logistic"], "k.", ms=0.5, rasterized=True)
+    ax1.plot(data["a"], data["H_logistic"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
     ax1.set_xlabel(r"$a$")
     ax1.set_ylabel(r"$H_\mathrm{PE}$")
     ax1.set_title(r"Logistic map $1-ax^2$", loc="left")
     ax1.set_ylim(-0.05, 1.05)
     apply_axes_polish(ax1, kind="double", title_loc="left")
 
-    ax2.plot(data["D"], data["H_delayed"], "k.", ms=0.5, rasterized=True)
+    ax2.plot(data["D"], data["H_delayed"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
     ax2.set_xlabel(r"$D$")
     ax2.set_ylabel(r"$H_\mathrm{PE}$")
     ax2.set_title("Delayed logistic, $\\alpha=0.3$", loc="left")
@@ -430,7 +443,7 @@ def plot_complexity_entropy(data):
 def plot_rqa(data):
     """Plot RQA measures vs D for the delayed logistic."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     D = data["D"]
@@ -438,23 +451,23 @@ def plot_rqa(data):
     spec = figure_spec("grid")
     fig, axes = plt.subplots(2, 2, figsize=spec.figsize, sharex=True)
 
-    axes[0, 0].plot(D, data["RR"], "k-", lw=1.0)
+    axes[0, 0].plot(D, data["RR"], color=COLORS["black"], linestyle="-", lw=1.0)
     axes[0, 0].set_ylabel("RR")
     axes[0, 0].set_title("Recurrence rate", loc="left")
     apply_axes_polish(axes[0, 0], kind="grid", title_loc="left")
 
-    axes[0, 1].plot(D, data["DET"], "k-", lw=1.0)
+    axes[0, 1].plot(D, data["DET"], color=COLORS["black"], linestyle="-", lw=1.0)
     axes[0, 1].set_ylabel("DET")
     axes[0, 1].set_title("Determinism", loc="left")
     apply_axes_polish(axes[0, 1], kind="grid", title_loc="left")
 
-    axes[1, 0].plot(D, data["LAM"], "k-", lw=1.0)
+    axes[1, 0].plot(D, data["LAM"], color=COLORS["black"], linestyle="-", lw=1.0)
     axes[1, 0].set_ylabel("LAM")
     axes[1, 0].set_xlabel(r"$D$")
     axes[1, 0].set_title("Laminarity", loc="left")
     apply_axes_polish(axes[1, 0], kind="grid", title_loc="left")
 
-    axes[1, 1].plot(D, data["ENTR"], "k-", lw=1.0)
+    axes[1, 1].plot(D, data["ENTR"], color=COLORS["black"], linestyle="-", lw=1.0)
     axes[1, 1].set_ylabel("ENTR")
     axes[1, 1].set_xlabel(r"$D$")
     axes[1, 1].set_title("Entropy of diag. lines", loc="left")

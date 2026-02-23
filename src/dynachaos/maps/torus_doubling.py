@@ -177,7 +177,7 @@ def compute_map_IV_lyapunov():
 def plot_map_I(data):
     """Plot Map (I) attractor projections onto (X, Y) plane."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     D_values = data["D_values"]
@@ -191,7 +191,7 @@ def plot_map_I(data):
         key = f"D_{D}_traj"
         if key in data:
             traj = data[key]
-            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c="black",
+            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
                        alpha=0.3, rasterized=True)
         ax.set_title(f"$D={D}$ ({labels[idx]})", loc="left")
         ax.set_xlabel("$X$")
@@ -214,7 +214,7 @@ def plot_map_IV(data):
     """Plot Map (IV) attractor projections onto (X, Y) plane with zoom insets."""
     import matplotlib.pyplot as plt
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     D_values = data["D_values"]
@@ -228,13 +228,13 @@ def plot_map_IV(data):
         key = f"D_{D}_traj"
         if key in data:
             traj = data[key]
-            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c="black",
+            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
                        alpha=0.3, rasterized=True)
 
             # Add zoom inset to reveal strand structure
             axins = inset_axes(ax, width="40%", height="40%", loc="upper left",
                                borderpad=0.5)
-            axins.scatter(traj[:, 0], traj[:, 1], s=0.02, c="black",
+            axins.scatter(traj[:, 0], traj[:, 1], s=0.02, c=COLORS["black"],
                           alpha=0.5, rasterized=True)
             # Zoom into a region showing strand separation
             xmid = np.median(traj[:, 0])
@@ -247,7 +247,7 @@ def plot_map_IV(data):
             axins.set_xticks([])
             axins.set_yticks([])
             for spine in axins.spines.values():
-                spine.set_edgecolor("red")
+                spine.set_edgecolor(COLORS["red"])
                 spine.set_linewidth(0.6)
 
         ax.set_title(f"$D={D}$ ({labels[idx]})", loc="left")
@@ -271,6 +271,7 @@ def plot_lyapunov(data):
     """Plot Lyapunov exponents for Map (IV) vs D."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
+        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
@@ -284,13 +285,13 @@ def plot_lyapunov(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     labels_le = [r"$\lambda_1$", r"$\lambda_2$"]
-    colors = ["black", "#0173B2"]
+    colors = [COLORS["black"], COLORS["blue"]]
     linewidths = [0.6, 1.0]
     # Only plot first two (3rd and 4th are large negative, as Kaneko notes)
     for k in range(2):
         ax.plot(D, spectra[:, k], color=colors[k], lw=linewidths[k],
                 label=labels_le[k], zorder=3 - k)
-    ax.axhline(0, color="red", lw=0.4, ls="--", zorder=1)
+    ax.axhline(0, color=COLORS["red"], lw=0.4, ls="--", zorder=1)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel("Lyapunov exponent")
     ax.set_title("Map (IV), $\\alpha = 0.3$", loc="left")

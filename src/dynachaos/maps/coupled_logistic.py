@@ -276,7 +276,7 @@ def plot_phase_diagram(data):
 def plot_attractors(data):
     """Plot attractor portraits."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     A_values = data["A_values"]
@@ -292,7 +292,7 @@ def plot_attractors(data):
         ax = axes_flat[idx]
         x = data[f"A_{A}_x"]
         y = data[f"A_{A}_y"]
-        ax.scatter(x, y, s=0.01, c="black", alpha=0.3, rasterized=True)
+        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
         ax.set_title(f"({panel_labels[idx]}) $a = {A}$ ({labels[idx]})", loc="left", usetex=False)
         ax.set_xlabel("$x$")
         ax.set_ylabel("$y$")
@@ -313,7 +313,7 @@ def plot_attractors(data):
 def plot_basins(data):
     """Plot basin of attraction with zoom panel near y=x."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     x = data["x"]
@@ -323,14 +323,19 @@ def plot_basins(data):
 
     # -1=diverged(white), 0=undetermined(grey), 1=orbit A(blue), 2=orbit B(red)
     from matplotlib.colors import ListedColormap
-    cmap = ListedColormap(["white", "#949494", "#0173B2", "#CC3311"])
+    cmap = ListedColormap([
+        COLORS["offwhite"],
+        COLORS["grey"],
+        COLORS["blue"],
+        COLORS["red"],
+    ])
 
     spec = figure_spec("double")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
 
     # (a) Full view
     ax1.pcolormesh(x, y, basin, cmap=cmap, vmin=-1, vmax=2, rasterized=True)
-    ax1.plot(x, x, "k--", lw=0.3, alpha=0.4)
+    ax1.plot(x, x, color=COLORS["black"], linestyle="--", lw=0.3, alpha=0.4)
     ax1.set_xlabel("$x_0$")
     ax1.set_ylabel("$y_0$")
     ax1.set_title(f"(a) Full basin, $a={A_val:.5f}$", loc="left")
@@ -339,13 +344,26 @@ def plot_basins(data):
 
     # Draw zoom box
     zx0, zx1, zy0, zy1 = -0.16, 0.04, -0.11, 0.09
-    rect = plt.Rectangle((zx0, zy0), zx1 - zx0, zy1 - zy0,
-                          lw=0.8, ec="black", fc="none")
+    rect = plt.Rectangle(
+        (zx0, zy0),
+        zx1 - zx0,
+        zy1 - zy0,
+        lw=0.8,
+        ec=COLORS["black"],
+        fc="none",
+    )
     ax1.add_patch(rect)
 
     # (b) Zoomed view near y=x showing stripe structure
     ax2.pcolormesh(x, y, basin, cmap=cmap, vmin=-1, vmax=2, rasterized=True)
-    ax2.plot([-0.2, 0.1], [-0.2, 0.1], "k--", lw=0.3, alpha=0.4)
+    ax2.plot(
+        [-0.2, 0.1],
+        [-0.2, 0.1],
+        color=COLORS["black"],
+        linestyle="--",
+        lw=0.3,
+        alpha=0.4,
+    )
     ax2.set_xlim(zx0, zx1)
     ax2.set_ylim(zy0, zy1)
     ax2.set_xlabel("$x_0$")
@@ -357,9 +375,9 @@ def plot_basins(data):
     # Legend for basin colours
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor="#0173B2", label="Orbit A"),
-        Patch(facecolor="#CC3311", label="Orbit B"),
-        Patch(facecolor="white", edgecolor="grey", label="Diverged"),
+        Patch(facecolor=COLORS["blue"], label="Orbit A"),
+        Patch(facecolor=COLORS["red"], label="Orbit B"),
+        Patch(facecolor=COLORS["offwhite"], edgecolor=COLORS["grey"], label="Diverged"),
     ]
     fig.legend(handles=legend_elements, loc="lower center", ncol=3,
                fontsize=spec.legend_size, frameon=False, bbox_to_anchor=(0.5, -0.02))

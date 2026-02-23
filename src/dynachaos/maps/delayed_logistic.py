@@ -152,7 +152,7 @@ def compute_lyapunov_spectrum():
 def plot_attractors(data):
     """Plot the twelve attractor portraits in a 3x4 grid."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     D_values = data["D_values"]
@@ -186,7 +186,7 @@ def plot_attractors(data):
         ax = axes_flat[idx]
         x = data[f"D_{D:.2f}_x"]
         y = data[f"D_{D:.2f}_y"]
-        ax.scatter(x, y, s=0.01, c="black", alpha=0.3, rasterized=True)
+        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
         ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels_short[idx]}", loc="left")
         ax.set_xlabel("$x$")
         ax.set_ylabel("$y$")
@@ -215,6 +215,7 @@ def plot_lyapunov(data):
     """Plot Lyapunov spectrum vs D."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
+        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
@@ -227,9 +228,9 @@ def plot_lyapunov(data):
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    ax.plot(D, spectra[:, 0], "k-", lw=0.8, label=r"$\lambda_1$")
-    ax.plot(D, spectra[:, 1], "b-", lw=0.8, label=r"$\lambda_2$")
-    ax.axhline(0, color="red", lw=0.7, ls="--")
+    ax.plot(D, spectra[:, 0], color=COLORS["black"], linestyle="-", lw=0.8, label=r"$\lambda_1$")
+    ax.plot(D, spectra[:, 1], color=COLORS["blue"], linestyle="-", lw=0.8, label=r"$\lambda_2$")
+    ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Lyapunov exponent")
     ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
@@ -238,9 +239,9 @@ def plot_lyapunov(data):
 
     # Mark key transitions
     D_hopf = 1.0 / (1.0 - 0.3)  # approx 1.4286
-    ax.axvline(D_hopf, color="grey", lw=0.5, ls=":", alpha=0.7)
+    ax.axvline(D_hopf, color=COLORS["grey"], lw=0.5, ls=":", alpha=0.7)
     ax.text(D_hopf + 0.02, ax.get_ylim()[1] * 0.8,
-            r"$D_c = \frac{1}{1-\alpha}$", fontsize=spec.tick_size, color="grey")
+            r"$D_c = \frac{1}{1-\alpha}$", fontsize=spec.tick_size, color=COLORS["grey"])
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

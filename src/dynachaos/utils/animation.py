@@ -125,7 +125,7 @@ def make_attractor_gif(
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    from dynachaos.utils.style import figure_spec, setup
+    from dynachaos.utils.style import COLORS, figure_spec, setup
 
     setup()
 
@@ -150,7 +150,7 @@ def make_attractor_gif(
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(False)
-    scatter = ax.scatter([], [], s=point_size, c="black", alpha=alpha)
+    scatter = ax.scatter([], [], s=point_size, c=COLORS["black"], alpha=alpha)
     title_obj = ax.set_title("", fontsize=spec.title_size)
 
     def update(frame):

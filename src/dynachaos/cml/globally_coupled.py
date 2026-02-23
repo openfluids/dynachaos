@@ -112,6 +112,7 @@ def plot_msd(data):
     """Plot MSD vs N (main result of the paper)."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
+        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
@@ -135,13 +136,20 @@ def plot_msd(data):
             color=sty["color"],
             marker=sty["marker"],
             markersize=3.0,
-            markerfacecolor="white",
+            markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.75,
             linewidth=1.1,
         )
 
     N_ref = np.array([100, 20_000])
-    ax.loglog(N_ref, 0.05 / N_ref, "k--", lw=0.8, label=r"$\propto 1/N$")
+    ax.loglog(
+        N_ref,
+        0.05 / N_ref,
+        color=COLORS["black"],
+        linestyle="--",
+        lw=0.8,
+        label=r"$\propto 1/N$",
+    )
 
     ax.set_xlabel(r"System size $N$")
     ax.set_ylabel(r"MSD $\langle (\delta h)^2 \rangle$")
