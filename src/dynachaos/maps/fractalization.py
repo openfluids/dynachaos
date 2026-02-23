@@ -206,7 +206,7 @@ def compute_dimensions():
 def plot_attractors(data):
     """Plot attractor portraits showing fractalization."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import COLORS, DOUBLE_COL, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     D_values = data["D_values"]
@@ -214,7 +214,8 @@ def plot_attractors(data):
               "wrinkled torus", "fractal torus",
               "onset of chaos", "chaos"]
 
-    fig, axes = plt.subplots(2, 3, figsize=(DOUBLE_COL, 5.0))
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(2, 3, figsize=spec.figsize)
     axes_flat = axes.flatten()
 
     for idx, D in enumerate(D_values):
@@ -222,15 +223,19 @@ def plot_attractors(data):
         traj = data[f"D_{D}_traj"]
         ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
                    alpha=0.15, rasterized=True)
-        ax.set_title(f"$D = {D}$\n{labels[idx]}", fontsize=8)
-        ax.set_xlabel("$x$", fontsize=7)
-        ax.set_ylabel("$y$", fontsize=7)
-        ax.tick_params(labelsize=6)
+        ax.set_title(f"$D = {D}$\n{labels[idx]}", loc="left")
+        ax.set_xlabel("$x$")
+        ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left")
         from matplotlib.ticker import MaxNLocator
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
 
-    fig.suptitle(r"Fractalization of torus, $\alpha = 0.3$", fontsize=10, y=1.02)
+    fig.suptitle(
+        r"Fractalization of torus, $\alpha = 0.3$",
+        fontsize=spec.title_size,
+        y=1.02,
+    )
     fig.savefig(FRAC_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {FRAC_PNG}")
@@ -239,13 +244,20 @@ def plot_attractors(data):
 def plot_dimension(data):
     """Plot correlation dimension D_2 vs D."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import COLORS, DOUBLE_COL, setup
+    from dynachaos.utils.style import (
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        finalize_legend,
+        setup,
+    )
     setup()
 
     D = data["D"]
     D2 = data["D2"]
 
-    fig, ax = plt.subplots(figsize=(DOUBLE_COL, 3.0))
+    spec = figure_spec("double")
+    fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, D2, color=COLORS["black"], linestyle="-", lw=0.8)
     ax.axhline(1.0, color=COLORS["blue"], lw=0.5, ls="--", alpha=0.6,
                label="$D_2 = 1$ (smooth curve)")
@@ -253,9 +265,10 @@ def plot_dimension(data):
                label="$D_2 = 2$ (area-filling)")
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Correlation dimension $D_2$")
-    ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", fontsize=10)
+    ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
     ax.set_ylim(0.5, 2.5)
-    ax.legend(fontsize=7)
+    apply_axes_polish(ax, kind="double", title_loc="left")
+    finalize_legend(ax, kind="single", loc="best")
 
     fig.savefig(DIM_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

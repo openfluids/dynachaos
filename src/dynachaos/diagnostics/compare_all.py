@@ -17,6 +17,10 @@ USAGE:   python src/dynachaos/diagnostics/compare_all.py
 """
 
 from dynachaos.io.paths import section_dir
+from dynachaos.maps.coupled_delayed import (
+    coupled_delayed as _coupled_delayed_map,
+    coupled_delayed_jac as _coupled_delayed_jac,
+)
 import numpy as np
 
 FIG_DIR = section_dir("sec11_diagnostics")
@@ -83,28 +87,6 @@ def _delayed_logistic_jac(state, A, D):
     return np.array([[A, -2.0 * (1.0 - A) * D * y], [1.0, 0.0]])
 
 
-def _coupled_delayed_map(state, A, D1, D2, eps):
-    """4D coupled delayed logistic map for SALI (enough dimensions for
-    SALI to distinguish torus from chaos)."""
-    x, y, z, w = state
-    h1 = z - w
-    h2 = y - x
-    x_new = A * x + D1 * y * (1.0 - y) + eps * h1
-    z_new = A * z + D2 * w * (1.0 - w) + eps * h2
-    return np.array([x_new, x, z_new, z])
-
-
-def _coupled_delayed_jac(state, A, D1, D2, eps):
-    """Jacobian of the 4D coupled delayed logistic map."""
-    x, y, z, w = state
-    return np.array([
-        [A, D1 * (1.0 - 2.0 * y), eps, -eps],
-        [1.0, 0.0, 0.0, 0.0],
-        [-eps, eps, A, D2 * (1.0 - 2.0 * w)],
-        [0.0, 0.0, 1.0, 0.0]
-    ])
-
-
 # ---------------------------------------------------------------------------
 # 0-1 test sweep
 # ---------------------------------------------------------------------------
@@ -153,16 +135,16 @@ def compute_sali():
     ]
 
     results = {}
-    for D2, label in cases:
-        D1 = D2 + 0.1
-        print(f"  SALI: D2={D2} ({label})")
+    for DB, label in cases:
+        DA = DB + 0.1
+        print(f"  SALI: DB={DB} ({label})")
         x0 = np.array([0.5, 0.5, 0.3, 0.3])
-        f = lambda s, _D1=D1, _D2=D2: _coupled_delayed_map(s, A, _D1, _D2, eps)
-        jac = lambda s, _D1=D1, _D2=D2: _coupled_delayed_jac(s, A, _D1, _D2, eps)
+        f = lambda s, _DA=DA, _DB=DB: _coupled_delayed_map(s, A, _DA, _DB, eps)
+        jac = lambda s, _DA=DA, _DB=DB: _coupled_delayed_jac(s, A, _DA, _DB, eps)
         s = sali(f, jac, x0, n_iter=10_000, n_transient=5000)
-        results[f"D2_{D2}_sali"] = s
+        results[f"DB_{DB}_sali"] = s
 
-    results["D2_values"] = np.array([c[0] for c in cases])
+    results["DB_values"] = np.array([c[0] for c in cases])
     np.savez_compressed(SALI_NPZ, **results)
     print(f"Saved {SALI_NPZ}")
 
@@ -342,14 +324,14 @@ def plot_sali(data):
     )
     setup()
 
-    D2_values = data["D2_values"]
+    DB_values = data["DB_values"]
     labels = ["3-torus", "locking",
               "onset of chaos", "developed chaos"]
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    for idx, D2 in enumerate(D2_values):
-        s = data[f"D2_{D2}_sali"]
+    for idx, DB in enumerate(DB_values):
+        s = data[f"DB_{DB}_sali"]
         # Avoid log(0)
         s_safe = np.where(s > 1e-16, s, 1e-16)
         ax.semilogy(
@@ -362,7 +344,7 @@ def plot_sali(data):
             markevery=max(len(s) // 14, 1),
             markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.8,
-            label=f"$D_2={D2}$ ({labels[idx]})",
+            label=f"$D_B={DB}$ ({labels[idx]})",
         )
 
     ax.set_xlabel("Iteration $n$")

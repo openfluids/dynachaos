@@ -9,7 +9,7 @@ Map (Eq. 2.1):
     y_{n+1} = x_n
 
 Fixed point: x = y = (sqrt(1+4D) - 1) / (2D)
-Hopf bifurcation at D = 1/(1-A), torus appears for D > D_c.
+Neimark-Sacker bifurcation at D_c = (3-2A)/(4(1-A)^2), torus appears for D > D_c.
 
 Figures:
   - Attractor portraits at A=0.3 for twelve D values from 1.55 to 2.16
@@ -35,6 +35,8 @@ LYAP_NPZ = FIG_DIR / "lyapunov_vs_D.npz"
 LYAP_PNG = FIG_DIR / "lyapunov_vs_D.png"
 ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
+LOCK_NPZ = FIG_DIR / "locking_sequence.npz"
+LOCK_PNG = FIG_DIR / "locking_sequence.png"
 
 
 def _safe_load(path):
@@ -238,14 +240,100 @@ def plot_lyapunov(data):
     finalize_legend(ax, kind="double", loc="upper right")
 
     # Mark key transitions
-    D_hopf = 1.0 / (1.0 - 0.3)  # approx 1.4286
+    alpha = 0.3
+    D_hopf = (3.0 - 2.0 * alpha) / (4.0 * (1.0 - alpha) ** 2)  # approx 1.2245
     ax.axvline(D_hopf, color=COLORS["grey"], lw=0.5, ls=":", alpha=0.7)
     ax.text(D_hopf + 0.02, ax.get_ylim()[1] * 0.8,
-            r"$D_c = \frac{1}{1-\alpha}$", fontsize=spec.tick_size, color=COLORS["grey"])
+            r"$D_c = \frac{3-2\alpha}{4(1-\alpha)^2}$", fontsize=spec.tick_size,
+            color=COLORS["grey"])
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {LYAP_PNG}")
+
+
+# ---------------------------------------------------------------------------
+# Locking sequence: zoom into the locking-to-chaos transition
+# ---------------------------------------------------------------------------
+
+def compute_locking_sequence():
+    """Compute attractors for 8 D values in [1.86, 1.95]."""
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    A = 0.3
+    D_values = [1.860, 1.880, 1.895, 1.905, 1.915, 1.930, 1.940, 1.950]
+    labels = [
+        "oscillating torus", "near-locking", "locking",
+        "locking", "near-locking", "fractalization onset",
+        "early chaos", "chaos",
+    ]
+
+    results = {}
+    for D, label in zip(D_values, labels):
+        print(f"  D={D} {label}")
+        traj = compute_attractor(A, D, n_transient=20_000, n_plot=100_000)
+        results[f"D_{D:.3f}_x"] = traj[:, 0]
+        results[f"D_{D:.3f}_y"] = traj[:, 1]
+
+    results["D_values"] = np.array(D_values)
+    results["A"] = np.array([A])
+    np.savez_compressed(LOCK_NPZ, **results)
+    print(f"Saved {LOCK_NPZ}")
+
+
+def plot_locking_sequence(data):
+    """Plot 2x4 grid of locking-to-chaos transition."""
+    import matplotlib.pyplot as plt
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    setup()
+
+    D_values = data["D_values"]
+    labels = [
+        "oscillating torus", "near-locking", "locking",
+        "locking", "near-locking", "fract. onset",
+        "early chaos", "chaos",
+    ]
+    panel_labels = list("abcdefgh")
+
+    # Compute shared axis limits
+    all_x, all_y = [], []
+    for D in D_values:
+        all_x.append(data[f"D_{D:.3f}_x"])
+        all_y.append(data[f"D_{D:.3f}_y"])
+    all_x = np.concatenate(all_x)
+    all_y = np.concatenate(all_y)
+    pad = 0.05
+    x_range = all_x.max() - all_x.min()
+    y_range = all_y.max() - all_y.min()
+    xlim = (all_x.min() - pad * x_range, all_x.max() + pad * x_range)
+    ylim = (all_y.min() - pad * y_range, all_y.max() + pad * y_range)
+
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(2, 4, figsize=(spec.figsize[0], spec.figsize[1] - 0.5))
+    fig.subplots_adjust(hspace=0.55, wspace=0.34)
+    axes_flat = axes.flatten()
+
+    for idx, D in enumerate(D_values):
+        ax = axes_flat[idx]
+        x = data[f"D_{D:.3f}_x"]
+        y = data[f"D_{D:.3f}_y"]
+        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
+        ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels[idx]}", loc="left")
+        ax.set_xlabel("$x$")
+        ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left")
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.grid(False)
+
+    fig.suptitle(
+        r"Locking$\to$chaos transition, $\alpha = 0.3$",
+        x=0.01, ha="left", y=1.02,
+        fontsize=spec.title_size,
+    )
+    fig.savefig(LOCK_PNG, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {LOCK_PNG}")
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +390,16 @@ def main():
         compute_lyapunov_spectrum()
         lyap_data = _safe_load(LYAP_NPZ)
     plot_lyapunov(lyap_data)
+
+    # Locking sequence
+    try:
+        lock_data = _safe_load(LOCK_NPZ)
+        print(f"Loaded {LOCK_NPZ}")
+    except FileNotFoundError:
+        print("Computing locking sequence...")
+        compute_locking_sequence()
+        lock_data = _safe_load(LOCK_NPZ)
+    plot_locking_sequence(lock_data)
 
     # Animation
     try:

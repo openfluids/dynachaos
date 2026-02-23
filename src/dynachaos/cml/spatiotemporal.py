@@ -138,7 +138,12 @@ def compute():
 def plot(data):
     """Plot spacetime diagrams for all three models."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import setup, DOUBLE_COL, CMAP_SPACETIME
+    from dynachaos.utils.style import (
+        CMAP_SPACETIME,
+        apply_axes_polish,
+        figure_spec,
+        setup,
+    )
     setup()
 
     configs = [
@@ -147,7 +152,8 @@ def plot(data):
         ("C", [0.16, 0.20, 0.30], "Model (C): logistic"),
     ]
 
-    fig, axes = plt.subplots(3, 3, figsize=(DOUBLE_COL, 7.0))
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(3, 3, figsize=(spec.figsize[0], spec.figsize[1] * 1.42))
 
     for row, (model, eps_vals, title) in enumerate(configs):
         for col, eps in enumerate(eps_vals):
@@ -162,15 +168,15 @@ def plot(data):
                 ax.imshow(st, aspect="auto", cmap=CMAP_SPACETIME,
                           origin="lower", interpolation="nearest",
                           vmin=vmin, vmax=vmax)
-            ax.set_title(rf"$\varepsilon = {eps}$", fontsize=8)
+            ax.set_title(rf"$\varepsilon = {eps}$", loc="left")
             if col == 0:
-                ax.set_ylabel(f"{title}\nTime $n$", fontsize=7)
+                ax.set_ylabel(f"{title}\nTime $n$")
             else:
-                ax.set_ylabel("$n$", fontsize=7)
-            ax.set_xlabel("Site $i$", fontsize=7)
-            ax.tick_params(labelsize=6)
+                ax.set_ylabel("$n$")
+            ax.set_xlabel("Site $i$")
+            apply_axes_polish(ax, kind="grid", title_loc="left")
 
-    fig.suptitle("Spatiotemporal intermittency in CML", fontsize=11, y=1.01)
+    fig.suptitle("Spatiotemporal intermittency in CML", fontsize=spec.title_size, y=1.01)
     fig.savefig(STI_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {STI_PNG}")

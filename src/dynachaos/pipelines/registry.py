@@ -43,9 +43,16 @@ SECTION_ORDER = (
 SECTION_SPECS = {
     "sec02_circle_map": SectionSpec(
         section_id="sec02_circle_map",
-        modules=("dynachaos.maps.circle_map",),
-        cache_files=("devils_staircase.npz",),
-        output_files=("devils_staircase.npz", "devils_staircase.png"),
+        modules=("dynachaos.maps.circle_map", "dynachaos.maps.arnold_tongues"),
+        cache_files=("devils_staircase.npz", "arnold_tongues.npz", "staircase_zoom.npz"),
+        output_files=(
+            "devils_staircase.npz",
+            "devils_staircase.png",
+            "arnold_tongues.npz",
+            "arnold_tongues.png",
+            "staircase_zoom.npz",
+            "staircase_zoom.png",
+        ),
     ),
     "sec03_transition": SectionSpec(
         section_id="sec03_transition",
@@ -76,25 +83,28 @@ SECTION_SPECS = {
     "sec05_oscillation": SectionSpec(
         section_id="sec05_oscillation",
         modules=("dynachaos.maps.delayed_logistic",),
-        cache_files=("attractors.npz", "lyapunov_vs_D.npz"),
+        cache_files=("attractors.npz", "lyapunov_vs_D.npz", "locking_sequence.npz"),
         output_files=(
             "attractors.npz",
             "lyapunov_vs_D.npz",
+            "locking_sequence.npz",
             "attractors.png",
             "lyapunov_vs_D.png",
+            "locking_sequence.png",
         ),
     ),
     "sec06_three_torus": SectionSpec(
         section_id="sec06_three_torus",
         modules=("dynachaos.maps.coupled_delayed", "dynachaos.maps.modulated_circle"),
-        cache_files=("lyapunov_vs_D2.npz", "xz_projections.npz", "double_staircase.npz"),
+        cache_files=("lyapunov_vs_DB.npz", "xz_projections.npz", "double_staircase.npz"),
         output_files=(
-            "lyapunov_vs_D2.npz",
+            "lyapunov_vs_DB.npz",
             "xz_projections.npz",
             "double_staircase.npz",
-            "lyapunov_vs_D2.png",
+            "lyapunov_vs_DB.png",
             "xz_projections.png",
             "double_staircase.png",
+            "double_staircase_zoom.png",
         ),
     ),
     "sec07_fractalization": SectionSpec(
@@ -110,9 +120,24 @@ SECTION_SPECS = {
     ),
     "sec08_sti": SectionSpec(
         section_id="sec08_sti",
-        modules=("dynachaos.cml.spatiotemporal",),
-        cache_files=("spacetime_diagrams.npz",),
-        output_files=("spacetime_diagrams.npz", "spacetime_diagrams.png"),
+        modules=(
+            "dynachaos.cml.spatiotemporal",
+            "dynachaos.cml.comoving_figure",
+            "dynachaos.cml.correlation_figure",
+        ),
+        cache_files=(
+            "spacetime_diagrams.npz",
+            "comoving_lyapunov.npz",
+            "correlation_decay.npz",
+        ),
+        output_files=(
+            "spacetime_diagrams.npz",
+            "spacetime_diagrams.png",
+            "comoving_lyapunov.npz",
+            "comoving_lyapunov.png",
+            "correlation_decay.npz",
+            "correlation_decay.png",
+        ),
     ),
     "sec09_pattern": SectionSpec(
         section_id="sec09_pattern",
@@ -127,9 +152,24 @@ SECTION_SPECS = {
     ),
     "sec10_gcm": SectionSpec(
         section_id="sec10_gcm",
-        modules=("dynachaos.cml.globally_coupled",),
-        cache_files=("gcm_results.npz",),
-        output_files=("gcm_results.npz", "gcm_msd.png", "gcm_distribution.png"),
+        modules=(
+            "dynachaos.cml.globally_coupled",
+            "dynachaos.cml.gcm_clusters",
+        ),
+        cache_files=(
+            "gcm_results.npz",
+            "gcm_clusters.npz",
+            "collective_lyapunov.npz",
+        ),
+        output_files=(
+            "gcm_results.npz",
+            "gcm_msd.png",
+            "gcm_distribution.png",
+            "gcm_clusters.npz",
+            "gcm_clusters.png",
+            "collective_lyapunov.npz",
+            "collective_lyapunov.png",
+        ),
     ),
     "sec11_diagnostics": SectionSpec(
         section_id="sec11_diagnostics",

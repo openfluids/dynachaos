@@ -21,6 +21,7 @@ import numpy as np
 FIG_DIR = section_dir("sec06_three_torus")
 OUTPUT_NPZ = FIG_DIR / "double_staircase.npz"
 OUTPUT_PNG = FIG_DIR / "double_staircase.png"
+ZOOM_PNG = FIG_DIR / "double_staircase_zoom.png"
 
 
 def _safe_load(path):
@@ -124,28 +125,86 @@ def compute():
 def plot(data):
     """Plot the double devil's staircase."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import COLORS, DOUBLE_COL, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     C = data["C"]
     rho_theta = data["rho_theta"]
     rho_phi = data["rho_phi"]
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(DOUBLE_COL, 4.0),
-                                    sharex=True)
+    spec = figure_spec("double")
+    fig, (ax1, ax2) = plt.subplots(
+        2,
+        1,
+        figsize=(spec.figsize[0], spec.figsize[1] * 1.19),
+        sharex=True,
+    )
     fig.subplots_adjust(hspace=0.15)
 
     ax1.plot(C, rho_theta, color=COLORS["black"], linestyle="-", lw=0.2, rasterized=True)
     ax1.set_ylabel(r"$\rho_\theta$")
-    ax1.set_title(r"Double devil's staircase (modulated circle map)", fontsize=10)
+    ax1.set_title(r"Double devil's staircase (modulated circle map)", loc="left")
 
     ax2.plot(C, rho_phi, color=COLORS["blue"], linestyle="-", lw=0.2, rasterized=True)
     ax2.set_ylabel(r"$\rho_\varphi$")
     ax2.set_xlabel(r"$\Omega_2$")
+    apply_axes_polish(ax1, kind="double", title_loc="left")
+    apply_axes_polish(ax2, kind="double")
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {OUTPUT_PNG}")
+
+
+# ---------------------------------------------------------------------------
+# Zoomed double staircase: partial locking windows
+# ---------------------------------------------------------------------------
+
+def plot_zoom(data):
+    """Two-panel zoom into different C windows showing partial locking."""
+    import matplotlib.pyplot as plt
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    setup()
+
+    C = data["C"]
+    rho_theta = data["rho_theta"]
+    rho_phi = data["rho_phi"]
+
+    spec = figure_spec("double")
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2,
+        figsize=(spec.figsize[0], spec.figsize[1]),
+    )
+    fig.subplots_adjust(wspace=0.35)
+
+    # --- Left panel: window near C ∈ [0.10, 0.22] ---
+    mask1 = (C >= 0.10) & (C <= 0.22)
+    ax1.plot(C[mask1], rho_theta[mask1], color=COLORS["black"], lw=0.3,
+             rasterized=True, label=r"$\rho_\theta$")
+    ax1.plot(C[mask1], rho_phi[mask1], color=COLORS["blue"], lw=0.3,
+             rasterized=True, label=r"$\rho_\varphi$")
+    ax1.set_xlabel(r"$\Omega_2$")
+    ax1.set_ylabel(r"Rotation number")
+    ax1.set_title(r"(a) $\Omega_2 \in [0.10, 0.22]$", loc="left")
+    ax1.legend(fontsize=spec.legend_size, frameon=False, loc="upper left")
+
+    # --- Right panel: window near C ∈ [0.28, 0.40] ---
+    mask2 = (C >= 0.28) & (C <= 0.40)
+    ax2.plot(C[mask2], rho_theta[mask2], color=COLORS["black"], lw=0.3,
+             rasterized=True, label=r"$\rho_\theta$")
+    ax2.plot(C[mask2], rho_phi[mask2], color=COLORS["blue"], lw=0.3,
+             rasterized=True, label=r"$\rho_\varphi$")
+    ax2.set_xlabel(r"$\Omega_2$")
+    ax2.set_ylabel(r"Rotation number")
+    ax2.set_title(r"(b) $\Omega_2 \in [0.28, 0.40]$", loc="left")
+    ax2.legend(fontsize=spec.legend_size, frameon=False, loc="upper left")
+
+    apply_axes_polish(ax1, kind="double", title_loc="left")
+    apply_axes_polish(ax2, kind="double", title_loc="left")
+
+    fig.savefig(ZOOM_PNG, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {ZOOM_PNG}")
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +221,7 @@ def main():
         compute()
         data = _safe_load(OUTPUT_NPZ)
     plot(data)
+    plot_zoom(data)
 
 
 if __name__ == "__main__":

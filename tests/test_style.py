@@ -146,16 +146,53 @@ def test_axes_polish_and_legend_helpers():
     plt.close(fig)
 
 
-def test_harmonized_sections_avoid_hardcoded_fontsize_numbers():
+def test_plot_modules_avoid_hardcoded_fontsize_numbers():
     repo = Path(__file__).resolve().parents[1]
-    files = [
-        repo / "src/dynachaos/cml/globally_coupled.py",
-        repo / "src/dynachaos/diagnostics/compare_all.py",
-        repo / "src/dynachaos/maps/coupled_logistic.py",
-        repo / "src/dynachaos/maps/torus_doubling.py",
-        repo / "src/dynachaos/maps/delayed_logistic.py",
+    plot_dirs = [
+        repo / "src/dynachaos/maps",
+        repo / "src/dynachaos/cml",
+        repo / "src/dynachaos/diagnostics",
     ]
+    files: list[Path] = []
+    for folder in plot_dirs:
+        files.extend(sorted(folder.glob("*.py")))
+
+    allowlist: dict[str, tuple[str, ...]] = {
+        "compare_all.py": (
+            "fontsize=spec.tick_size",
+            "fontsize=spec.title_size",
+        ),
+    }
+
     pattern = re.compile(r"fontsize\s*=\s*[0-9]")
+    offenders: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")
-        assert not pattern.search(text), f"Hardcoded numeric fontsize found in {path}"
+        stripped = text
+        for token in allowlist.get(path.name, ()):
+            stripped = stripped.replace(token, "")
+        if pattern.search(stripped):
+            offenders.append(str(path))
+
+    assert not offenders, "Hardcoded numeric fontsize found in plotting modules:\n" + "\n".join(offenders)
+
+
+def test_no_hardcoded_color_literals_outside_style_module():
+    repo = Path(__file__).resolve().parents[1]
+    py_files = sorted((repo / "src/dynachaos").rglob("*.py"))
+    py_files = [p for p in py_files if p.name != "style.py"]
+
+    patterns = [
+        re.compile(r"\b(?:color|facecolor|edgecolor|markerfacecolor|markeredgecolor|cmap)\s*=\s*['\"][^'\"]+['\"]"),
+        re.compile(r"[,(\s]c\s*=\s*['\"][^'\"]+['\"]"),
+        re.compile(r"['\"](?:k|b|r|w)[-.:]"),
+        re.compile(r"#[0-9A-Fa-f]{3,8}"),
+    ]
+
+    offenders: list[str] = []
+    for path in py_files:
+        text = path.read_text(encoding="utf-8")
+        if any(p.search(text) for p in patterns):
+            offenders.append(str(path))
+
+    assert not offenders, "Hardcoded color literals detected outside style.py:\n" + "\n".join(offenders)

@@ -158,24 +158,39 @@ def compute_space_amplitude():
 def plot_phase_diagram(data):
     """Plot the global phase diagram."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import CMAP_SEQUENTIAL, COLORS, DOUBLE_COL, setup
+    from dynachaos.utils.style import (
+        CMAP_SEQUENTIAL,
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        setup,
+    )
     setup()
 
     a = data["a"]
     eps = data["eps"]
     lam = data["lam"]
 
-    fig, ax = plt.subplots(figsize=(DOUBLE_COL, 3.5))
+    spec = figure_spec("double")
+    fig, ax = plt.subplots(figsize=spec.figsize)
     im = ax.pcolormesh(a, eps, np.log10(lam + 1e-10), cmap=CMAP_SEQUENTIAL,
                        rasterized=True)
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"Coupling $\varepsilon$")
-    ax.set_title("CML phase diagram (log temporal variance)", fontsize=10)
+    ax.set_title("CML phase diagram (log temporal variance)", loc="left")
     cb = fig.colorbar(im, ax=ax, pad=0.02)
     cb.set_label(r"$\log_{10}(\mathrm{Var})$")
+    cb.ax.tick_params(labelsize=spec.tick_size)
+    apply_axes_polish(ax, kind="double", title_loc="left")
 
     ax.axvline(1.401, color=COLORS["offwhite"], lw=0.5, ls="--", alpha=0.7)
-    ax.text(1.42, 0.35, "period-2\nband", fontsize=6, color=COLORS["offwhite"])
+    ax.text(
+        1.42,
+        0.35,
+        "period-2\nband",
+        fontsize=spec.tick_size * 0.8,
+        color=COLORS["offwhite"],
+    )
 
     fig.savefig(PHASE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -185,13 +200,14 @@ def plot_phase_diagram(data):
 def plot_space_amplitude(data):
     """Plot space-amplitude snapshots."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import COLORS, DOUBLE_COL, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     params = data["params"]
     n_panels = len(params)
 
-    fig, axes = plt.subplots(1, n_panels, figsize=(DOUBLE_COL, 2.5))
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(1, n_panels, figsize=(spec.figsize[0], spec.figsize[1] * 0.54))
 
     for idx, (a, eps) in enumerate(params):
         ax = axes[idx]
@@ -211,14 +227,17 @@ def plot_space_amplitude(data):
                     alpha=0.3,
                 )
         label = str(data[label_key][0]) if label_key in data else ""
-        ax.set_title(f"$a={a}$\n{label}", fontsize=7)
-        ax.set_xlabel("$i$", fontsize=7)
+        ax.set_title(f"$a={a}$\n{label}", loc="left")
+        ax.set_xlabel("$i$")
         if idx == 0:
-            ax.set_ylabel("$x(i)$", fontsize=7)
-        ax.tick_params(labelsize=5)
+            ax.set_ylabel("$x(i)$")
+        apply_axes_polish(ax, kind="grid", title_loc="left")
 
-    fig.suptitle(r"Space-amplitude plots, $\varepsilon = 0.1$, $N=100$",
-                 fontsize=10, y=1.05)
+    fig.suptitle(
+        r"Space-amplitude plots, $\varepsilon = 0.1$, $N=100$",
+        fontsize=spec.title_size,
+        y=1.05,
+    )
     fig.savefig(SPACE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {SPACE_PNG}")
