@@ -23,8 +23,10 @@ OUTPUTS: figures/sec10_gcm/gcm_clusters.npz,
 USAGE:   python src/dynachaos/cml/gcm_clusters.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
+
+from dynachaos.cml.globally_coupled import gcm_step
 
 FIG_DIR = section_dir("sec10_gcm")
 
@@ -32,22 +34,6 @@ CLUSTER_NPZ = FIG_DIR / "gcm_clusters.npz"
 CLUSTER_PNG = FIG_DIR / "gcm_clusters.png"
 COLL_NPZ = FIG_DIR / "collective_lyapunov.npz"
 COLL_PNG = FIG_DIR / "collective_lyapunov.png"
-
-
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
-# ---------------------------------------------------------------------------
-# GCM model
-# ---------------------------------------------------------------------------
-
-def gcm_step(x, a, eps):
-    """One GCM step."""
-    fx = 1.0 - a * x * x
-    mean_field = np.mean(fx)
-    return (1.0 - eps) * fx + eps * mean_field
 
 
 # ---------------------------------------------------------------------------
@@ -342,22 +328,22 @@ def main():
 
     # Cluster spacetime diagram
     try:
-        cluster_data = _safe_load(CLUSTER_NPZ)
+        cluster_data = safe_load(CLUSTER_NPZ)
         print(f"Loaded {CLUSTER_NPZ}")
     except FileNotFoundError:
         print("Computing GCM cluster states...")
         compute_clusters()
-        cluster_data = _safe_load(CLUSTER_NPZ)
+        cluster_data = safe_load(CLUSTER_NPZ)
     plot_clusters(cluster_data)
 
     # Collective Lyapunov exponent
     try:
-        coll_data = _safe_load(COLL_NPZ)
+        coll_data = safe_load(COLL_NPZ)
         print(f"Loaded {COLL_NPZ}")
     except FileNotFoundError:
         print("Computing collective Lyapunov exponent...")
         compute_collective()
-        coll_data = _safe_load(COLL_NPZ)
+        coll_data = safe_load(COLL_NPZ)
     plot_collective(coll_data)
 
 

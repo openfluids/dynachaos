@@ -15,7 +15,7 @@ USAGE:   python src/dynachaos/maps/circle_map.py                        # .npz e
          rm figures/sec02_circle_map/devils_staircase.npz && python src/dynachaos/maps/circle_map.py  # recompute
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 FIG_DIR = section_dir("sec02_circle_map")
@@ -23,11 +23,6 @@ OUTPUT_NPZ = FIG_DIR / "devils_staircase.npz"
 OUTPUT_PNG = FIG_DIR / "devils_staircase.png"
 ZOOM_NPZ = FIG_DIR / "staircase_zoom.npz"
 ZOOM_PNG = FIG_DIR / "staircase_zoom.png"
-
-
-def _safe_load(path):
-    """Load .npz with pickle disabled for safety."""
-    return np.load(path, allow_pickle = False)
 
 
 # ---------------------------------------------------------------------------
@@ -321,22 +316,22 @@ def main():
 
     # Devil's staircase
     try:
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
         print(f"Loaded {OUTPUT_NPZ} ({len(data['A'])} points)")
     except FileNotFoundError:
         print("Computing devil's staircase...")
         compute()
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
     plot(data)
 
     # Staircase zoom
     try:
-        zoom_data = _safe_load(ZOOM_NPZ)
+        zoom_data = safe_load(ZOOM_NPZ)
         print(f"Loaded {ZOOM_NPZ}")
     except FileNotFoundError:
         print("Computing staircase zoom...")
         compute_zoom()
-        zoom_data = _safe_load(ZOOM_NPZ)
+        zoom_data = safe_load(ZOOM_NPZ)
     plot_zoom(zoom_data, data)
 
 

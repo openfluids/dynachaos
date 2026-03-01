@@ -17,7 +17,8 @@ Figures:
 OUTPUTS: figures/sec04_doubling/*.npz, *.png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic, logistic_derivative
 import numpy as np
 
 FIG_DIR = section_dir("sec04_doubling")
@@ -34,11 +35,6 @@ MAP4_ANIM_NPZ = FIG_DIR / "map_IV_animation.npz"
 MAP4_ANIM_GIF = FIG_DIR / "map_IV_animation.gif"
 
 
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
 # ---------------------------------------------------------------------------
 # Map definitions
 # ---------------------------------------------------------------------------
@@ -46,7 +42,7 @@ def _safe_load(path):
 def map_I(state, A, D):
     """Map (I): 3D delayed logistic. State = (X, Y, Z)."""
     X, Y, Z = state
-    X_new = A * X + (1.0 - A) * (1.0 - D * Y * Y)
+    X_new = A * X + (1.0 - A) * logistic(Y, D)
     Y_new = Z
     Z_new = X
     return np.array([X_new, Y_new, Z_new])
@@ -56,7 +52,7 @@ def map_I_jac(state, A, D):
     """Jacobian of Map (I)."""
     X, Y, Z = state
     return np.array([
-        [A, -2.0 * (1.0 - A) * D * Y, 0.0],
+        [A, (1.0 - A) * logistic_derivative(Y, D), 0.0],
         [0.0, 0.0, 1.0],
         [1.0, 0.0, 0.0]
     ])
@@ -65,9 +61,9 @@ def map_I_jac(state, A, D):
 def map_IV(state, A, D):
     """Map (IV): 4D delayed logistic. State = (X, Y, Z, W)."""
     X, Y, Z, W = state
-    X_new = A * X + (1.0 - A) * (1.0 - D * Y * Y)
+    X_new = A * X + (1.0 - A) * logistic(Y, D)
     Y_new = Z
-    Z_new = A * Z + (1.0 - A) * (1.0 - D * W * W)
+    Z_new = A * Z + (1.0 - A) * logistic(W, D)
     W_new = X
     return np.array([X_new, Y_new, Z_new, W_new])
 
@@ -76,9 +72,9 @@ def map_IV_jac(state, A, D):
     """Jacobian of Map (IV)."""
     X, Y, Z, W = state
     return np.array([
-        [A, -2.0 * (1.0 - A) * D * Y, 0.0, 0.0],
+        [A, (1.0 - A) * logistic_derivative(Y, D), 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, A, -2.0 * (1.0 - A) * D * W],
+        [0.0, 0.0, A, (1.0 - A) * logistic_derivative(W, D)],
         [1.0, 0.0, 0.0, 0.0]
     ])
 
@@ -374,52 +370,52 @@ def main():
 
     # Map (I) attractors
     try:
-        m1_data = _safe_load(MAP1_NPZ)
+        m1_data = safe_load(MAP1_NPZ)
         print(f"Loaded {MAP1_NPZ}")
     except FileNotFoundError:
         print("Computing Map (I) attractors...")
         compute_map_I()
-        m1_data = _safe_load(MAP1_NPZ)
+        m1_data = safe_load(MAP1_NPZ)
     plot_map_I(m1_data)
 
     # Map (IV) attractors
     try:
-        m4_data = _safe_load(MAP4_NPZ)
+        m4_data = safe_load(MAP4_NPZ)
         print(f"Loaded {MAP4_NPZ}")
     except FileNotFoundError:
         print("Computing Map (IV) attractors...")
         compute_map_IV()
-        m4_data = _safe_load(MAP4_NPZ)
+        m4_data = safe_load(MAP4_NPZ)
     plot_map_IV(m4_data)
 
     # Map (IV) Lyapunov
     try:
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
         print(f"Loaded {LYAP_NPZ}")
     except FileNotFoundError:
         print("Computing Map (IV) Lyapunov exponents...")
         compute_map_IV_lyapunov()
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
     plot_lyapunov(lyap_data)
 
     # Map (I) animation
     try:
-        m1_anim = _safe_load(MAP1_ANIM_NPZ)
+        m1_anim = safe_load(MAP1_ANIM_NPZ)
         print(f"Loaded {MAP1_ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing Map (I) animation data...")
         compute_map_I_animation()
-        m1_anim = _safe_load(MAP1_ANIM_NPZ)
+        m1_anim = safe_load(MAP1_ANIM_NPZ)
     make_map_I_animation_gif(m1_anim)
 
     # Map (IV) animation
     try:
-        m4_anim = _safe_load(MAP4_ANIM_NPZ)
+        m4_anim = safe_load(MAP4_ANIM_NPZ)
         print(f"Loaded {MAP4_ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing Map (IV) animation data...")
         compute_map_IV_animation()
-        m4_anim = _safe_load(MAP4_ANIM_NPZ)
+        m4_anim = safe_load(MAP4_ANIM_NPZ)
     make_map_IV_animation_gif(m4_anim)
 
 

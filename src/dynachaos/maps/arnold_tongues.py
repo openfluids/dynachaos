@@ -14,17 +14,12 @@ USAGE:   python src/dynachaos/maps/arnold_tongues.py                        # .n
          rm figures/sec02_circle_map/arnold_tongues.npz && python src/dynachaos/maps/arnold_tongues.py  # recompute
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 FIG_DIR = section_dir("sec02_circle_map")
 OUTPUT_NPZ = FIG_DIR / "arnold_tongues.npz"
 OUTPUT_PNG = FIG_DIR / "arnold_tongues.png"
-
-
-def _safe_load(path):
-    """Load .npz with pickle disabled for safety."""
-    return np.load(path, allow_pickle = False)
 
 
 # ---------------------------------------------------------------------------
@@ -158,12 +153,12 @@ def plot(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
         print(f"Loaded {OUTPUT_NPZ}")
     except FileNotFoundError:
         print("Computing Arnold tongues...")
         compute()
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
     plot(data)
 
 

@@ -16,11 +16,12 @@ OUTPUTS: figures/sec11_diagnostics/*.npz, *.png
 USAGE:   python src/dynachaos/diagnostics/compare_all.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.coupled_delayed import (
     coupled_delayed as _coupled_delayed_map,
     coupled_delayed_jac as _coupled_delayed_jac,
 )
+from dynachaos.maps.primitives import delayed_logistic, delayed_logistic_jac, logistic
 import numpy as np
 
 FIG_DIR = section_dir("sec11_diagnostics")
@@ -37,11 +38,6 @@ RQA_NPZ = FIG_DIR / "rqa_measures.npz"
 RQA_PNG = FIG_DIR / "rqa_measures.png"
 
 
-def _safe_load(path):
-    """Load .npz safely."""
-    return np.load(path, allow_pickle = False)
-
-
 # ---------------------------------------------------------------------------
 # Map helpers
 # ---------------------------------------------------------------------------
@@ -50,10 +46,10 @@ def _logistic_series(a, n_transient=5000, n_record=10_000):
     """Scalar time series from the logistic map f(x) = 1 - a x^2."""
     x = 0.1
     for _ in range(n_transient):
-        x = 1.0 - a * x * x
+        x = logistic(x, a)
     series = np.empty(n_record)
     for i in range(n_record):
-        x = 1.0 - a * x * x
+        x = logistic(x, a)
         series[i] = x
     return series
 
@@ -61,30 +57,14 @@ def _logistic_series(a, n_transient=5000, n_record=10_000):
 def _delayed_logistic_series(D, A=0.3, n_transient=10_000, n_record=10_000):
     """Scalar time series (x component) from the delayed logistic map."""
     fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
-    x, y = fp + 0.01, fp - 0.01
+    state = np.array([fp + 0.01, fp - 0.01])
     for _ in range(n_transient):
-        x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
-        y = x
-        x = x_new
+        state = delayed_logistic(state, A, D)
     series = np.empty(n_record)
     for i in range(n_record):
-        x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
-        y = x
-        x = x_new
-        series[i] = x
+        state = delayed_logistic(state, A, D)
+        series[i] = state[0]
     return series
-
-
-def _delayed_logistic_map(state, A, D):
-    """Delayed logistic map for SALI computation."""
-    x, y = state
-    return np.array([A * x + (1.0 - A) * (1.0 - D * y * y), x])
-
-
-def _delayed_logistic_jac(state, A, D):
-    """Jacobian of the delayed logistic map."""
-    x, y = state
-    return np.array([[A, -2.0 * (1.0 - A) * D * y], [1.0, 0.0]])
 
 
 # ---------------------------------------------------------------------------
@@ -240,18 +220,14 @@ def compute_rqa():
 
     for i, D in enumerate(D_values):
         fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
-        x, y = fp + 0.01, fp - 0.01
+        state = np.array([fp + 0.01, fp - 0.01])
         for _ in range(10_000):
-            x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
-            y = x
-            x = x_new
+            state = delayed_logistic(state, A, D)
 
         traj = np.empty((2000, 2))
         for t in range(2000):
-            x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
-            y = x
-            x = x_new
-            traj[t] = [x, y]
+            state = delayed_logistic(state, A, D)
+            traj[t] = state
 
         R, _ = recurrence_matrix(traj, percentile=5)
         stats = rqa(R, l_min=2, v_min=2)
@@ -487,12 +463,12 @@ def main():
 
     for name, npz_path, compute_fn, plot_fn in sections:
         try:
-            data = _safe_load(npz_path)
+            data = safe_load(npz_path)
             print(f"Loaded {npz_path}")
         except FileNotFoundError:
             print(f"Computing {name}...")
             compute_fn()
-            data = _safe_load(npz_path)
+            data = safe_load(npz_path)
         plot_fn(data)
 
 

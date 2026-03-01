@@ -15,8 +15,11 @@ Phase diagram: a in [1.5, 2.0], eps in [0, 0.4]
 OUTPUTS: figures/sec09_pattern/*.npz, *.png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic
 import numpy as np
+
+from dynachaos.cml.primitives import cml_step_logistic as cml_step
 
 FIG_DIR = section_dir("sec09_pattern")
 
@@ -26,35 +29,13 @@ SPACE_NPZ = FIG_DIR / "space_amplitude.npz"
 SPACE_PNG = FIG_DIR / "space_amplitude.png"
 
 
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
-# ---------------------------------------------------------------------------
-# CML model
-# ---------------------------------------------------------------------------
-
-def logistic(x, a):
-    """Logistic map f(x) = 1 - a x^2."""
-    return 1.0 - a * x * x
-
-
-def cml_step(x, a, eps):
-    """One CML step with the Kaneko 1989 formulation."""
-    fx = logistic(x, a)
-    fx_left = np.roll(fx, -1)
-    fx_right = np.roll(fx, 1)
-    return (1.0 - eps) * fx + eps / 2.0 * (fx_left + fx_right)
-
-
 # ---------------------------------------------------------------------------
 # Phase diagram computation
 # ---------------------------------------------------------------------------
 
 def _cml_step_batch(x, a_col, eps):
     """Batched CML step: x is (n_a, N), a_col is (n_a, 1)."""
-    fx = 1.0 - a_col * x * x
+    fx = logistic(x, a_col)
     fx_left = np.roll(fx, -1, axis=1)
     fx_right = np.roll(fx, 1, axis=1)
     return (1.0 - eps) * fx + eps / 2.0 * (fx_left + fx_right)
@@ -251,21 +232,21 @@ def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        phase_data = _safe_load(PHASE_NPZ)
+        phase_data = safe_load(PHASE_NPZ)
         print(f"Loaded {PHASE_NPZ}")
     except FileNotFoundError:
         print("Computing phase diagram...")
         compute_phase_diagram()
-        phase_data = _safe_load(PHASE_NPZ)
+        phase_data = safe_load(PHASE_NPZ)
     plot_phase_diagram(phase_data)
 
     try:
-        space_data = _safe_load(SPACE_NPZ)
+        space_data = safe_load(SPACE_NPZ)
         print(f"Loaded {SPACE_NPZ}")
     except FileNotFoundError:
         print("Computing space-amplitude plots...")
         compute_space_amplitude()
-        space_data = _safe_load(SPACE_NPZ)
+        space_data = safe_load(SPACE_NPZ)
     plot_space_amplitude(space_data)
 
 

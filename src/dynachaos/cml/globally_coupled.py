@@ -14,7 +14,8 @@ Key result: MSD of mean field h_n stops decreasing with N.
 OUTPUTS: figures/sec10_gcm/*.npz, *.png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic
 import numpy as np
 
 FIG_DIR = section_dir("sec10_gcm")
@@ -24,18 +25,13 @@ GCM_PNG = FIG_DIR / "gcm_msd.png"
 DIST_PNG = FIG_DIR / "gcm_distribution.png"
 
 
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
 # ---------------------------------------------------------------------------
 # GCM model
 # ---------------------------------------------------------------------------
 
 def gcm_step(x, a, eps):
     """One GCM step."""
-    fx = 1.0 - a * x * x
+    fx = logistic(x, a)
     mean_field = np.mean(fx)
     return (1.0 - eps) * fx + eps * mean_field
 
@@ -67,7 +63,7 @@ def compute():
         h_series = np.empty(n_sample)
         for t in range(n_sample):
             x = gcm_step(x, a, eps)
-            fx = 1.0 - a * x * x
+            fx = logistic(x, a)
             h_series[t] = np.mean(fx)
 
         results[f"N_{N}_h"] = h_series
@@ -91,7 +87,7 @@ def compute():
             h_vals = np.empty(50_000)
             for t in range(50_000):
                 x = gcm_step(x, a_val, eps)
-                fx = 1.0 - a_val * x * x
+                fx = logistic(x, a_val)
                 h_vals[t] = np.mean(fx)
             msd_grid[ia, jn] = np.var(h_vals)
         print(f"  MSD: a={a_val} done")
@@ -202,12 +198,12 @@ def plot_distribution(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        data = _safe_load(GCM_NPZ)
+        data = safe_load(GCM_NPZ)
         print(f"Loaded {GCM_NPZ}")
     except FileNotFoundError:
         print("Computing GCM results...")
         compute()
-        data = _safe_load(GCM_NPZ)
+        data = safe_load(GCM_NPZ)
     plot_msd(data)
     plot_distribution(data)
 

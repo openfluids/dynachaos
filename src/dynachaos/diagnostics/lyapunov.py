@@ -1,10 +1,10 @@
 """Lyapunov exponent and spectrum computation via QR decomposition.
 
 Implements the standard algorithm of Benettin et al. (1980) for computing the
-full Lyapunov spectrum of discrete maps.  The approach evolves a set of
-orthonormal tangent vectors alongside the trajectory, periodically
-re-orthonormalising via QR decomposition to prevent collapse onto the most
-unstable direction.
+full Lyapunov spectrum of discrete maps and continuous-time flows.  The approach
+evolves a set of orthonormal tangent vectors alongside the trajectory,
+periodically re-orthonormalising via QR decomposition to prevent collapse onto
+the most unstable direction.
 
 Usage
 -----
@@ -16,6 +16,10 @@ For an N-dimensional map with Jacobian::
 
     spectrum = lyapunov_spectrum(f, jac, x0, n_iter=100_000)
 
+For a continuous-time flow with known Jacobian::
+
+    spectrum = flow_lyapunov_spectrum(rhs, jac, x0, t_total=200)
+
 For sweeping a parameter and computing the maximal exponent::
 
     lams = lyapunov_sweep_1d(f, df, x0_func, params, n_iter=50_000,
@@ -23,6 +27,7 @@ For sweeping a parameter and computing the maximal exponent::
 """
 
 import numpy as np
+from scipy.integrate import solve_ivp
 
 
 def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
@@ -58,7 +63,7 @@ def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
         if deriv > 0:
             log_sum += np.log(deriv)
         else:
-            log_sum += -100.0  # Effectively -inf, superstable
+            log_sum += np.log(1e-300)  # ≈ -690.8; consistent with 1e-300 floor in spectrum funcs
         x = f(x)
 
     return log_sum / n_iter
@@ -258,3 +263,89 @@ def lyapunov_sweep_nd(f, jac, x0_func, params, n_iter=50_000,
             results.append(lam)
 
     return np.array(results)
+
+
+def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01,
+                           t_transient=50.0, reorth_dt=1.0):
+    """Lyapunov spectrum of a continuous-time flow.
+
+    Integrates the variational equations dPhi/dt = J(x(t)) Phi alongside
+    the flow dx/dt = rhs(t, x), with periodic QR reorthonormalization
+    (Benettin et al. 1980, adapted for flows).
+
+    Parameters
+    ----------
+    rhs : callable
+        Right-hand side f(t, state) -> array of shape (dim,).
+    jac : callable
+        Jacobian J(t, state) -> array of shape (dim, dim).
+    x0 : array_like, shape (dim,)
+        Initial condition on the attractor (or near it).
+    t_total : float
+        Integration time after transient for accumulation.
+    dt : float
+        Maximum integration step size.
+    t_transient : float
+        Transient time to discard before accumulation.
+    reorth_dt : float
+        QR reorthonormalization interval (seconds).
+
+    Returns
+    -------
+    spectrum : ndarray, shape (dim,)
+        Lyapunov exponents in descending order (units: 1/time).
+    """
+    x0 = np.asarray(x0, dtype=np.float64)
+    dim = len(x0)
+
+    # ── Build augmented ODE: state = [x (dim), Phi_flat (dim^2)] ──
+    def augmented_rhs(t, y):
+        x = y[:dim]
+        Phi = y[dim:].reshape(dim, dim)
+        dx = rhs(t, x)
+        J = jac(t, x)
+        dPhi = (J @ Phi).ravel()
+        return np.concatenate([dx, dPhi])
+
+    # ── Transient: integrate flow only, discard ──
+    if t_transient > 0:
+        sol_trans = solve_ivp(
+            lambda t, x: rhs(t, x), (0, t_transient), x0,
+            method="RK45", rtol=1e-9, atol=1e-11, max_step=dt,
+        )
+        x0 = sol_trans.y[:, -1]
+
+    # ── Accumulation phase ──
+    Q = np.eye(dim, dtype=np.float64)
+    log_sums = np.zeros(dim, dtype=np.float64)
+    n_reorth = int(t_total / reorth_dt)
+
+    x = x0.copy()
+    t_current = t_transient if t_transient > 0 else 0.0
+
+    for _ in range(n_reorth):
+        # Augmented initial condition
+        y0 = np.concatenate([x, Q.ravel()])
+        t_end = t_current + reorth_dt
+
+        sol = solve_ivp(
+            augmented_rhs, (t_current, t_end), y0,
+            method="RK45", rtol=1e-9, atol=1e-11, max_step=dt,
+        )
+
+        # Extract final state
+        y_final = sol.y[:, -1]
+        x = y_final[:dim]
+        Phi = y_final[dim:].reshape(dim, dim)
+
+        # QR decomposition
+        Q, R = np.linalg.qr(Phi)
+        diag = np.abs(np.diag(R))
+        diag = np.where(diag > 0, diag, 1e-300)
+        log_sums += np.log(diag)
+
+        t_current = t_end
+
+    actual_time = n_reorth * reorth_dt
+    spectrum = log_sums / actual_time
+    return np.sort(spectrum)[::-1]

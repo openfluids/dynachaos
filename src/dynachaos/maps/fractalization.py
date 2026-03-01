@@ -24,7 +24,9 @@ OUTPUTS: figures/sec07_fractalization/*.npz, *.png
 USAGE:   python src/dynachaos/maps/fractalization.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.delayed_logistic import delayed_logistic
 import numpy as np
 
 FIG_DIR = section_dir("sec07_fractalization")
@@ -37,22 +39,9 @@ ANIM_NPZ = FIG_DIR / "fractalization_animation.npz"
 ANIM_GIF = FIG_DIR / "fractalization_animation.gif"
 
 
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
 # ---------------------------------------------------------------------------
-# Map (reused from delayed_logistic.py)
+# Iteration helper
 # ---------------------------------------------------------------------------
-
-def delayed_logistic(state, A, D):
-    """One iteration of the delayed logistic map."""
-    x, y = state
-    x_new = A * x + (1.0 - A) * (1.0 - D * y * y)
-    y_new = x
-    return np.array([x_new, y_new])
-
 
 def iterate(A, D, n_transient=20_000, n_record=100_000, x0=None):
     """Iterate and return trajectory points."""
@@ -69,84 +58,6 @@ def iterate(A, D, n_transient=20_000, n_record=100_000, x0=None):
         state = delayed_logistic(state, A, D)
         traj[i] = state
     return traj
-
-
-# ---------------------------------------------------------------------------
-# Correlation dimension (Grassberger-Procaccia)
-# ---------------------------------------------------------------------------
-
-def correlation_integral(traj, r_values, max_pairs=500_000):
-    """Compute the correlation integral C(r) for an array of r values.
-
-    C(r) = (2 / N(N-1)) * #{pairs with ||x_i - x_j|| < r}
-
-    For efficiency, randomly samples pairs when N is large.
-    """
-    N = len(traj)
-    n_pairs = N * (N - 1) // 2
-
-    if n_pairs > max_pairs:
-        # Random sampling of pairs
-        rng = np.random.default_rng(42)
-        idx_i = rng.integers(0, N, max_pairs)
-        idx_j = rng.integers(0, N, max_pairs)
-        # Avoid self-pairs
-        mask = idx_i != idx_j
-        idx_i, idx_j = idx_i[mask], idx_j[mask]
-        diffs = traj[idx_i] - traj[idx_j]
-        dists = np.sqrt(np.sum(diffs * diffs, axis=1))
-        n_used = len(dists)
-    else:
-        from scipy.spatial.distance import pdist
-        dists = pdist(traj)
-        n_used = len(dists)
-
-    C = np.empty(len(r_values))
-    for k, r in enumerate(r_values):
-        C[k] = np.sum(dists < r) / n_used
-
-    return C
-
-
-def correlation_dimension(traj, n_r=30, r_range=None, max_pairs=500_000):
-    """Estimate the correlation dimension D_2 from trajectory points.
-
-    Fits the scaling C(r) ~ r^{D_2} in the linear region of
-    log(C) vs log(r).
-
-    Returns
-    -------
-    D2 : float
-        Estimated correlation dimension.
-    r_values : ndarray
-        The r values used.
-    C_values : ndarray
-        Corresponding C(r).
-    """
-    if r_range is None:
-        # Estimate scale from data
-        std = np.std(traj, axis=0)
-        scale = np.mean(std)
-        r_min = scale * 0.005
-        r_max = scale * 0.5
-        r_range = (r_min, r_max)
-
-    r_values = np.logspace(np.log10(r_range[0]), np.log10(r_range[1]), n_r)
-    C_values = correlation_integral(traj, r_values, max_pairs)
-
-    # Fit D_2 in the scaling region (where C > 0 and < 1)
-    mask = (C_values > 1e-4) & (C_values < 0.5)
-    if np.sum(mask) < 3:
-        return np.nan, r_values, C_values
-
-    log_r = np.log(r_values[mask])
-    log_C = np.log(C_values[mask])
-
-    # Linear regression
-    coeffs = np.polyfit(log_r, log_C, 1)
-    D2 = coeffs[0]
-
-    return D2, r_values, C_values
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +98,7 @@ def compute_dimensions():
 
     for i, D in enumerate(D_values):
         traj = iterate(A, D, n_transient=20_000, n_record=50_000)
-        D2, _, _ = correlation_dimension(traj, n_r=25, max_pairs=300_000)
+        D2, _, _, _, _ = correlation_dimension(traj, n_r=25, max_pairs=300_000)
         D2_values[i] = D2
 
         if (i + 1) % 20 == 0:
@@ -311,31 +222,31 @@ def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        frac_data = _safe_load(FRAC_NPZ)
+        frac_data = safe_load(FRAC_NPZ)
         print(f"Loaded {FRAC_NPZ}")
     except FileNotFoundError:
         print("Computing fractal attractors...")
         compute_attractors()
-        frac_data = _safe_load(FRAC_NPZ)
+        frac_data = safe_load(FRAC_NPZ)
     plot_attractors(frac_data)
 
     try:
-        dim_data = _safe_load(DIM_NPZ)
+        dim_data = safe_load(DIM_NPZ)
         print(f"Loaded {DIM_NPZ}")
     except FileNotFoundError:
         print("Computing correlation dimensions...")
         compute_dimensions()
-        dim_data = _safe_load(DIM_NPZ)
+        dim_data = safe_load(DIM_NPZ)
     plot_dimension(dim_data)
 
     # Animation
     try:
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
         print(f"Loaded {ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing fractalization animation data...")
         compute_animation_data()
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
 
 

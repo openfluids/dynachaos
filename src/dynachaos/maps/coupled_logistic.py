@@ -19,7 +19,8 @@ OUTPUTS: figures/sec03_transition/phase_diagram.npz, phase_diagram.png
          figures/sec03_transition/basins.npz, basins.png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic, logistic_derivative
 import numpy as np
 
 FIG_DIR = section_dir("sec03_transition")
@@ -34,11 +35,6 @@ ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 
 
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
 # ---------------------------------------------------------------------------
 # Map definition
 # ---------------------------------------------------------------------------
@@ -46,8 +42,8 @@ def _safe_load(path):
 def coupled_logistic(state, A, D):
     """One iteration of the coupled logistic map."""
     x, y = state
-    x_new = 1.0 - A * x * x + D * (y - x)
-    y_new = 1.0 - A * y * y + D * (x - y)
+    x_new = logistic(x, A) + D * (y - x)
+    y_new = logistic(y, A) + D * (x - y)
     return np.array([x_new, y_new])
 
 
@@ -55,8 +51,8 @@ def coupled_logistic_jac(state, A, D):
     """Jacobian of the coupled logistic map."""
     x, y = state
     return np.array([
-        [-2.0 * A * x - D, D],
-        [D, -2.0 * A * y - D]
+        [logistic_derivative(x, A) - D, D],
+        [D, logistic_derivative(y, A) - D]
     ])
 
 
@@ -88,8 +84,8 @@ def compute_phase_diagram():
 
         # Transient
         for _ in range(n_transient):
-            x_new = 1.0 - A_values * x * x + D * (y - x)
-            y_new = 1.0 - A_values * y * y + D * (x - y)
+            x_new = logistic(x, A_values) + D * (y - x)
+            y_new = logistic(y, A_values) + D * (x - y)
             x, y = x_new, y_new
             # Clamp divergent orbits
             mask = (np.abs(x) > 1e10) | (np.abs(y) > 1e10)
@@ -100,8 +96,8 @@ def compute_phase_diagram():
         sum_x = np.zeros(n_A)
         sum_x2 = np.zeros(n_A)
         for _ in range(n_sample):
-            x_new = 1.0 - A_values * x * x + D * (y - x)
-            y_new = 1.0 - A_values * y * y + D * (x - y)
+            x_new = logistic(x, A_values) + D * (y - x)
+            y_new = logistic(y, A_values) + D * (x - y)
             x, y = x_new, y_new
             mask = (np.abs(x) > 1e10) | (np.abs(y) > 1e10)
             x = np.where(mask, np.nan, x)
@@ -158,13 +154,13 @@ def compute_attractors():
 
 def _find_reference_orbit(A, D, x0, y0, n_transient=500_000, period=32):
     """Find a reference periodic orbit by iterating from (x0, y0)."""
-    x, y = x0, y0
+    state = np.array([x0, y0])
     for _ in range(n_transient):
-        x, y = 1.0 - A * x * x + D * (y - x), 1.0 - A * y * y + D * (x - y)
+        state = coupled_logistic(state, A, D)
     ref = np.empty((period, 2))
     for i in range(period):
-        x, y = 1.0 - A * x * x + D * (y - x), 1.0 - A * y * y + D * (x - y)
-        ref[i] = [x, y]
+        state = coupled_logistic(state, A, D)
+        ref[i] = state
     return ref
 
 
@@ -205,8 +201,8 @@ def compute_basins():
 
         # Transient
         for _ in range(n_transient):
-            x_new = 1.0 - A * x * x + D * (y - x)
-            y_new = 1.0 - A * y * y + D * (x - y)
+            x_new = logistic(x, A) + D * (y - x)
+            y_new = logistic(y, A) + D * (x - y)
             x, y = x_new, y_new
             diverged = (np.abs(x) > 100) | (np.abs(y) > 100)
             x = np.where(diverged, np.nan, x)
@@ -431,42 +427,42 @@ def main():
 
     # Phase diagram
     try:
-        phase_data = _safe_load(PHASE_NPZ)
+        phase_data = safe_load(PHASE_NPZ)
         print(f"Loaded {PHASE_NPZ}")
     except FileNotFoundError:
         print("Computing phase diagram...")
         compute_phase_diagram()
-        phase_data = _safe_load(PHASE_NPZ)
+        phase_data = safe_load(PHASE_NPZ)
     plot_phase_diagram(phase_data)
 
     # Attractors
     try:
-        attr_data = _safe_load(ATTR_NPZ)
+        attr_data = safe_load(ATTR_NPZ)
         print(f"Loaded {ATTR_NPZ}")
     except FileNotFoundError:
         print("Computing attractors...")
         compute_attractors()
-        attr_data = _safe_load(ATTR_NPZ)
+        attr_data = safe_load(ATTR_NPZ)
     plot_attractors(attr_data)
 
     # Basins
     try:
-        basin_data = _safe_load(BASIN_NPZ)
+        basin_data = safe_load(BASIN_NPZ)
         print(f"Loaded {BASIN_NPZ}")
     except FileNotFoundError:
         print("Computing basins...")
         compute_basins()
-        basin_data = _safe_load(BASIN_NPZ)
+        basin_data = safe_load(BASIN_NPZ)
     plot_basins(basin_data)
 
     # Animation
     try:
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
         print(f"Loaded {ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing animation data...")
         compute_animation_data()
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
 
 

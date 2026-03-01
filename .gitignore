@@ -30,3 +30,11 @@ __pycache__/
 # Local environments
 .venv/
 venv/
+
+# Rust build artifacts
+target/
+
+# Compiled extensions
+*.so
+*.dylib
+*.pyd

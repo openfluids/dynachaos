@@ -25,7 +25,7 @@ OUTPUTS: figures/sec05_oscillation/attractors.npz,
 USAGE:   python src/dynachaos/maps/delayed_logistic.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -37,11 +37,6 @@ ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 LOCK_NPZ = FIG_DIR / "locking_sequence.npz"
 LOCK_PNG = FIG_DIR / "locking_sequence.png"
-
-
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
 
 
 # ---------------------------------------------------------------------------
@@ -373,42 +368,42 @@ def main():
 
     # Attractors
     try:
-        attr_data = _safe_load(ATTR_NPZ)
+        attr_data = safe_load(ATTR_NPZ)
         print(f"Loaded {ATTR_NPZ}")
     except FileNotFoundError:
         print("Computing attractors...")
         compute_attractors()
-        attr_data = _safe_load(ATTR_NPZ)
+        attr_data = safe_load(ATTR_NPZ)
     plot_attractors(attr_data)
 
     # Lyapunov
     try:
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
         print(f"Loaded {LYAP_NPZ}")
     except FileNotFoundError:
         print("Computing Lyapunov spectrum...")
         compute_lyapunov_spectrum()
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
     plot_lyapunov(lyap_data)
 
     # Locking sequence
     try:
-        lock_data = _safe_load(LOCK_NPZ)
+        lock_data = safe_load(LOCK_NPZ)
         print(f"Loaded {LOCK_NPZ}")
     except FileNotFoundError:
         print("Computing locking sequence...")
         compute_locking_sequence()
-        lock_data = _safe_load(LOCK_NPZ)
+        lock_data = safe_load(LOCK_NPZ)
     plot_locking_sequence(lock_data)
 
     # Animation
     try:
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
         print(f"Loaded {ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing animation data...")
         compute_animation_data()
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
 
 

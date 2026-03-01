@@ -1,37 +1,73 @@
 [project]
 name = "dynachaos"
-version = "0.1.0"
-description = "Celebrating Kaneko: From Torus Collapse to Spatiotemporal Chaos"
-requires-python = ">=3.14"
-dependencies = [
-    "numpy",
-    "matplotlib",
-    "scipy",
-    "pillow",
+version = "0.2.0"
+description = "Dynamical systems, chaos theory, and time series analysis — with Rust-accelerated backends"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Ricardo Frantz" }]
+keywords = [
+    "chaos",
+    "dynamical-systems",
+    "lyapunov",
+    "recurrence",
+    "permutation-entropy",
+    "coupled-map-lattice",
+    "bifurcation",
+    "time-series",
+    "nonlinear-dynamics",
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["numpy>=2.0", "scipy>=1.14"]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.9", "pillow>=10.0"]
+dev = ["pytest>=9.0", "maturin>=1.8,<2.0", "ruff>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/ricardofrantz/dynachaos"
+Repository = "https://github.com/ricardofrantz/dynachaos"
+"Bug Tracker" = "https://github.com/ricardofrantz/dynachaos/issues"
 
 [project.scripts]
 dynachaos = "dynachaos.cli:main"
 
-[tool.hatch.build]
-dev-mode-dirs = ["src"]
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/dynachaos"]
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "dynachaos._rust"
+python-source = "src"
 
 [tool.uv]
 package = true
+cache-keys = [{ file = "pyproject.toml" }, { file = "rust/Cargo.toml" }, { file = "rust/src/**/*.rs" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["src"]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "maturin>=1.8,<2.0",
+    "ruff>=0.4",
 ]

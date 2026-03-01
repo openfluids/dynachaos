@@ -19,7 +19,7 @@ Figures:
 OUTPUTS: figures/sec06_three_torus/*.npz, *.png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 FIG_DIR = section_dir("sec06_three_torus")
@@ -30,11 +30,6 @@ PROJ_NPZ = FIG_DIR / "xz_projections.npz"
 PROJ_PNG = FIG_DIR / "xz_projections.png"
 ANIM_NPZ = FIG_DIR / "three_torus_animation.npz"
 ANIM_GIF = FIG_DIR / "three_torus_animation.gif"
-
-
-def _safe_load(path):
-    """Load .npz with pickle disabled for safety."""
-    return np.load(path, allow_pickle = False)
 
 
 # ---------------------------------------------------------------------------
@@ -268,31 +263,31 @@ def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
         print(f"Loaded {LYAP_NPZ}")
     except FileNotFoundError:
         print("Computing Lyapunov spectra...")
         compute_lyapunov()
-        lyap_data = _safe_load(LYAP_NPZ)
+        lyap_data = safe_load(LYAP_NPZ)
     plot_lyapunov(lyap_data)
 
     try:
-        proj_data = _safe_load(PROJ_NPZ)
+        proj_data = safe_load(PROJ_NPZ)
         print(f"Loaded {PROJ_NPZ}")
     except FileNotFoundError:
         print("Computing projections...")
         compute_projections()
-        proj_data = _safe_load(PROJ_NPZ)
+        proj_data = safe_load(PROJ_NPZ)
     plot_projections(proj_data)
 
     # Animation
     try:
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
         print(f"Loaded {ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing three-torus animation data...")
         compute_animation_data()
-        anim_data = _safe_load(ANIM_NPZ)
+        anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
 
 

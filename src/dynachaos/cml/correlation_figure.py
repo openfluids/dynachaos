@@ -14,33 +14,15 @@ OUTPUTS: figures/sec08_sti/correlation_decay.npz, correlation_decay.png
 USAGE:   python src/dynachaos/cml/correlation_figure.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic_derivative
 import numpy as np
+
+from dynachaos.cml.primitives import cml_step_logistic as cml_step
 
 FIG_DIR = section_dir("sec08_sti")
 CORR_NPZ = FIG_DIR / "correlation_decay.npz"
 CORR_PNG = FIG_DIR / "correlation_decay.png"
-
-
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
-# ---------------------------------------------------------------------------
-# CML model
-# ---------------------------------------------------------------------------
-
-def cml_step(x, a, eps):
-    """One CML step with logistic map and periodic BC.
-
-    Model: x_{n+1}(i) = f(x_n(i)) + eps/2 [f(x_n(i+1)) + f(x_n(i-1)) - 2 f(x_n(i))]
-    with f(x) = 1 - a x^2.
-    """
-    fx = 1.0 - a * x * x
-    fx_left = np.roll(fx, -1)
-    fx_right = np.roll(fx, 1)
-    return fx + (eps / 2.0) * (fx_left + fx_right - 2.0 * fx)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +102,7 @@ def _cml_jacobian_subblock(x, a, eps, L):
     propagation of the perturbation vector restricted to 0..L-1.
     """
     N = len(x)
-    dfx = -2.0 * a * x  # f'(x_i) for all sites
+    dfx = logistic_derivative(x, a)  # f'(x_i) for all sites
 
     J = np.zeros((L, L))
     for i in range(L):
@@ -339,12 +321,12 @@ def plot(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        data = _safe_load(CORR_NPZ)
+        data = safe_load(CORR_NPZ)
         print(f"Loaded {CORR_NPZ}")
     except FileNotFoundError:
         print("Computing correlation and Lyapunov density data...")
         compute()
-        data = _safe_load(CORR_NPZ)
+        data = safe_load(CORR_NPZ)
     plot(data)
 
 

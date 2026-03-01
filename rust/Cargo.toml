@@ -1,0 +1,13 @@
+[package]
+name = "dynachaos-rs"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "dynachaos_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+numpy = "0.28"
+ndarray = "0.17"

@@ -28,8 +28,19 @@ Usage
     stats = rqa(R, l_min=2, v_min=2)
 """
 
+import os
+
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import diagonal_lines as _diagonal_lines_rs
+    from dynachaos._rust import vertical_lines as _vertical_lines_rs
+    _RUST_AVAILABLE = True
+except ImportError:
+    _RUST_AVAILABLE = False
 
 
 def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
@@ -70,14 +81,17 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
 
 def _diagonal_lines(R, l_min=2):
     """Extract diagonal line lengths from recurrence matrix (upper triangle)."""
+    if _RUST_AVAILABLE:
+        return _diagonal_lines_rs(R, l_min)
+
     N = R.shape[0]
     lengths = []
 
+    # Direct indexing avoids per-diagonal np.diag allocation
     for k in range(1, N):
-        diag = np.diag(R, k)
         current = 0
-        for val in diag:
-            if val:
+        for i in range(N - k):
+            if R[i, i + k]:
                 current += 1
             else:
                 if current >= l_min:
@@ -91,6 +105,9 @@ def _diagonal_lines(R, l_min=2):
 
 def _vertical_lines(R, v_min=2):
     """Extract vertical line lengths from recurrence matrix."""
+    if _RUST_AVAILABLE:
+        return _vertical_lines_rs(R, v_min)
+
     N = R.shape[0]
     lengths = []
 
@@ -138,7 +155,8 @@ def rqa(R, l_min=2, v_min=2):
         diag_sum = np.sum(diag_lens)
         # DET = fraction of recurrent points forming diagonal structures
         # (over all recurrent points in upper triangle, excluding main diagonal)
-        n_recurrent = np.sum(np.triu(R, k=1))
+        # Upper-triangle sum without O(N²) allocation (R is symmetric)
+        n_recurrent = (np.sum(R) - np.trace(R)) // 2
         DET = diag_sum / n_recurrent if n_recurrent > 0 else 0.0
         L = np.mean(diag_lens)
         Lmax = np.max(diag_lens)

@@ -22,18 +22,14 @@ Figures:
 OUTPUTS: figures/sec08_sti/spacetime_diagrams.npz, .png
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic
 import numpy as np
 
 FIG_DIR = section_dir("sec08_sti")
 
 STI_NPZ = FIG_DIR / "spacetime_diagrams.npz"
 STI_PNG = FIG_DIR / "spacetime_diagrams.png"
-
-
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +60,7 @@ def model_B_g(x):
 
 def model_C_f(x, A=1.752):
     """Logistic map for model (C)."""
-    return 1.0 - A * x * x
+    return logistic(x, A)
 
 
 # ---------------------------------------------------------------------------
@@ -189,12 +185,12 @@ def plot(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        data = _safe_load(STI_NPZ)
+        data = safe_load(STI_NPZ)
         print(f"Loaded {STI_NPZ}")
     except FileNotFoundError:
         print("Computing spacetime diagrams...")
         compute()
-        data = _safe_load(STI_NPZ)
+        data = safe_load(STI_NPZ)
     plot(data)
 
 

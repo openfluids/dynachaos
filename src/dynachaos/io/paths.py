@@ -1,9 +1,11 @@
-"""Path resolution for generated figure/data artifacts."""
+"""Path resolution and I/O helpers for generated figure/data artifacts."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
+import numpy as np
 
 
 def output_root() -> Path:
@@ -22,3 +24,8 @@ def output_root() -> Path:
 def section_dir(section_name: str) -> Path:
     """Return the output directory for a paper section."""
     return output_root() / section_name
+
+
+def safe_load(path):
+    """Load .npz without deserializing arbitrary objects."""
+    return np.load(path, allow_pickle = False)

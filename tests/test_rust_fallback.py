@@ -1,0 +1,298 @@
+"""Test that Rust and Python implementations produce identical results.
+
+These tests force both paths and compare outputs to ensure the Rust
+acceleration is a transparent drop-in.
+"""
+
+
+import numpy as np
+import pytest
+from conftest import logistic_series
+
+try:
+    from dynachaos._rust import diagonal_lines  # noqa: F401
+    _HAS_RUST = True
+except ImportError:
+    _HAS_RUST = False
+
+needs_rust = pytest.mark.skipif(not _HAS_RUST, reason="Rust extension not available")
+
+
+@needs_rust
+class TestRecurrenceParity:
+    """Verify Rust and Python _diagonal_lines / _vertical_lines agree."""
+
+    def _recurrence_matrix(self):
+        t = np.linspace(0.0, 40.0, 400)
+        traj = np.column_stack([np.sin(t), np.cos(t)])
+        from dynachaos.diagnostics.recurrence import recurrence_matrix
+        R, _ = recurrence_matrix(traj, percentile=8)
+        return R
+
+    def test_diagonal_lines_parity(self):
+        R = self._recurrence_matrix()
+        from dynachaos._rust import diagonal_lines as rust_diag
+
+        # Python path (bypass Rust)
+        from dynachaos.diagnostics import recurrence as rec_mod
+        old_flag = rec_mod._RUST_AVAILABLE
+        rec_mod._RUST_AVAILABLE = False
+        py_result = rec_mod._diagonal_lines(R, l_min=2)
+        rec_mod._RUST_AVAILABLE = old_flag
+
+        # Rust path
+        rs_result = np.asarray(rust_diag(R, l_min=2))
+
+        np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
+
+    def test_vertical_lines_parity(self):
+        R = self._recurrence_matrix()
+        from dynachaos._rust import vertical_lines as rust_vert
+        from dynachaos.diagnostics import recurrence as rec_mod
+        old_flag = rec_mod._RUST_AVAILABLE
+        rec_mod._RUST_AVAILABLE = False
+        py_result = rec_mod._vertical_lines(R, v_min=2)
+        rec_mod._RUST_AVAILABLE = old_flag
+
+        rs_result = np.asarray(rust_vert(R, v_min=2))
+
+        np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
+
+    def test_rqa_parity(self):
+        """Full RQA pipeline should give same results via either path."""
+        R = self._recurrence_matrix()
+        from dynachaos.diagnostics import recurrence as rec_mod
+
+        # Rust path (only works when Rust is loaded)
+        rqa_rust = rec_mod.rqa(R)
+
+        # Python path
+        old_flag = rec_mod._RUST_AVAILABLE
+        rec_mod._RUST_AVAILABLE = False
+        rqa_python = rec_mod.rqa(R)
+        rec_mod._RUST_AVAILABLE = old_flag
+
+        for key in rqa_rust:
+            assert rqa_rust[key] == pytest.approx(rqa_python[key], abs=1e-12), (
+                f"RQA[{key}] mismatch: rust={rqa_rust[key]}, python={rqa_python[key]}"
+            )
+
+
+@needs_rust
+class TestPermutationParity:
+    """Verify Rust and Python ordinal_distribution agree."""
+
+    def test_ordinal_distribution_parity(self):
+        series = logistic_series(n=5000)
+        from dynachaos._rust import ordinal_distribution as rust_ord
+
+        # Python path
+        from dynachaos.diagnostics import permutation as perm_mod
+        old_flag = perm_mod._RUST_AVAILABLE
+        perm_mod._RUST_AVAILABLE = False
+        py_probs, py_total = perm_mod.ordinal_distribution(series, d=5, tau=1)
+        perm_mod._RUST_AVAILABLE = old_flag
+
+        # Rust path
+        rs_counts, rs_total = rust_ord(series, d=5, tau=1)
+        rs_counts = np.asarray(rs_counts)
+
+        assert py_total == rs_total
+
+        # Compare: reconstruct probabilities from Rust counts
+        from dynachaos.diagnostics.permutation import _lehmer_to_permutation
+        rs_probs = {}
+        for idx in np.nonzero(rs_counts)[0]:
+            perm = _lehmer_to_permutation(int(idx), 5)
+            rs_probs[perm] = int(rs_counts[idx]) / rs_total
+
+        # Same set of patterns
+        assert set(py_probs.keys()) == set(rs_probs.keys())
+
+        # Same probabilities
+        for perm in py_probs:
+            assert py_probs[perm] == pytest.approx(rs_probs[perm], abs=1e-12)
+
+    def test_permutation_entropy_parity(self):
+        """Full permutation entropy should agree regardless of backend."""
+        series = logistic_series(n=5000)
+        from dynachaos.diagnostics import permutation as perm_mod
+
+        # Rust path (Rust is loaded, flag is True)
+        h_rust = perm_mod.permutation_entropy(series, d=5)
+
+        # Python path
+        old_flag = perm_mod._RUST_AVAILABLE
+        perm_mod._RUST_AVAILABLE = False
+        h_python = perm_mod.permutation_entropy(series, d=5)
+        perm_mod._RUST_AVAILABLE = old_flag
+
+        assert h_rust == pytest.approx(h_python, abs=1e-10)
+
+    def test_complexity_entropy_parity(self):
+        """Complexity-entropy plane should agree regardless of backend."""
+        series = logistic_series(n=5000)
+        from dynachaos.diagnostics import permutation as perm_mod
+
+        # Rust path (Rust is loaded, flag is True)
+        h_rust, c_rust = perm_mod.complexity_entropy(series, d=5)
+
+        # Python path
+        old_flag = perm_mod._RUST_AVAILABLE
+        perm_mod._RUST_AVAILABLE = False
+        h_python, c_python = perm_mod.complexity_entropy(series, d=5)
+        perm_mod._RUST_AVAILABLE = old_flag
+
+        assert h_rust == pytest.approx(h_python, abs=1e-10)
+        assert c_rust == pytest.approx(c_python, abs=1e-10)
+
+
+@needs_rust
+class TestAMIParity:
+    """Verify Rust and Python AMI agree."""
+
+    def test_ami_parity(self):
+        series = logistic_series(n=3000)
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        # Rust path
+        old_flag = emb_mod._RUST_AVAILABLE
+        emb_mod._RUST_AVAILABLE = True
+        _, I_rust = emb_mod.average_mutual_information(series, tau_max=30, n_bins=32)
+        emb_mod._RUST_AVAILABLE = old_flag
+
+        # Python path
+        I_python = emb_mod._ami_python(series, tau_max=30, n_bins=32)
+
+        np.testing.assert_allclose(I_rust, I_python, atol=1e-10,
+                                   err_msg="AMI Rust vs Python mismatch")
+
+
+@needs_rust
+class TestCaoParity:
+    """Verify Rust and Python Cao E/E* agree."""
+
+    def test_cao_parity(self):
+        series = logistic_series(n=2000)
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        # Rust path
+        from dynachaos._rust import cao_statistic as rust_cao
+        E_rust, Es_rust = rust_cao(series, tau=1, d_max=6, theiler_window=0)
+        E_rust = np.asarray(E_rust)
+        Es_rust = np.asarray(Es_rust)
+
+        # Python path
+        E_py, Es_py = emb_mod._cao_python(series, tau=1, d_max=6, theiler_window=0)
+
+        np.testing.assert_allclose(E_rust, E_py, rtol=1e-8,
+                                   err_msg="Cao E(d) Rust vs Python mismatch")
+        np.testing.assert_allclose(Es_rust, Es_py, rtol=1e-8,
+                                   err_msg="Cao E*(d) Rust vs Python mismatch")
+
+
+@needs_rust
+class TestFNNParity:
+    """Verify Rust and Python FNN fractions agree."""
+
+    def test_fnn_parity(self):
+        series = logistic_series(n=2000)
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        # Rust path
+        from dynachaos._rust import fnn_statistic as rust_fnn
+        f1_rs, f2_rs, f3_rs = rust_fnn(series, tau=1, d_max=5,
+                                        r_tol=15.0, a_tol=2.0, theiler_window=0)
+        f1_rs = np.asarray(f1_rs)
+        f2_rs = np.asarray(f2_rs)
+        f3_rs = np.asarray(f3_rs)
+
+        # Python path
+        f1_py, f2_py, f3_py = emb_mod._fnn_python(series, tau=1, d_max=5,
+                                                    R_tol=15.0, A_tol=2.0,
+                                                    theiler_window=0)
+
+        np.testing.assert_allclose(f1_rs, f1_py, atol=1e-8,
+                                   err_msg="FNN f1 Rust vs Python mismatch")
+        np.testing.assert_allclose(f2_rs, f2_py, atol=1e-8,
+                                   err_msg="FNN f2 Rust vs Python mismatch")
+        np.testing.assert_allclose(f3_rs, f3_py, atol=1e-8,
+                                   err_msg="FNN f3 Rust vs Python mismatch")
+
+
+@needs_rust
+class TestCorrelationCountsParity:
+    """Verify Rust and Python correlation integral agree."""
+
+    def test_correlation_counts_parity(self):
+        t = np.linspace(0, 2 * np.pi, 500, endpoint=False)
+        traj = np.column_stack([np.cos(t), np.sin(t)])
+        r_values = np.logspace(-2, 0, 15)
+
+        from dynachaos.diagnostics import correlation as corr_mod
+
+        # Rust path
+        old_flag = corr_mod._RUST_AVAILABLE
+        corr_mod._RUST_AVAILABLE = True
+        C_rust = corr_mod.correlation_integral(traj, r_values,
+                                               theiler_window=5, norm="chebyshev")
+        corr_mod._RUST_AVAILABLE = old_flag
+
+        # Python path
+        corr_mod._RUST_AVAILABLE = False
+        C_py = corr_mod.correlation_integral(traj, r_values,
+                                             theiler_window=5, norm="chebyshev")
+        corr_mod._RUST_AVAILABLE = old_flag
+
+        np.testing.assert_allclose(C_rust, C_py, atol=1e-10,
+                                   err_msg="Correlation integral Rust vs Python mismatch")
+
+
+class TestDiscreteMap:
+    """Test the new DiscreteMap convenience class."""
+
+    def test_logistic_trajectory(self):
+        from dynachaos.maps.base import LogisticMap
+        lm = LogisticMap(a=1.99)
+        traj = lm.trajectory(x0=0.1, n_iter=100, n_transient=50)
+        assert traj.shape == (100,)
+        assert np.all(np.isfinite(traj))
+
+    def test_logistic_lyapunov(self):
+        from dynachaos.maps.base import LogisticMap
+        lm = LogisticMap(a=1.99)
+        lam = lm.lyapunov(x0=0.1, n_iter=50_000, n_transient=5_000)
+        assert lam > 0.5  # chaotic
+
+    def test_no_jacobian_raises(self):
+        from dynachaos.maps.base import DiscreteMap
+        m = DiscreteMap(f=lambda x: 1 - 1.99 * x * x, name="bare")
+        with pytest.raises(ValueError, match="No derivative"):
+            m.lyapunov(x0=0.1)
+
+    def test_repr(self):
+        from dynachaos.maps.base import LogisticMap
+        lm = LogisticMap(a=1.5)
+        assert "Logistic" in repr(lm)
+
+
+class TestViz:
+    """Smoke tests for viz subpackage (non-interactive)."""
+
+    def test_bifurcation_import(self):
+        from dynachaos.viz import bifurcation_diagram
+        assert callable(bifurcation_diagram)
+
+    def test_cobweb_import(self):
+        from dynachaos.viz import cobweb_diagram
+        assert callable(cobweb_diagram)
+
+    def test_return_map_import(self):
+        from dynachaos.viz import return_map_plot
+        assert callable(return_map_plot)
+
+
+class TestVersion:
+    def test_version_string(self):
+        import dynachaos
+        assert dynachaos.__version__ == "0.2.0"

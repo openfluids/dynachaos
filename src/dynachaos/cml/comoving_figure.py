@@ -20,31 +20,13 @@ OUTPUTS: figures/sec08_sti/comoving_lyapunov.npz,
 USAGE:   python src/dynachaos/cml/comoving_figure.py
 """
 
-from dynachaos.io.paths import section_dir
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic, logistic_derivative
 import numpy as np
 
 FIG_DIR = section_dir("sec08_sti")
 OUTPUT_NPZ = FIG_DIR / "comoving_lyapunov.npz"
 OUTPUT_PNG = FIG_DIR / "comoving_lyapunov.png"
-
-
-def _safe_load(path):
-    """Load .npz safely (no deserialization of arbitrary objects)."""
-    return np.load(path, allow_pickle = False)
-
-
-# ---------------------------------------------------------------------------
-# Map definitions
-# ---------------------------------------------------------------------------
-
-def _f(x, a):
-    """Logistic map f(x) = 1 - a*x^2."""
-    return 1.0 - a * x * x
-
-
-def _df(x, a):
-    """Derivative of f: df/dx = -2*a*x."""
-    return -2.0 * a * x
 
 
 # ---------------------------------------------------------------------------
@@ -70,8 +52,8 @@ def compute():
     all_lambda = {}
     for ia, (a, label) in enumerate(zip(a_values, a_labels)):
         print(f"a={a} ({label})...")
-        f = lambda x, _a=a: _f(x, _a)
-        df = lambda x, _a=a: _df(x, _a)
+        f = lambda x, _a=a: logistic(x, _a)
+        df = lambda x, _a=a: logistic_derivative(x, _a)
         # Coupling function g = f, dg = df
         g = f
         dg = df
@@ -167,12 +149,12 @@ def plot(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
         print(f"Loaded {OUTPUT_NPZ}")
     except FileNotFoundError:
         print("Computing co-moving Lyapunov exponent...")
         compute()
-        data = _safe_load(OUTPUT_NPZ)
+        data = safe_load(OUTPUT_NPZ)
     plot(data)
 
 

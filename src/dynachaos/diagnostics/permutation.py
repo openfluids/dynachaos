@@ -34,13 +34,42 @@ Usage
     H, C = complexity_entropy(time_series, d=5)
 """
 
-import numpy as np
+import os
+from functools import lru_cache
 from math import factorial
+
+import numpy as np
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import ordinal_distribution as _ordinal_distribution_rs
+    _RUST_AVAILABLE = True
+except ImportError:
+    _RUST_AVAILABLE = False
 
 
 def _ordinal_pattern(window):
     """Return the ordinal pattern (rank permutation) of a window."""
-    return tuple(np.argsort(window))
+    return tuple(int(x) for x in np.argsort(window))
+
+
+def _lehmer_to_permutation(index, d):
+    """Convert a Lehmer code index back to a permutation tuple."""
+    available = list(range(d))
+    perm = []
+    for i in range(d):
+        f = factorial(d - 1 - i)
+        j = index // f
+        index %= f
+        perm.append(available.pop(j))
+    return tuple(perm)
+
+
+@lru_cache(maxsize=8)
+def _decode_table(d):
+    """Build and cache the Lehmer-index → permutation lookup table for dimension d."""
+    return [_lehmer_to_permutation(i, d) for i in range(factorial(d))]
 
 
 def ordinal_distribution(x, d=5, tau=1):
@@ -64,6 +93,16 @@ def ordinal_distribution(x, d=5, tau=1):
         Total number of windows analysed.
     """
     x = np.asarray(x, dtype=np.float64)
+
+    if _RUST_AVAILABLE:
+        counts_arr, n_windows = _ordinal_distribution_rs(x, d, tau)
+        total = int(n_windows)
+        table = _decode_table(d)
+        probs = {}
+        for idx in np.nonzero(counts_arr)[0]:
+            probs[table[idx]] = int(counts_arr[idx]) / total
+        return probs, total
+
     N = len(x)
     n_windows = N - (d - 1) * tau
 
@@ -159,10 +198,9 @@ def complexity_entropy(x, d=5, tau=1):
     # Build probability vector aligned to all possible permutations
     # (include zero-probability patterns)
     p = np.zeros(n_perm)
-    # Map each observed pattern to an index
-    from itertools import permutations as iter_perms
-    all_perms = list(iter_perms(range(d)))
-    perm_to_idx = {perm: i for i, perm in enumerate(all_perms)}
+    # Map each observed pattern to its Lehmer index
+    table = _decode_table(d)
+    perm_to_idx = {perm: i for i, perm in enumerate(table)}
 
     for pattern, prob in probs_dict.items():
         idx = perm_to_idx[pattern]
