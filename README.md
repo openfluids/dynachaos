@@ -112,7 +112,7 @@ Six optimizations combine for a **13.6× speedup** over baseline NumPy:
   NEON (Apple Silicon) or AVX2 (x86); combined with `lto=true`,
   `codegen-units=1`, and `panic="abort"`
 
-**Benchmarks** (Apple M3, 6 P-cores + 2 E-cores, 16 GB):
+**Benchmarks** (Apple M1 Pro, 6 P-cores + 2 E-cores, 16 GB):
 
 | N | Pairs | Time (Python) | Time (Rust) | Throughput | Speedup |
 |---|-------|---------------|-------------|------------|---------|
