@@ -7,7 +7,6 @@ from pathlib import Path
 
 from dynachaos.pipelines.registry import get_section, list_sections
 from dynachaos.pipelines.runner import run_all, run_section
-from dynachaos.utils.style import available_themes, save_theme_previews, theme_description
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -47,7 +46,6 @@ def _build_parser() -> argparse.ArgumentParser:
     preview.add_argument(
         "--theme",
         default=None,
-        choices=available_themes(),
         help="Render only one theme. Omit to render all themes.",
     )
     preview.add_argument(
@@ -72,11 +70,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "style":
+        from dynachaos.utils.style import available_themes, save_theme_previews, theme_description
+
         if args.style_command == "list":
             for theme in available_themes():
                 print(f"{theme}\t{theme_description(theme)}")
             return 0
 
+        if args.theme is not None:
+            valid = available_themes()
+            if args.theme not in valid:
+                parser.error(f"invalid choice: '{args.theme}' (choose from {', '.join(valid)})")
         selected = None if args.theme is None else [args.theme]
         for path in save_theme_previews(args.output_dir, themes=selected):
             print(path)

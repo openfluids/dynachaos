@@ -70,7 +70,7 @@ def _time_algorithm(name, series, use_rust):
         try:
             dims = np.arange(1, 8)
             t0 = time.perf_counter()
-            emb_mod.cao_method(series, tau=1, dims=dims)
+            emb_mod.cao_method(series, tau=1, d_max=int(dims[-1]))
             return time.perf_counter() - t0
         finally:
             emb_mod._RUST_AVAILABLE = old_flag
@@ -81,7 +81,7 @@ def _time_algorithm(name, series, use_rust):
         try:
             dims = np.arange(1, 8)
             t0 = time.perf_counter()
-            emb_mod.false_nearest_neighbors(series, tau=1, dims=dims)
+            emb_mod.false_nearest_neighbors(series, tau=1, d_max=int(dims[-1]))
             return time.perf_counter() - t0
         finally:
             emb_mod._RUST_AVAILABLE = old_flag

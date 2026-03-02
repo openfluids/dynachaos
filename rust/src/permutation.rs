@@ -81,6 +81,12 @@ pub fn ordinal_distribution<'py>(
     d: usize,
     tau: usize,
 ) -> PyResult<(Bound<'py, PyArray1<i64>>, i64)> {
+    if d > 10 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "ordinal dimension d must be <= 10 (stack buffer limit)",
+        ));
+    }
+
     let arr = x.as_slice()?;
     let n = arr.len();
     let n_windows = n.saturating_sub((d - 1) * tau);

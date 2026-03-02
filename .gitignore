@@ -14,6 +14,13 @@ paper/rerun_check.log
 paper/main.pdf
 paper/.DS_Store
 
+# Private session / planning files — never commit
+plan*.md
+LEDGER.md
+
+# README asset generation scripts
+assets/gen_*.py
+
 # OS / filesystem noise
 .DS_Store
 
@@ -38,3 +45,7 @@ target/
 *.so
 *.dylib
 *.pyd
+
+# Computed data — large, reproducible from scripts
+examples/*.npz
+figures/**/*.npz

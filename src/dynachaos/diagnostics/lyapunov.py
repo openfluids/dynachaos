@@ -320,6 +320,12 @@ def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01,
     log_sums = np.zeros(dim, dtype=np.float64)
     n_reorth = int(t_total / reorth_dt)
 
+    if n_reorth == 0:
+        raise ValueError(
+            f"t_total={t_total} < reorth_dt={reorth_dt}: "
+            "at least one reorthogonalization interval is required"
+        )
+
     x = x0.copy()
     t_current = t_transient if t_transient > 0 else 0.0
 

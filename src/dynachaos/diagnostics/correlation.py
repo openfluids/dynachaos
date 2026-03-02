@@ -23,11 +23,11 @@ Theiler, J. (1986) "Spurious dimension from correlation algorithms applied to
 """
 
 import os
-import resource
-import sys
 import time
 
 import numpy as np
+
+from dynachaos.utils.system import get_rss_mb
 
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
@@ -77,15 +77,15 @@ def _correlation_counts_python(traj, r_values, theiler_window, use_chebyshev):
 def _print_timing(backend, N, n_valid, n_r, elapsed):
     """Print verbose timing and memory info for correlation counting."""
     throughput = n_valid * n_r / elapsed / 1e6 if elapsed > 0 else 0.0
-    rss_raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # macOS: ru_maxrss is in bytes; Linux: in KB
-    if sys.platform == "darwin":
-        rss_mb = rss_raw / (1024 * 1024)
-    else:
-        rss_mb = rss_raw / 1024
     print(f"  correlation_integral ({backend}): N={N:,}, pairs={n_valid:,}, "
           f"n_r={n_r}, time={elapsed:.3f}s, "
-          f"{throughput:.1f}M pair-tests/s, RSS={rss_mb:.0f} MB")
+          f"{throughput:.1f}M pair-tests/s, RSS={get_rss_mb():.0f} MB")
+
+
+def _valid_pair_count(n, theiler_window):
+    """Closed-form count of valid pairs with |i-j| > theiler_window."""
+    n_eff = max(0, n - theiler_window - 1)
+    return n_eff * (n_eff + 1) // 2
 
 
 def correlation_integral(traj, r_values, max_pairs=500_000,
@@ -124,12 +124,7 @@ def correlation_integral(traj, r_values, max_pairs=500_000,
     use_chebyshev = norm == "chebyshev"
 
     N = len(traj)
-    # Total number of valid pairs
-    n_valid = 0
-    for i in range(N):
-        j_start = i + theiler_window + 1
-        if j_start < N:
-            n_valid += N - j_start
+    n_valid = _valid_pair_count(N, theiler_window)
 
     if n_valid == 0:
         return np.zeros(len(r_values))
@@ -289,7 +284,7 @@ def correlation_dimension(traj, n_r=50, r_range=None, max_pairs=500_000,
     # Filter: keep points with positive C, exclude noise floor
     # Organic: Poisson noise floor — at C = 1/sqrt(n_valid), the count is
     # sqrt(n_valid) pairs with relative error n_valid^{-1/4}.
-    n_valid = N * (N - 1) // 2  # approximate valid pair count
+    n_valid = _valid_pair_count(N, theiler_window)
     c_floor = 1.0 / np.sqrt(n_valid) if n_valid > 0 else 1e-5
     valid = C_values > c_floor
     # Note: saturation ceiling (formerly 0.8) is now handled organically

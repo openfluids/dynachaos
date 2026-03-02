@@ -8,23 +8,13 @@ permissions:
   id-token: write
 
 jobs:
-  sdist:
-    name: Build sdist
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: dist/*.tar.gz
-
   wheels:
     name: Build wheel (${{ matrix.target }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      # Override .cargo/config.toml target-cpu=native so wheels are portable
+      # (native SIMD is correct for local dev but wrong for distribution)
+      RUSTFLAGS: ""
     strategy:
       matrix:
         include:
@@ -43,7 +33,7 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --no-sdist
           manylinux: auto
       - uses: actions/upload-artifact@v4
         with:
@@ -52,7 +42,7 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: [sdist, wheels]
+    needs: [wheels]
     runs-on: ubuntu-latest
     environment: pypi
     steps:

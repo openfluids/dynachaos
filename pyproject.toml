@@ -1,6 +1,6 @@
 [project]
 name = "dynachaos"
-version = "0.2.0"
+version = "0.1.0"
 description = "Dynamical systems, chaos theory, and time series analysis — with Rust-accelerated backends"
 readme = "README.md"
 requires-python = ">=3.12"

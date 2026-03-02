@@ -1,6 +1,12 @@
 """Modern diagnostic tools for dynamical systems."""
 
 from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
+from dynachaos.diagnostics.entropy import (
+    approximate_entropy,
+    fuzzy_entropy,
+    multiscale_entropy,
+    sample_entropy,
+)
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -19,6 +25,7 @@ from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
 __all__ = [
+    "approximate_entropy",
     "average_mutual_information",
     "cao_method",
     "complexity_entropy",
@@ -27,14 +34,17 @@ __all__ = [
     "embed_time_delay",
     "false_nearest_neighbors",
     "flow_lyapunov_spectrum",
+    "fuzzy_entropy",
     "gali",
     "lyapunov_exponent_1d",
     "lyapunov_spectrum",
+    "multiscale_entropy",
     "optimal_delay",
     "optimal_dimension",
     "permutation_entropy",
     "recurrence_matrix",
     "rqa",
     "sali",
+    "sample_entropy",
     "zero_one_statistic",
 ]

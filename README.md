@@ -1,8 +1,26 @@
 # dynachaos
 
-Python library for dynamical systems, chaos theory, and time series
-analysis. Performance-critical algorithms accelerated via Rust (PyO3);
-pure-Python fallbacks for all routines.
+[![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**High-performance chaos analysis in Python.**
+
+> *"Chaos: When the present determines the future, but the approximate present*
+> *does not approximately determine the future."*
+> — Edward Lorenz
+
+![Bifurcation diagram of the logistic map](assets/bifurcation.png)
+
+## Why dynachaos?
+
+Most chaos libraries stop at Lyapunov exponents.
+dynachaos goes further: Rust-accelerated all-pairs kernels make correlation
+dimension practical at N = 500 K; a full entropy family (SampEn, FuzzyEn,
+MSE) handles physiological and financial series; and the Kaneko atlas
+reproduces 30 years of CML literature at 1 000× finer resolution — all with
+pure-Python fallbacks so every routine works without a compiler.
 
 ## Features
 
@@ -12,16 +30,18 @@ delayed, modulated circle, torus doubling (Map I / Map IV)
 **Coupled Map Lattices** — CML with nearest-neighbor diffusive coupling,
 globally coupled maps (GCM), pattern dynamics, cluster statistics
 
-**Diagnostics** — Lyapunov exponents (1D + QR spectrum), 0-1 test for chaos,
-SALI/GALI alignment indices, permutation entropy + complexity–entropy planes,
-recurrence quantification analysis (RQA), Grassberger–Procaccia correlation
-dimension
+**Diagnostics** — Lyapunov exponents (1D + QR spectrum + flow systems),
+0-1 test for chaos, SALI/GALI alignment indices, permutation entropy +
+complexity-entropy planes, sample/approximate/fuzzy/multiscale entropy,
+recurrence quantification analysis (RQA), Grassberger-Procaccia
+correlation dimension, AMI + Cao + FNN embedding
 
-**Rust backends** — recurrence quantification (diagonal/vertical line
-extraction), ordinal distribution counting (more coming)
+**Rust backends** — correlation integral (Grassberger-Procaccia), fuzzy
+entropy sum, recurrence line extraction, ordinal distribution counting,
+AMI histograms, Cao/FNN embedding statistics
 
-**Visualization** — bifurcation diagrams, cobweb plots, return maps, curated
-Swiss-inspired style themes
+**Visualization** — bifurcation diagrams, cobweb plots, return maps,
+curated Swiss-inspired style themes
 
 ## Installation
 
@@ -38,10 +58,10 @@ from dynachaos.maps import logistic, logistic_derivative
 from dynachaos.diagnostics import lyapunov_exponent_1d, permutation_entropy
 
 # Lyapunov exponent of the logistic map at the edge of chaos
-f = lambda x: logistic(x, 1.99)
+f  = lambda x: logistic(x, 1.99)
 df = lambda x: logistic_derivative(x, 1.99)
 lam = lyapunov_exponent_1d(f, df, x0=0.1, n_iter=100_000)
-print(f"λ = {lam:.4f}")  # λ ≈ 0.69
+print(f"lambda = {lam:.4f}")   # ~ 0.69
 
 # Permutation entropy of a chaotic series
 series = np.empty(10_000)
@@ -49,41 +69,93 @@ series[0] = 0.1
 for i in range(1, len(series)):
     series[i] = logistic(series[i - 1], 1.99)
 H = permutation_entropy(series, d=5)
-print(f"H_PE = {H:.4f}")  # H_PE ≈ 0.98 (near-random)
+print(f"H_PE = {H:.4f}")       # ~ 0.98 (near-random)
 ```
 
 ```python
-from dynachaos.diagnostics import recurrence_matrix, rqa
+from dynachaos.diagnostics import correlation_dimension, sample_entropy
+from dynachaos.diagnostics.recurrence import embed_time_delay
 
-# Recurrence quantification of a periodic orbit
-t = np.linspace(0, 40, 600)
-traj = np.column_stack([np.sin(t), np.cos(t)])
-R, eps = recurrence_matrix(traj, percentile=5)
-stats = rqa(R, l_min=2, v_min=2)
-print(f"DET = {stats['DET']:.3f}, LAM = {stats['LAM']:.3f}")
+# Correlation dimension of the logistic map attractor
+traj = embed_time_delay(series, d=3, tau=1)
+D2, r, C, slopes, mask = correlation_dimension(traj, theiler_window=1)
+print(f"D2 = {D2:.3f}")        # ~ 0.96
+
+# Sample entropy (regularity measure)
+se = sample_entropy(series, m=2)
+print(f"SampEn = {se:.4f}")
 ```
+
+## Rust-Accelerated Backends
+
+Performance-critical algorithms are implemented as Rust kernels and loaded
+automatically when the extension is installed.
+Pure-Python fallbacks are always available and produce identical results.
+
+### Correlation integral (Grassberger-Procaccia)
+
+The all-pairs kernel evaluates all N(N−1)/2 pairs with Theiler-window
+exclusion and multi-radius binning in a single pass.
+Six optimizations combine for a **13.6× speedup** over baseline NumPy:
+
+- **Raw slice indexing** — C-contiguous pointer arithmetic, bypassing
+  ndarray's bounds-checked `Index` trait
+- **Prefix-sum binning** — one write per pair instead of up to 50;
+  converted to cumulative counts with a single O(n_r) pass after the loop
+- **Squared-distance comparison** — pre-squared thresholds eliminate
+  `sqrt()` in Euclidean mode (saves 10–20 cycles per pair)
+- **Branch-separated loops** — Chebyshev and Euclidean paths are fully
+  separated, enabling independent auto-vectorization
+- **Rayon parallelism** — outer loop distributed across all cores via
+  Rayon; GIL released with `py.detach()` before the parallel region
+- **Native SIMD** — `target-cpu=native` in `.cargo/config.toml` unlocks
+  NEON (Apple Silicon) or AVX2 (x86); combined with `lto=true`,
+  `codegen-units=1`, and `panic="abort"`
+
+**Benchmarks** (Apple M3, 6 P-cores + 2 E-cores, 16 GB):
+
+| N | Pairs | Time (Python) | Time (Rust) | Throughput | Speedup |
+|---|-------|---------------|-------------|------------|---------|
+| 50,000 | 1.25 B | 25.9 s | 1.9 s | 32.8 G pairs/s | 13.6× |
+| 500,000 | 125 B | ~4 300 s (est.) | 237 s | 26.3 G pairs/s | ~18× |
+
+Memory stays at O(N·d) regardless of N (no distance matrix stored):
+74 MB at N = 50 K, 99 MB at N = 500 K.
+
+### Fuzzy entropy sum
+
+Computes Σ exp(−(d/r)ⁿ) over all upper-triangle pairs on mean-centered
+templates, using the same Rayon parallel fold + reduce pattern.
 
 ## Algorithm Reference
 
-| Algorithm | Module | Rust | Reference |
-|-----------|--------|------|-----------|
+| Algorithm | Module | Rust kernel | Reference |
+|-----------|--------|-------------|-----------|
 | Lyapunov exponent (1D) | `diagnostics.lyapunov` | — | Benettin et al. 1980 |
 | Lyapunov spectrum (QR) | `diagnostics.lyapunov` | — | Benettin et al. 1980 |
+| Flow Lyapunov spectrum | `diagnostics.lyapunov` | — | Benettin et al. 1980 |
 | 0-1 test for chaos | `diagnostics.zero_one_test` | — | Gottwald & Melbourne 2004 |
 | SALI / GALI | `diagnostics.sali_gali` | — | Skokos et al. 2007 |
 | Permutation entropy | `diagnostics.permutation` | ordinal dist. | Bandt & Pompe 2002 |
-| Complexity–entropy plane | `diagnostics.permutation` | ordinal dist. | Rosso et al. 2007 |
-| RQA (DET, LAM, ENTR, ...) | `diagnostics.recurrence` | line extraction | Marwan et al. 2007 |
-| Correlation dimension | `diagnostics.correlation` | — | Grassberger & Procaccia 1983 |
+| Complexity-entropy plane | `diagnostics.permutation` | ordinal dist. | Rosso et al. 2007 |
+| Sample entropy | `diagnostics.entropy` | correlation counts | Richman & Moorman 2000 |
+| Approximate entropy | `diagnostics.entropy` | — | Pincus 1991 |
+| Fuzzy entropy | `diagnostics.entropy` | fuzzy sum | Chen et al. 2007 |
+| Multiscale entropy | `diagnostics.entropy` | correlation counts | Costa et al. 2002 |
+| RQA (DET, LAM, ENTR, …) | `diagnostics.recurrence` | line extraction | Marwan et al. 2007 |
+| Correlation dimension | `diagnostics.correlation` | all-pairs kernel | Grassberger & Procaccia 1983 |
+| AMI (embedding) | `diagnostics.embedding` | histogram | Fraser & Swinney 1986 |
+| Cao's method | `diagnostics.embedding` | statistic | Cao 1997 |
+| False nearest neighbors | `diagnostics.embedding` | statistic | Kennel et al. 1992 |
 
 ## Showcase: Kaneko Atlas
 
 A companion manuscript is the first major
-application of dynachaos — a tribute to Kunihiko Kaneko's foundational work
-on chaos, reproduced at 100–1000× finer resolution using this library.
+application of dynachaos — a tribute to Kunihiko Kaneko's foundational
+work on chaos, reproduced at 100–1 000× finer resolution using this library.
 
 ```bash
-dynachaos list                    # see paper sections
+dynachaos list                    # list paper sections
 dynachaos run sec02_circle_map    # reproduce a figure
 dynachaos run all                 # full pipeline
 ```
@@ -94,11 +166,35 @@ dynachaos run all                 # full pipeline
 git clone https://github.com/ricardofrantz/dynachaos.git
 cd dynachaos
 uv sync
-uv run pytest tests/ -q          # pure-Python tests
+uv run pytest tests/ -q           # pure-Python tests
 
 # With Rust extension:
 uv run maturin develop --release
 uv run pytest tests/ -q
+```
+
+## Citation
+
+If you use dynachaos in published work, please cite the software and,
+if applicable, the companion paper:
+
+```bibtex
+@software{dynachaos2026,
+  author  = {Frantz, Ricardo},
+  title   = {dynachaos: High-performance chaos analysis in Python},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/ricardofrantz/dynachaos},
+  license = {MIT}
+}
+
+@article{removed,
+  author  = {Frantz, Ricardo},
+  
+             },
+  
+  year    = {2026}
+}
 ```
 
 ## License
