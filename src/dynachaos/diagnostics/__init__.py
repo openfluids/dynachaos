@@ -19,6 +19,7 @@ from dynachaos.diagnostics.lyapunov import (
     lyapunov_exponent_1d,
     lyapunov_spectrum,
 )
+from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
 from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
 from dynachaos.diagnostics.sali_gali import gali, sali
@@ -38,7 +39,9 @@ __all__ = [
     "gali",
     "lyapunov_exponent_1d",
     "lyapunov_spectrum",
+    "local_multifractality",
     "multiscale_entropy",
+    "multifractal_spectrum",
     "optimal_delay",
     "optimal_dimension",
     "permutation_entropy",

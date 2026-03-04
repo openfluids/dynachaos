@@ -4,6 +4,7 @@ mod ami;
 mod correlation_gp;
 mod embedding;
 mod entropy;
+mod multifractal;
 mod permutation;
 mod recurrence;
 
@@ -20,5 +21,6 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(embedding::fnn_statistic, m)?)?;
     m.add_function(wrap_pyfunction!(correlation_gp::correlation_counts, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::fuzzy_entropy_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(multifractal::multifractal_moments, m)?)?;
     Ok(())
 }

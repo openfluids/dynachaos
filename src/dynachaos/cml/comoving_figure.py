@@ -13,7 +13,7 @@ information in the spatiotemporal chaotic state.
 CML model:
     x_{n+1}(i) = f(x_n(i)) + (eps/2)[f(x_n(i+1)) + f(x_n(i-1)) - 2 f(x_n(i))]
 
-Parameters: N=200, eps=0.3
+Parameters: N=500, eps=0.3
 
 OUTPUTS: figures/sec08_sti/comoving_lyapunov.npz,
          figures/sec08_sti/comoving_lyapunov.png
@@ -39,11 +39,11 @@ def compute():
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    N = 200
+    N = 500
     eps = 0.3
-    v_values = np.linspace(-1.5, 1.5, 201)
-    n_iter = 20_000
-    n_transient = 5_000
+    v_values = np.linspace(-1.5, 1.5, 301)
+    n_iter = 100_000
+    n_transient = 20_000
 
     a_values = [1.70, 1.85, 1.95]
     a_labels = ["pattern selection", "defect turbulence",

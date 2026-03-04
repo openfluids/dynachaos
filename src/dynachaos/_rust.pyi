@@ -51,3 +51,14 @@ def correlation_counts(
     theiler_window: int = 0,
     use_chebyshev: bool = True,
 ) -> npt.NDArray[np.int64]: ...
+
+def multifractal_moments(
+    field: npt.NDArray[np.float64],
+    box_sizes: npt.NDArray[np.int64],
+    q_values: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+]: ...

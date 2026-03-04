@@ -30,10 +30,10 @@ def compute():
     """Sweep (Ω, K) and compute rotation numbers — fully vectorized."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    n_omega = 1000
-    n_K = 500
-    n_transient = 2000
-    n_iter = 10_000
+    n_omega = 2000
+    n_K = 1000
+    n_transient = 5000
+    n_iter = 50_000
 
     Omega_values = np.linspace(0.0, 1.0, n_omega)
     K_values = np.linspace(0.0, 0.3, n_K)
@@ -58,7 +58,7 @@ def compute():
     # Main iteration for rotation number
     for step in range(n_iter):
         theta += Omega_flat + K_flat * np.sin(TWO_PI * theta)
-        if (step + 1) % 5000 == 0:
+        if (step + 1) % 10_000 == 0:
             print(f"  Iteration: {step + 1}/{n_iter}")
 
     rho = (theta - theta_start) / n_iter

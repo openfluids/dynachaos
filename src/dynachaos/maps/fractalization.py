@@ -78,7 +78,7 @@ def compute_attractors():
     results = {}
     for D, label in zip(D_values, labels):
         print(f"  D={D} ({label})")
-        traj = iterate(A, D, n_transient=30_000, n_record=200_000)
+        traj = iterate(A, D, n_transient=50_000, n_record=500_000)
         results[f"D_{D}_traj"] = traj
 
     results["D_values"] = np.array(D_values)
@@ -92,13 +92,13 @@ def compute_dimensions():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     A = 0.3
-    n_params = 100
+    n_params = 200
     D_values = np.linspace(1.70, 2.00, n_params)
     D2_values = np.empty(n_params)
 
     for i, D in enumerate(D_values):
-        traj = iterate(A, D, n_transient=20_000, n_record=50_000)
-        D2, _, _, _, _ = correlation_dimension(traj, n_r=25, max_pairs=300_000)
+        traj = iterate(A, D, n_transient=50_000, n_record=100_000)
+        D2, _, _, _, _ = correlation_dimension(traj, n_r=50, max_pairs=1_000_000)
         D2_values[i] = D2
 
         if (i + 1) % 20 == 0:

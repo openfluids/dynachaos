@@ -108,8 +108,10 @@ def sample_entropy(x, m=2, r=None, verbose=False):
     Returns
     -------
     float
-        Sample entropy value ``-log(A / B)``. Returns ``np.inf`` when no
-        template matches exist for ``m`` or ``m + 1``.
+        Sample entropy value ``-log(A / B)``.  Returns ``np.nan`` when no
+        m-length template matches exist (B = 0, undefined).  Returns
+        ``np.inf`` when m-length matches exist but no (m+1)-length ones
+        (A = 0, equivalent to −ln(0)).
 
     References
     ----------

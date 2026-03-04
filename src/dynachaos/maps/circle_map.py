@@ -94,15 +94,15 @@ def compute():
     """
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    n_params = 100_000
-    n_transient = 2000
-    n_iter = 20_000
+    n_params = 200_000
+    n_transient = 5000
+    n_iter = 50_000
     D = 0.25
 
     A_values = np.linspace(0.0, 0.25, n_params)
     TWO_PI = 2.0 * np.pi
 
-    # --- Vectorised iteration: all 100k thetas in parallel ---
+    # --- Vectorised iteration: all 200k thetas in parallel ---
     theta = np.full(n_params, 0.1)
 
     # Transient (unwrapped)
@@ -215,9 +215,9 @@ def compute_zoom():
     """Recompute the staircase at high resolution over K ∈ [0.10, 0.17]."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    n_params = 50_000
-    n_transient = 2000
-    n_iter = 20_000
+    n_params = 100_000
+    n_transient = 5000
+    n_iter = 50_000
     D = 0.25
 
     A_values = np.linspace(0.10, 0.17, n_params)

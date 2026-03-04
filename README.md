@@ -34,11 +34,12 @@ globally coupled maps (GCM), pattern dynamics, cluster statistics
 0-1 test for chaos, SALI/GALI alignment indices, permutation entropy +
 complexity-entropy planes, sample/approximate/fuzzy/multiscale entropy,
 recurrence quantification analysis (RQA), Grassberger-Procaccia
-correlation dimension, AMI + Cao + FNN embedding
+correlation dimension, multifractal spectra ($D_q$, $f(\alpha)$),
+AMI + Cao + FNN embedding
 
 **Rust backends** — correlation integral (Grassberger-Procaccia), fuzzy
 entropy sum, recurrence line extraction, ordinal distribution counting,
-AMI histograms, Cao/FNN embedding statistics
+AMI histograms, Cao/FNN embedding statistics, multifractal moments
 
 **Visualization** — bifurcation diagrams, cobweb plots, return maps,
 curated Swiss-inspired style themes
@@ -86,6 +87,11 @@ se = sample_entropy(series, m=2)
 print(f"SampEn = {se:.4f}")
 ```
 
+```bash
+# Compare Grassberger-Procaccia vs multifractal D2 (accuracy + runtime)
+python examples/benchmark_gp_vs_multifractal.py
+```
+
 ## Rust-Accelerated Backends
 
 Performance-critical algorithms are implemented as Rust kernels and loaded
@@ -96,6 +102,18 @@ Pure-Python fallbacks are always available and produce identical results.
 
 The all-pairs kernel evaluates all N(N−1)/2 pairs with Theiler-window
 exclusion and multi-radius binning in a single pass.
+Our implementation is designed for both correctness and extreme performance,
+offering several advantages over common baseline scripts (e.g., [notsebastiano/GP_algorithm](https://github.com/notsebastiano/GP_algorithm/blob/master/GP_algorithm.py)):
+
+- **Algorithmic Correctness** — Supports the **Theiler window** ($|i-j| > w$) to
+  exclude temporally correlated pairs (Theiler 1986) and uses proper
+  normalization ($C(r) \le 1$).
+- **Scaling Region Detection** — Employs a **stable plateau search** on local
+  slopes instead of simple heuristics, making it robust to noise and saturation.
+- **Memory Efficiency** — Uses **O(1) auxiliary memory** per pair (streaming)
+  instead of an $O(N^2)$ distance matrix, enabling analysis of $N = 500,000+$
+  points on consumer hardware.
+
 Six optimizations combine for a **13.6× speedup** over baseline NumPy:
 
 - **Raw slice indexing** — C-contiguous pointer arithmetic, bypassing
@@ -144,6 +162,7 @@ templates, using the same Rayon parallel fold + reduce pattern.
 | Multiscale entropy | `diagnostics.entropy` | correlation counts | Costa et al. 2002 |
 | RQA (DET, LAM, ENTR, …) | `diagnostics.recurrence` | line extraction | Marwan et al. 2007 |
 | Correlation dimension | `diagnostics.correlation` | all-pairs kernel | Grassberger & Procaccia 1983 |
+| Multifractal spectrum ($D_q$, $f(\alpha)$) | `diagnostics.multifractal` | multifractal moments | Mukherjee et al. 2024 |
 | AMI (embedding) | `diagnostics.embedding` | histogram | Fraser & Swinney 1986 |
 | Cao's method | `diagnostics.embedding` | statistic | Cao 1997 |
 | False nearest neighbors | `diagnostics.embedding` | statistic | Kennel et al. 1992 |

@@ -3,7 +3,8 @@
 Provides three functions:
 - ``load_jsonc``: Load a JSONC file (JSON with // comments)
 - ``run_embedding_analysis``: AMI -> Cao -> FNN -> embedding -> D2
-- ``plot_benchmark``: 2x3 multi-panel figure with attractor, diagnostics, summary
+- ``plot_benchmark``: multi-panel figure with attractor, diagnostics,
+  D2 comparison (GP vs multifractal), and summary
 
 Every benchmark script calls these with system-specific data and reference values.
 """
@@ -20,6 +21,7 @@ from dynachaos.diagnostics import (
     cao_method,
     correlation_dimension,
     false_nearest_neighbors,
+    multifractal_spectrum,
 )
 from dynachaos.diagnostics.recurrence import embed_time_delay
 from dynachaos.utils.style import (
@@ -29,6 +31,72 @@ from dynachaos.utils.style import (
     finalize_legend,
     setup,
 )
+
+
+def _normalize_unit_interval(values):
+    """Normalize a 1D array into [0, 1] with a robust constant-axis fallback."""
+    arr = np.asarray(values, dtype=np.float64).ravel()
+    finite = np.isfinite(arr)
+    out = np.full(arr.shape, np.nan, dtype=np.float64)
+    if not finite.any():
+        return out
+    v = arr[finite]
+    v_min = float(np.min(v))
+    v_max = float(np.max(v))
+    if v_max > v_min:
+        out[finite] = (v - v_min) / (v_max - v_min)
+    else:
+        out[finite] = 0.5
+    return out
+
+
+def _projection_points(x, y):
+    """Build finite normalized 2D projection points in [0, 1]^2."""
+    x_u = _normalize_unit_interval(x)
+    y_u = _normalize_unit_interval(y)
+    finite = np.isfinite(x_u) & np.isfinite(y_u)
+    if np.sum(finite) < 32:
+        return np.empty((0, 2), dtype=np.float64)
+    return np.column_stack([x_u[finite], y_u[finite]]).astype(np.float64, copy=False)
+
+
+def _gp_d2_from_projection_points(points, n_r=40, theiler_window=1):
+    """Estimate GP D2 directly from normalized 2D projection points."""
+    if points.shape[0] < 64:
+        return np.nan
+    tw = max(int(theiler_window), 0)
+    d2, _, _, _, _ = correlation_dimension(points, n_r=n_r, theiler_window=tw)
+    return float(d2)
+
+
+def _multifractal_d2_from_projection_points(points, grid_size=128):
+    """Estimate multifractal D2 from normalized 2D projection points."""
+    if points.shape[0] < 64:
+        return np.nan, "n/a"
+
+    xv = points[:, 0]
+    yv = points[:, 1]
+    field = np.zeros((grid_size, grid_size), dtype=np.float64)
+    ix = np.floor(xv * grid_size).astype(np.int64)
+    iy = np.floor(yv * grid_size).astype(np.int64)
+    ix = np.clip(ix, 0, grid_size - 1)
+    iy = np.clip(iy, 0, grid_size - 1)
+    np.add.at(field, (iy, ix), 1.0)
+
+    max_box = grid_size // 2
+    box_sizes = np.array([2, 4, 8, 16, 32, 64], dtype=np.int64)
+    box_sizes = box_sizes[box_sizes <= max_box]
+    if box_sizes.size < 2:
+        return np.nan, "n/a"
+
+    q_values = np.array([-4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 4.0], dtype=np.float64)
+    spec = multifractal_spectrum(field, box_sizes=box_sizes, q_values=q_values)
+    q = np.asarray(spec["q"], dtype=np.float64)
+    dq = np.asarray(spec["Dq"], dtype=np.float64)
+    idx = np.where(np.isclose(q, 2.0))[0]
+    if idx.size == 0:
+        return np.nan, str(spec.get("backend", "n/a"))
+    return float(dq[idx[0]]), str(spec.get("backend", "n/a"))
 
 
 def load_jsonc(path):
@@ -122,7 +190,7 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
                    computed_spectrum=None, ref_spectrum=None,
                    attractor_xlabel="$x$", attractor_ylabel="$y$",
                    attractor_scatter_kw=None):
-    """Produce 2x3 multi-panel benchmark figure.
+    """Produce a benchmark figure with GP-vs-multifractal D2 comparison panel.
 
     Panels:
         (a) Attractor phase portrait
@@ -130,7 +198,8 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
         (c) Cao E1(d)/E2(d) with d_opt marked
         (d) FNN fractions f1, f2, f3 vs d
         (e) log C(r) vs log r with D2 slope
-        (f) Summary text
+        (f) D2 comparison on the same 2D projection
+        (g) Summary text
 
     Parameters
     ----------
@@ -160,11 +229,19 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
     setup()
     spec = figure_spec("grid")
 
-    fig, axes = plt.subplots(2, 3, figsize=(spec.figsize[0], spec.figsize[1] + 1.0))
-    fig.subplots_adjust(hspace=0.50, wspace=0.38)
+    fig, axes = plt.subplot_mosaic(
+        [["a", "b", "c", "d"], ["e", "f", "g", "g"]],
+        figsize=(spec.figsize[0] + 3.0, spec.figsize[1] + 0.8),
+    )
+    fig.subplots_adjust(hspace=0.44, wspace=0.34)
 
-    ax_a, ax_b, ax_c = axes[0]
-    ax_d, ax_e, ax_f = axes[1]
+    ax_a = axes["a"]
+    ax_b = axes["b"]
+    ax_c = axes["c"]
+    ax_d = axes["d"]
+    ax_e = axes["e"]
+    ax_f = axes["f"]
+    ax_g = axes["g"]
 
     # ── (a) Attractor ──
     scatter_kw = {"s": 0.05, "c": COLORS["black"], "alpha": 0.3, "rasterized": True}
@@ -240,8 +317,76 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
     apply_axes_polish(ax_e, kind="grid", title_loc="left")
     finalize_legend(ax_e, kind="grid")
 
-    # ── (f) Summary ──
-    ax_f.axis("off")
+    # ── (f) D2 comparison on same 2D projection data ──
+    d2_gp_embed = float(results["D2"])
+    points_proj = _projection_points(attractor_xy[0], attractor_xy[1])
+    projection_theiler = max(int(results.get("tau_opt", 1)), 1)
+    d2_gp_proj = _gp_d2_from_projection_points(
+        points_proj,
+        theiler_window=projection_theiler,
+    )
+    d2_mf_proj, mf_backend = _multifractal_d2_from_projection_points(points_proj)
+
+    compare_vals = np.array([d2_gp_proj, d2_mf_proj], dtype=np.float64)
+    compare_labels = ["GP (2D proj)", "Multifractal (2D proj)"]
+    x_pos = np.arange(len(compare_labels))
+
+    compare_plot_vals = np.where(np.isfinite(compare_vals), compare_vals, 0.0)
+    bar_colors = [COLORS["black"], COLORS["red"]]
+    bars = ax_f.bar(x_pos, compare_plot_vals, color=bar_colors, alpha=0.82)
+    ax_f.set_xticks(x_pos)
+    ax_f.set_xticklabels(compare_labels)
+    ax_f.set_ylabel(r"$D_2$")
+    ax_f.set_title("(f) D2 comparison (same 2D projection)", loc="left")
+    ax_f.axhline(2.0, color=COLORS["grey"], ls=":", lw=0.8, label="2D ceiling")
+    finalize_legend(ax_f, kind="grid")
+
+    finite_vals = compare_vals[np.isfinite(compare_vals)]
+    if finite_vals.size > 0:
+        lo = float(np.min(finite_vals))
+        hi = float(np.max(finite_vals))
+        lo = min(lo, 0.0)
+        hi = max(hi, 2.0)
+        span = max(hi - lo, 0.05)
+        pad = 0.25 * span
+        ax_f.set_ylim(lo - pad, hi + pad)
+    else:
+        ax_f.set_ylim(-0.2, 2.2)
+        ax_f.text(
+            0.5,
+            0.5,
+            "No finite projection D2 estimates",
+            transform=ax_f.transAxes,
+            ha="center",
+            va="center",
+            fontsize=spec.tick_size - 0.8,
+        )
+
+    for i, (bar, value) in enumerate(zip(bars, compare_vals, strict=True)):
+        if np.isfinite(value):
+            ax_f.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value,
+                f"{value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=spec.tick_size - 0.8,
+            )
+        else:
+            ax_f.text(
+                x_pos[i],
+                0.5,
+                "n/a",
+                ha="center",
+                va="center",
+                transform=ax_f.get_xaxis_transform(),
+                fontsize=spec.tick_size - 0.8,
+            )
+            bar.set_alpha(0.25)
+    apply_axes_polish(ax_f, kind="grid", title_loc="left")
+
+    # ── (g) Summary ──
+    ax_g.axis("off")
     lines = [f"System: {system_name}", ""]
 
     # Embedding parameters
@@ -250,7 +395,16 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
     lines.append("")
 
     # Correlation dimension
-    lines.append(f"D2 (computed): {results['D2']:.3f}")
+    lines.append(f"D2 GP (embedding): {d2_gp_embed:.3f}")
+    if np.isfinite(d2_gp_proj):
+        lines.append(f"D2 GP (2D projection): {d2_gp_proj:.3f}")
+    else:
+        lines.append("D2 GP (2D projection): n/a")
+    lines.append(f"Projection Theiler window: {projection_theiler}")
+    if np.isfinite(d2_mf_proj):
+        lines.append(f"D2 multifractal (2D proj): {d2_mf_proj:.3f} ({mf_backend})")
+    else:
+        lines.append("D2 multifractal (2D proj): n/a")
     if ref_D2 is not None:
         lines.append(f"D2 (literature): {ref_D2}")
     lines.append("")
@@ -269,11 +423,11 @@ def plot_benchmark(results, attractor_xy, output_png, system_name,
         lines.append(f"Ref spectrum: [{ref_str}]")
 
     summary_text = "\n".join(lines)
-    ax_f.text(0.05, 0.95, summary_text, transform=ax_f.transAxes,
+    ax_g.text(0.03, 0.95, summary_text, transform=ax_g.transAxes,
               fontsize=spec.tick_size, verticalalignment="top",
               fontfamily="monospace")
-    ax_f.set_title("(f) Summary", loc="left")
-    apply_axes_polish(ax_f, kind="grid", title_loc="left")
+    ax_g.set_title("(g) Summary", loc="left")
+    apply_axes_polish(ax_g, kind="grid", title_loc="left")
 
     fig.savefig(output_png, dpi=600, bbox_inches="tight")
     plt.close(fig)
