@@ -192,6 +192,99 @@ class TestCaoParity:
 
 
 @needs_rust
+class TestCaoSelectorParity:
+    """Verify Rust and Python Cao selector agree."""
+
+    @pytest.mark.parametrize(
+        ("e1", "kwargs", "expected"),
+        [
+            (
+                np.array([0.0024, 0.0559, 0.2308, 1.0013, 0.9835, 0.9979, 1.0000, 1.0000]),
+                dict(
+                    near_one_lower=0.97,
+                    near_one_upper=1.03,
+                    saturation_tol=0.02,
+                    plateau_span=3,
+                    smoothing_window=1,
+                    min_dim=2,
+                    max_dim=15,
+                ),
+                4,
+            ),
+            (
+                np.array([0.08, 0.20, 0.35, 0.70, 0.96, 0.93]),
+                dict(
+                    near_one_lower=0.95,
+                    near_one_upper=1.05,
+                    saturation_tol=0.02,
+                    plateau_span=4,
+                    smoothing_window=1,
+                    min_dim=2,
+                    max_dim=15,
+                ),
+                5,
+            ),
+            (
+                np.array([0.10, 0.20, 0.30, 0.40]),
+                dict(
+                    near_one_lower=0.95,
+                    near_one_upper=1.05,
+                    saturation_tol=0.02,
+                    plateau_span=3,
+                    smoothing_window=1,
+                    min_dim=2,
+                    max_dim=15,
+                ),
+                4,
+            ),
+            (
+                np.array([np.nan, np.inf, np.nan]),
+                dict(
+                    near_one_lower=0.95,
+                    near_one_upper=1.05,
+                    saturation_tol=0.02,
+                    plateau_span=3,
+                    smoothing_window=1,
+                    min_dim=3,
+                    max_dim=15,
+                ),
+                3,
+            ),
+            # NaN mid-plateau: window must be rejected identically by both paths
+            (
+                np.array([0.50, 0.98, np.nan, 0.99, 1.00, 1.00, 1.00]),
+                dict(
+                    near_one_lower=0.95,
+                    near_one_upper=1.05,
+                    saturation_tol=0.02,
+                    plateau_span=3,
+                    smoothing_window=1,
+                    min_dim=2,
+                    max_dim=15,
+                ),
+                4,
+            ),
+        ],
+    )
+    def test_select_dimension_cao_parity(self, e1, kwargs, expected):
+        from dynachaos._rust import select_dimension_cao as rust_selector
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        e1 = np.asarray(e1, dtype=np.float64)
+
+        d_rust = int(rust_selector(e1, **kwargs))
+
+        old_selector = emb_mod._select_dimension_cao_rs
+        emb_mod._select_dimension_cao_rs = None
+        try:
+            d_python = int(emb_mod.select_dimension_cao(e1, **kwargs))
+        finally:
+            emb_mod._select_dimension_cao_rs = old_selector
+
+        assert d_rust == d_python == expected
+
+
+@needs_rust
 class TestFNNParity:
     """Verify Rust and Python FNN fractions agree."""
 

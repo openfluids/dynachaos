@@ -10,22 +10,31 @@
 //! - Kennel, M.B. et al. (1992) Phys. Rev. A 45(6), 3403-3411.
 
 use numpy::{PyArray1, PyReadonlyArray1};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 /// Embed a 1D series into d-dimensional delay coordinates.
 ///
 /// Returns a flat Vec of length M*d (row-major), where M = N - (d-1)*tau.
 #[inline]
-fn embed(x: &[f64], d: usize, tau: usize) -> (Vec<f64>, usize) {
+fn embed(x: &[f64], d: usize, tau: usize) -> Option<(Vec<f64>, usize)> {
+    if d == 0 {
+        return None;
+    }
     let n = x.len();
-    let m = n - (d - 1) * tau;
-    let mut out = vec![0.0f64; m * d];
+    let lag = (d - 1).checked_mul(tau)?;
+    if n <= lag {
+        return None;
+    }
+    let m = n - lag;
+    let total = m.checked_mul(d)?;
+    let mut out = vec![0.0f64; total];
     for i in 0..m {
         for j in 0..d {
             out[i * d + j] = x[i + j * tau];
         }
     }
-    (out, m)
+    Some((out, m))
 }
 
 /// Find nearest neighbor for each point using brute-force Chebyshev distance.
@@ -135,6 +144,32 @@ fn nearest_neighbor_euclidean(
     (nn_idx, nn_dist)
 }
 
+/// Moving-average smoothing helper for 1D diagnostics.
+#[inline]
+fn smooth_series(values: &[f64], window: usize) -> Vec<f64> {
+    let n = values.len();
+    if window <= 1 || n < window {
+        return values.to_vec();
+    }
+    let left = window / 2;
+    let right = window - 1 - left;
+    let mut padded = Vec::with_capacity(n + left + right);
+    padded.extend(std::iter::repeat(values[0]).take(left));
+    padded.extend(values.iter().copied());
+    padded.extend(std::iter::repeat(values[n - 1]).take(right));
+
+    let mut out = vec![0.0f64; n];
+    let inv = 1.0f64 / window as f64;
+    for i in 0..n {
+        let mut acc = 0.0f64;
+        for v in &padded[i..i + window] {
+            acc += *v;
+        }
+        out[i] = acc * inv;
+    }
+    out
+}
+
 /// Compute Cao's E(d) and E*(d) statistics for d = 1..d_max.
 ///
 /// Parameters
@@ -162,6 +197,13 @@ pub fn cao_statistic<'py>(
     theiler_window: usize,
 ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
     #![allow(clippy::type_complexity)]
+    if tau == 0 {
+        return Err(PyValueError::new_err("tau must be >= 1"));
+    }
+    if d_max == 0 {
+        return Err(PyValueError::new_err("d_max must be >= 1"));
+    }
+
     let arr = x.as_slice()?;
     let n = arr.len();
 
@@ -169,7 +211,15 @@ pub fn cao_statistic<'py>(
     let mut e_star_values = vec![0.0f64; d_max];
 
     for d in 1..=d_max {
-        let m = n.saturating_sub(d * tau);
+        let dt = match d.checked_mul(tau) {
+            Some(v) => v,
+            None => {
+                e_values[d - 1] = f64::NAN;
+                e_star_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let m = n.saturating_sub(dt);
         if m < 2 {
             e_values[d - 1] = f64::NAN;
             e_star_values[d - 1] = f64::NAN;
@@ -177,14 +227,36 @@ pub fn cao_statistic<'py>(
         }
 
         // Embed in d dimensions: use x[0..m+(d-1)*tau]
-        let end_d = m + (d - 1) * tau;
-        let (y1, m1) = embed(&arr[..end_d], d, tau);
-        assert_eq!(m1, m);
+        let end_d = match (d - 1).checked_mul(tau).and_then(|v| m.checked_add(v)) {
+            Some(v) if v <= n => v,
+            _ => {
+                e_values[d - 1] = f64::NAN;
+                e_star_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let Some((y1, m1)) = embed(&arr[..end_d], d, tau) else {
+            e_values[d - 1] = f64::NAN;
+            e_star_values[d - 1] = f64::NAN;
+            continue;
+        };
+        debug_assert_eq!(m1, m);
 
         // Embed in d+1 dimensions: use x[0..m+d*tau]
-        let end_d1 = m + d * tau;
-        let (y2, m2) = embed(&arr[..end_d1], d + 1, tau);
-        assert_eq!(m2, m);
+        let end_d1 = match d.checked_mul(tau).and_then(|v| m.checked_add(v)) {
+            Some(v) if v <= n => v,
+            _ => {
+                e_values[d - 1] = f64::NAN;
+                e_star_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let Some((y2, m2)) = embed(&arr[..end_d1], d + 1, tau) else {
+            e_values[d - 1] = f64::NAN;
+            e_star_values[d - 1] = f64::NAN;
+            continue;
+        };
+        debug_assert_eq!(m2, m);
 
         // Find NN in d-dimensional space (Chebyshev)
         let (nn_idx, nn_dist_d) = nearest_neighbor_chebyshev(&y1, m, d, theiler_window);
@@ -276,8 +348,23 @@ pub fn fnn_statistic<'py>(
     Bound<'py, PyArray1<f64>>,
 )> {
     #![allow(clippy::type_complexity)]
+    if tau == 0 {
+        return Err(PyValueError::new_err("tau must be >= 1"));
+    }
+    if d_max == 0 {
+        return Err(PyValueError::new_err("d_max must be >= 1"));
+    }
+
     let arr = x.as_slice()?;
     let n = arr.len();
+    if n == 0 {
+        let nan_vec = vec![f64::NAN; d_max];
+        return Ok((
+            PyArray1::from_vec(py, nan_vec.clone()),
+            PyArray1::from_vec(py, nan_vec.clone()),
+            PyArray1::from_vec(py, nan_vec),
+        ));
+    }
 
     // Compute sigma (std of full series)
     let mean: f64 = arr.iter().sum::<f64>() / n as f64;
@@ -289,7 +376,16 @@ pub fn fnn_statistic<'py>(
     let mut f3_values = vec![0.0f64; d_max];
 
     for d in 1..=d_max {
-        let m = n.saturating_sub(d * tau);
+        let dt = match d.checked_mul(tau) {
+            Some(v) => v,
+            None => {
+                f1_values[d - 1] = f64::NAN;
+                f2_values[d - 1] = f64::NAN;
+                f3_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let m = n.saturating_sub(dt);
         if m < 2 {
             f1_values[d - 1] = f64::NAN;
             f2_values[d - 1] = f64::NAN;
@@ -298,14 +394,40 @@ pub fn fnn_statistic<'py>(
         }
 
         // Embed in d dimensions
-        let end_d = m + (d - 1) * tau;
-        let (y1, m1) = embed(&arr[..end_d], d, tau);
-        assert_eq!(m1, m);
+        let end_d = match (d - 1).checked_mul(tau).and_then(|v| m.checked_add(v)) {
+            Some(v) if v <= n => v,
+            _ => {
+                f1_values[d - 1] = f64::NAN;
+                f2_values[d - 1] = f64::NAN;
+                f3_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let Some((y1, m1)) = embed(&arr[..end_d], d, tau) else {
+            f1_values[d - 1] = f64::NAN;
+            f2_values[d - 1] = f64::NAN;
+            f3_values[d - 1] = f64::NAN;
+            continue;
+        };
+        debug_assert_eq!(m1, m);
 
         // Embed in d+1 dimensions
-        let end_d1 = m + d * tau;
-        let (y2, m2) = embed(&arr[..end_d1], d + 1, tau);
-        assert_eq!(m2, m);
+        let end_d1 = match d.checked_mul(tau).and_then(|v| m.checked_add(v)) {
+            Some(v) if v <= n => v,
+            _ => {
+                f1_values[d - 1] = f64::NAN;
+                f2_values[d - 1] = f64::NAN;
+                f3_values[d - 1] = f64::NAN;
+                continue;
+            }
+        };
+        let Some((y2, m2)) = embed(&arr[..end_d1], d + 1, tau) else {
+            f1_values[d - 1] = f64::NAN;
+            f2_values[d - 1] = f64::NAN;
+            f3_values[d - 1] = f64::NAN;
+            continue;
+        };
+        debug_assert_eq!(m2, m);
 
         // Find NN in d-dimensional space (Euclidean, standard for FNN)
         let (nn_idx, nn_dist) = nearest_neighbor_euclidean(&y1, m, d, theiler_window);
@@ -368,4 +490,116 @@ pub fn fnn_statistic<'py>(
         PyArray1::from_vec(py, f2_values),
         PyArray1::from_vec(py, f3_values),
     ))
+}
+
+/// Select embedding dimension from a Cao E1(d) curve.
+///
+/// This mirrors the Python selector logic:
+/// 1) choose onset of a stable near-1 plateau (forward window),
+/// 2) fallback to first near-one crossing,
+/// 3) fallback to closest value to 1.
+#[pyfunction]
+#[pyo3(signature = (
+    e1,
+    near_one_lower = 0.95,
+    near_one_upper = 1.05,
+    saturation_tol = 0.02,
+    plateau_span = 3,
+    smoothing_window = 1,
+    min_dim = 2,
+    max_dim = None
+))]
+pub fn select_dimension_cao(
+    e1: PyReadonlyArray1<'_, f64>,
+    near_one_lower: f64,
+    near_one_upper: f64,
+    saturation_tol: f64,
+    plateau_span: usize,
+    smoothing_window: usize,
+    min_dim: usize,
+    max_dim: Option<usize>,
+) -> PyResult<usize> {
+    let e1 = e1.as_slice()?;
+    let min_dim = min_dim.max(1);
+    if e1.is_empty() {
+        return Ok(min_dim);
+    }
+
+    let mut lo = near_one_lower;
+    let mut hi = near_one_upper;
+    if lo > hi {
+        std::mem::swap(&mut lo, &mut hi);
+    }
+
+    let smoothed = smooth_series(e1, smoothing_window);
+    if !smoothed.iter().any(|v| v.is_finite()) {
+        return Ok(min_dim);
+    }
+
+    let span = plateau_span.max(2);
+    let max_allowed = max_dim.unwrap_or(smoothed.len() + 1).max(min_dim);
+    let clamp = |d: usize| -> usize { d.max(min_dim).min(max_allowed) };
+
+    // Primary: plateau onset in forward window.
+    for idx in 0..smoothed.len() {
+        let dim = idx + 1;
+        let value = smoothed[idx];
+        if dim < min_dim || !value.is_finite() {
+            continue;
+        }
+        if value < lo || value > hi {
+            continue;
+        }
+        if idx + span > smoothed.len() {
+            continue;
+        }
+
+        let window = &smoothed[idx..idx + span];
+        if window.iter().any(|v| !v.is_finite() || *v < lo || *v > hi) {
+            continue;
+        }
+
+        let mut w_min = f64::INFINITY;
+        let mut w_max = f64::NEG_INFINITY;
+        let mut max_diff = 0.0f64;
+        for (k, v) in window.iter().enumerate() {
+            w_min = w_min.min(*v);
+            w_max = w_max.max(*v);
+            if k > 0 {
+                let diff = (window[k] - window[k - 1]).abs();
+                max_diff = max_diff.max(diff);
+            }
+        }
+        if (w_max - w_min) <= 1.5 * saturation_tol || max_diff <= saturation_tol {
+            return Ok(clamp(dim));
+        }
+    }
+
+    // Fallback 1: first near-one crossing.
+    for (idx, value) in smoothed.iter().enumerate() {
+        let dim = idx + 1;
+        if dim >= min_dim && value.is_finite() && *value >= lo {
+            return Ok(clamp(dim));
+        }
+    }
+
+    // Fallback 2: closest to 1 among valid dimensions.
+    let mut best_dim: Option<usize> = None;
+    let mut best_dist = f64::INFINITY;
+    for (idx, value) in smoothed.iter().enumerate() {
+        let dim = idx + 1;
+        if dim < min_dim || !value.is_finite() {
+            continue;
+        }
+        let dist = (*value - 1.0).abs();
+        if dist < best_dist {
+            best_dist = dist;
+            best_dim = Some(dim);
+        }
+    }
+    if let Some(dim) = best_dim {
+        return Ok(clamp(dim));
+    }
+
+    Ok(clamp(e1.len() + 1))
 }

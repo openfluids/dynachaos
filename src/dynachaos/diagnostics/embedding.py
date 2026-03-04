@@ -42,13 +42,17 @@ import numpy as np
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
-    from dynachaos._rust import ami_histogram as _ami_histogram_rs
-    from dynachaos._rust import cao_statistic as _cao_statistic_rs
-    from dynachaos._rust import fnn_statistic as _fnn_statistic_rs
+    import dynachaos._rust as _rust_mod
+
+    _ami_histogram_rs = _rust_mod.ami_histogram
+    _cao_statistic_rs = _rust_mod.cao_statistic
+    _fnn_statistic_rs = _rust_mod.fnn_statistic
+    _select_dimension_cao_rs = getattr(_rust_mod, "select_dimension_cao", None)
 
     _RUST_AVAILABLE = True
 except ImportError:
     _RUST_AVAILABLE = False
+    _select_dimension_cao_rs = None
 
 
 def _embed(x, d, tau):
@@ -133,7 +137,7 @@ def average_mutual_information(x, tau_max=100, n_bins=64):
     ---------
     Fraser, A.M. & Swinney, H.L. (1986), Phys. Rev. A, 33(2), 1134-1140.
     """
-    x = np.asarray(x, dtype=np.float64)
+    x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
     tau_values = np.arange(1, tau_max + 1)
 
     if _RUST_AVAILABLE:
@@ -250,7 +254,7 @@ def cao_method(x, tau, d_max=15, theiler_window=0):
     ---------
     Cao, L. (1997), Physica D, 110(1-2), 43-50.
     """
-    x = np.asarray(x, dtype=np.float64)
+    x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
 
     if _RUST_AVAILABLE:
         E, E_star = _cao_statistic_rs(x, tau, d_max, theiler_window)
@@ -367,7 +371,7 @@ def false_nearest_neighbors(x, tau, d_max=15, R_tol=15.0, A_tol=2.0,
     ---------
     Kennel, M.B. et al. (1992), Phys. Rev. A, 45(6), 3403-3411.
     """
-    x = np.asarray(x, dtype=np.float64)
+    x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
 
     if _RUST_AVAILABLE:
         f1, f2, f3 = _fnn_statistic_rs(x, tau, d_max, R_tol, A_tol, theiler_window)
@@ -379,7 +383,133 @@ def false_nearest_neighbors(x, tau, d_max=15, R_tol=15.0, A_tol=2.0,
 # ── Convenience wrappers ─────────────────────────────────────────────────
 
 
-def optimal_dimension(x, tau, d_max=15, method="cao"):
+def _smooth_series(values, window):
+    """Moving-average smoothing helper for 1D diagnostic curves."""
+
+    values = np.asarray(values, dtype=np.float64)
+    if window <= 1 or values.size < window:
+        return values
+    kernel = np.ones(int(window), dtype=np.float64) / float(window)
+    left = int(window) // 2
+    right = int(window) - 1 - left
+    padded = np.pad(values, (left, right), mode="edge")
+    return np.convolve(padded, kernel, mode="valid")
+
+
+def select_dimension_cao(
+    E1,
+    *,
+    near_one_lower=0.95,
+    near_one_upper=1.05,
+    saturation_tol=0.02,
+    plateau_span=3,
+    smoothing_window=1,
+    min_dim=2,
+    max_dim=None,
+):
+    """Select embedding dimension from Cao's E1 curve.
+
+    Strategy:
+    1) Find the *onset* of a near-1 stable plateau using a forward window.
+    2) Fallback to first d with E1 >= near_one_lower.
+    3) Fallback to d with E1 closest to 1.
+
+    Parameters
+    ----------
+    E1 : array_like
+        Cao E1(d) values for d = 1..(d_max-1).
+    near_one_lower, near_one_upper : float
+        Acceptable near-1 band for saturation detection.
+    saturation_tol : float
+        Maximum local variation tolerated for plateau stability.
+    plateau_span : int
+        Number of consecutive dimensions required for a stable plateau.
+    smoothing_window : int
+        Optional moving-average smoothing window on E1.
+    min_dim : int
+        Minimum embedding dimension to consider.
+    max_dim : int or None
+        Optional upper clamp for returned dimension.
+
+    Returns
+    -------
+    d_opt : int
+        Selected embedding dimension.
+    """
+
+    e1 = np.ascontiguousarray(np.asarray(E1, dtype=np.float64))
+    min_dim = max(1, int(min_dim))
+    if e1.size == 0:
+        return max(1, min_dim)
+
+    if _RUST_AVAILABLE and _select_dimension_cao_rs is not None:
+        max_dim_arg = None if max_dim is None else int(max_dim)
+        return int(
+            _select_dimension_cao_rs(
+                e1,
+                near_one_lower=float(near_one_lower),
+                near_one_upper=float(near_one_upper),
+                saturation_tol=float(saturation_tol),
+                plateau_span=int(plateau_span),
+                smoothing_window=int(smoothing_window),
+                min_dim=min_dim,
+                max_dim=max_dim_arg,
+            )
+        )
+
+    smoothed = _smooth_series(e1, int(smoothing_window))
+    finite = np.isfinite(smoothed)
+    if not np.any(finite):
+        return max(1, min_dim)
+
+    lo = float(near_one_lower)
+    hi = float(near_one_upper)
+    if lo > hi:
+        lo, hi = hi, lo
+
+    span = max(2, int(plateau_span))
+    d_hi = int(max_dim) if max_dim is not None else int(smoothed.size + 1)
+
+    def _clamp(d):
+        return max(min_dim, min(int(d), d_hi))
+
+    # Primary: onset of stable near-1 plateau.
+    for idx, value in enumerate(smoothed):
+        dim = idx + 1
+        if dim < min_dim or not np.isfinite(value):
+            continue
+        if not (lo <= value <= hi):
+            continue
+        window_vals = smoothed[idx : idx + span]
+        if window_vals.size < span or not np.all(np.isfinite(window_vals)):
+            continue
+        if np.any((window_vals < lo) | (window_vals > hi)):
+            continue
+        if np.ptp(window_vals) <= 1.5 * saturation_tol:
+            return _clamp(dim)
+        diffs = np.abs(np.diff(window_vals))
+        if diffs.size > 0 and np.nanmax(diffs) <= saturation_tol:
+            return _clamp(dim)
+
+    # Fallback 1: first near-one crossing.
+    for idx, value in enumerate(smoothed):
+        dim = idx + 1
+        if dim >= min_dim and np.isfinite(value) and value >= lo:
+            return _clamp(dim)
+
+    # Fallback 2: closest to 1.
+    dims = np.arange(1, smoothed.size + 1, dtype=np.int64)
+    valid = (dims >= min_dim) & np.isfinite(smoothed)
+    if np.any(valid):
+        local_dims = dims[valid]
+        local_vals = smoothed[valid]
+        closest = int(local_dims[np.argmin(np.abs(local_vals - 1.0))])
+        return _clamp(closest)
+
+    return _clamp(int(e1.size + 1))
+
+
+def optimal_dimension(x, tau, d_max=15, method="cao", theiler_window=0):
     """Estimate the minimum sufficient embedding dimension.
 
     Parameters
@@ -391,7 +521,10 @@ def optimal_dimension(x, tau, d_max=15, method="cao"):
     d_max : int
         Maximum dimension to test.
     method : str
-        'cao' (default) or 'fnn'.
+        'cao' (default, robust plateau-onset selector), 'cao_legacy'
+        (first E1 > 0.95), or 'fnn'.
+    theiler_window : int
+        Minimum temporal separation for nearest-neighbor search.
 
     Returns
     -------
@@ -399,15 +532,17 @@ def optimal_dimension(x, tau, d_max=15, method="cao"):
         Estimated optimal embedding dimension.
     """
     if method == "cao":
-        E1, _ = cao_method(x, tau, d_max)
-        # Find first d where E1 saturates (E1 > threshold)
+        E1, _ = cao_method(x, tau, d_max, theiler_window=theiler_window)
+        return select_dimension_cao(E1, min_dim=2, max_dim=d_max)
+    elif method == "cao_legacy":
+        E1, _ = cao_method(x, tau, d_max, theiler_window=theiler_window)
         threshold = 0.95
         for d in range(len(E1)):
             if E1[d] > threshold:
-                return d + 1  # d is 0-indexed, dimensions are 1-indexed
+                return d + 1
         return d_max
     elif method == "fnn":
-        _, _, f3 = false_nearest_neighbors(x, tau, d_max)
+        _, _, f3 = false_nearest_neighbors(x, tau, d_max, theiler_window=theiler_window)
         # Find first d where FNN fraction drops below threshold
         threshold = 0.01
         for d in range(len(f3)):
@@ -415,4 +550,4 @@ def optimal_dimension(x, tau, d_max=15, method="cao"):
                 return d + 1
         return d_max
     else:
-        raise ValueError(f"Unknown method '{method}', use 'cao' or 'fnn'")
+        raise ValueError(f"Unknown method '{method}', use 'cao', 'cao_legacy', or 'fnn'")
