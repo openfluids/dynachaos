@@ -137,20 +137,22 @@ def plot_msd(data):
             linewidth=1.1,
         )
 
+    ref_idx = int(np.argmin(np.abs(a_vals - 1.99)))
     N_ref = np.array([100, 20_000])
+    ref_anchor = msd_grid[ref_idx, 0] * N_grid[0]
     ax.loglog(
         N_ref,
-        0.05 / N_ref,
+        ref_anchor / N_ref,
         color=COLORS["black"],
         linestyle="--",
         lw=0.8,
-        label=r"$\propto 1/N$",
+        label=r"$\propto 1/N$ (anchored at $N=100$, $a=1.99$)",
     )
 
     ax.set_xlabel(r"System size $N$")
     ax.set_ylabel(r"MSD $\langle (\delta h)^2 \rangle$")
-    ax.set_title(rf"Globally coupled map, $\varepsilon = {data['eps'][0]}$", loc="left")
-    apply_axes_polish(ax, kind="double", title_loc="left")
+    ax.set_title(rf"Mean-field fluctuations, $\varepsilon = {data['eps'][0]}$", loc="left")
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="double", loc="lower left", ncol=2, columnspacing=1.1)
 
     fig.savefig(GCM_PNG, dpi=600, bbox_inches="tight")
@@ -161,6 +163,7 @@ def plot_msd(data):
 def plot_distribution(data):
     """Plot distribution P(h) for different N."""
     import matplotlib.pyplot as plt
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
     from dynachaos.utils.style import (
         COLOR_CYCLE,
         apply_axes_polish,
@@ -183,8 +186,15 @@ def plot_distribution(data):
     ax.set_xlabel(r"Mean field $h$")
     ax.set_ylabel(r"$P(h)$")
     ax.set_title(rf"$a = {data['a'][0]}$, $\varepsilon = {data['eps'][0]}$", loc="left")
-    apply_axes_polish(ax, kind="single", title_loc="left")
+    apply_axes_polish(ax, kind="single", title_loc="left", grid=False)
     finalize_legend(ax, kind="single", loc="upper left")
+
+    inset = inset_axes(ax, width="34%", height="28%", loc="upper right", borderpad=1.1)
+    msd_values = np.array([float(data[f"N_{N}_msd"][0]) for N in N_values])
+    inset.loglog(N_values, msd_values, color=COLOR_CYCLE[0], marker="o", lw=1.0, ms=2.8)
+    inset.set_title(r"Var$(h)$", fontsize=spec.tick_size - 0.4, pad=2.0)
+    inset.tick_params(axis="both", which="both", labelsize=spec.tick_size - 1.0)
+    inset.grid(False)
 
     fig.savefig(DIST_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

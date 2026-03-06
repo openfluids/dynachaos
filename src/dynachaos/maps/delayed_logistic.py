@@ -176,21 +176,22 @@ def plot_attractors(data):
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(3, 4, figsize=(spec.figsize[0], spec.figsize[1] + 0.8))
-    fig.subplots_adjust(hspace=0.55, wspace=0.34)
+    fig.subplots_adjust(hspace=0.48, wspace=0.24)
     axes_flat = axes.flatten()
 
     for idx, D in enumerate(D_values):
         ax = axes_flat[idx]
         x = data[f"D_{D:.2f}_x"]
         y = data[f"D_{D:.2f}_y"]
-        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
+        ax.scatter(x, y, s=0.012, c=COLORS["black"], alpha=0.22, rasterized=True)
         ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels_short[idx]}", loc="left")
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$y$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        if idx // 4 == 2:
+            ax.set_xlabel("$x$")
+        if idx % 4 == 0:
+            ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-        ax.grid(False)
 
     # Hide unused subplots
     for idx in range(n_panels, len(axes_flat)):
@@ -305,21 +306,22 @@ def plot_locking_sequence(data):
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(2, 4, figsize=(spec.figsize[0], spec.figsize[1] - 0.5))
-    fig.subplots_adjust(hspace=0.55, wspace=0.34)
+    fig.subplots_adjust(hspace=0.48, wspace=0.24)
     axes_flat = axes.flatten()
 
     for idx, D in enumerate(D_values):
         ax = axes_flat[idx]
         x = data[f"D_{D:.3f}_x"]
         y = data[f"D_{D:.3f}_y"]
-        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
+        ax.scatter(x, y, s=0.012, c=COLORS["black"], alpha=0.22, rasterized=True)
         ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels[idx]}", loc="left")
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$y$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        if idx // 4 == 1:
+            ax.set_xlabel("$x$")
+        if idx % 4 == 0:
+            ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-        ax.grid(False)
 
     fig.suptitle(
         r"Locking$\to$chaos transition, $\alpha = 0.3$",

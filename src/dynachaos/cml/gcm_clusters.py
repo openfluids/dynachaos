@@ -62,6 +62,23 @@ def detect_clusters(x, tol=1e-6):
     return labels
 
 
+def broad_positive_mask(values, threshold=0.02, min_run=4):
+    """Keep only sustained positive runs above a small threshold."""
+    mask = values > threshold
+    broad = np.zeros_like(mask, dtype=bool)
+    start = None
+    for idx, flag in enumerate(mask):
+        if flag and start is None:
+            start = idx
+        elif not flag and start is not None:
+            if idx - start >= min_run:
+                broad[start:idx] = True
+            start = None
+    if start is not None and len(mask) - start >= min_run:
+        broad[start:] = True
+    return broad
+
+
 # ---------------------------------------------------------------------------
 # Cluster computation
 # ---------------------------------------------------------------------------
@@ -206,10 +223,10 @@ def compute_collective():
 # ---------------------------------------------------------------------------
 
 def plot_clusters(data):
-    """Plot spacetime diagram of cluster membership."""
+    """Plot sorted site states to expose the emergent cluster partition."""
     import matplotlib.pyplot as plt
-    from matplotlib.colors import ListedColormap
     from dynachaos.utils.style import (
+        CMAP_SEQUENTIAL,
         apply_axes_polish,
         figure_spec,
         setup,
@@ -217,42 +234,46 @@ def plot_clusters(data):
     setup()
 
     cluster_labels = data["cluster_labels"]
+    x_record = data["x_record"]
     a = data["a"][0]
     eps = data["eps"][0]
     N = data["N"][0]
 
-    # Build a discrete colormap with enough distinct colors
-    n_clusters_max = int(cluster_labels.max()) + 1
-    base_cmap = plt.colormaps.get_cmap("tab20").resampled(min(n_clusters_max, 20))
-    colors = [base_cmap(i % 20) for i in range(n_clusters_max)]
-    discrete_cmap = ListedColormap(colors)
+    order = np.argsort(x_record, axis=1)
+    sorted_x = np.take_along_axis(x_record, order, axis=1)
+    n_clusters = np.array([len(np.unique(row)) for row in cluster_labels])
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
 
     im = ax.imshow(
-        cluster_labels,
+        sorted_x,
         aspect="auto",
         origin="lower",
-        cmap=discrete_cmap,
+        cmap=CMAP_SEQUENTIAL,
         interpolation="nearest",
-        vmin=-0.5,
-        vmax=n_clusters_max - 0.5,
     )
 
-    ax.set_xlabel("Site index $i$")
+    ax.set_xlabel("Ordered site rank")
     ax.set_ylabel("Time step $n$")
     ax.set_title(
-        rf"GCM cluster states, $a = {a}$, $\varepsilon = {eps}$, $N = {int(N)}$",
+        rf"Sorted site states reveal clustering, $a = {a}$, $\varepsilon = {eps}$",
         loc="left",
     )
-    apply_axes_polish(ax, kind="double", title_loc="left")
-    ax.grid(False)
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
 
-    # Colorbar for cluster identity
     cbar = fig.colorbar(im, ax=ax, pad=0.02, shrink=0.85)
-    cbar.set_label("Cluster ID", fontsize=spec.label_size)
+    cbar.set_label(r"Sorted state value $x_{(k)}$", fontsize=spec.label_size)
     cbar.ax.tick_params(labelsize=spec.tick_size)
+    ax.text(
+        0.02,
+        0.02,
+        rf"clusters per row: {n_clusters.min()} to {n_clusters.max()}",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=spec.legend_size,
+    )
 
     fig.savefig(CLUSTER_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -280,19 +301,7 @@ def plot_collective(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
 
-    # Shade region where lambda_c > 0 (collective chaos)
-    positive = lyap_c > 0
-    if np.any(positive):
-        ax.fill_between(
-            a_values,
-            ax.get_ylim()[0] if ax.get_ylim()[0] < 0 else -0.5,
-            ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 0.5,
-            where=positive,
-            alpha=0.12,
-            color=COLORS["red"],
-            label="Collective chaos",
-            transform=ax.get_xaxis_transform(),
-        )
+    positive = broad_positive_mask(lyap_c)
 
     sty = series_style(0)
     ax.plot(
@@ -302,6 +311,16 @@ def plot_collective(data):
         linewidth=1.1,
         label=r"$\lambda_c$",
     )
+    if np.any(positive):
+        ax.fill_between(
+            a_values,
+            0.0,
+            lyap_c,
+            where=positive,
+            alpha=0.15,
+            color=COLORS["red"],
+            label=r"sustained $\lambda_c > 0$",
+        )
 
     ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
 
@@ -311,7 +330,7 @@ def plot_collective(data):
         rf"Collective Lyapunov exponent, $\varepsilon = {eps}$, $N = {N}$",
         loc="left",
     )
-    apply_axes_polish(ax, kind="double", title_loc="left")
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="double", loc="upper left")
 
     fig.savefig(COLL_PNG, dpi=600, bbox_inches="tight")

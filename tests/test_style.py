@@ -35,7 +35,7 @@ def test_swiss_style_contract():
     assert len(COLOR_CYCLE) >= 6
     assert len(MARKER_CYCLE) == len(COLOR_CYCLE)
 
-    assert matplotlib.rcParams["axes.grid"] is True
+    assert matplotlib.rcParams["axes.grid"] is False
     assert matplotlib.rcParams["axes.spines.top"] is False
     assert matplotlib.rcParams["axes.spines.right"] is False
     assert matplotlib.rcParams["font.family"][0] == "sans-serif"

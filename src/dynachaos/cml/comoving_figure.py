@@ -105,23 +105,30 @@ def plot(data):
         1.95: "fully developed turbulence",
     }
 
+    y_min = np.inf
+    y_max = -np.inf
     for i, a in enumerate(a_values):
         key = f"lambda_a{a:.2f}"
-        lam_v = data[key]
+        lam_v = np.array(data[key], dtype=float)
+        valid = lam_v > -9.5
+        lam_plot = lam_v.copy()
+        lam_plot[~valid] = np.nan
         sty = series_style(i)
-        # Remove marker for dense curve
         sty.pop("marker", None)
         sty.pop("markersize", None)
         sty.pop("markerfacecolor", None)
         sty.pop("markeredgewidth", None)
         label_str = a_labels.get(float(a), "")
-        ax.plot(v_values, lam_v,
+        ax.plot(v_values, lam_plot,
                 label=rf"$a = {a:.2f}$ ({label_str})", **sty)
+        if np.any(valid):
+            y_min = min(y_min, np.nanmin(lam_plot[valid]))
+            y_max = max(y_max, np.nanmax(lam_plot[valid]))
 
-        # Mark zero crossings with vertical dashed lines
         for j in range(len(lam_v) - 1):
+            if not (valid[j] and valid[j + 1]):
+                continue
             if lam_v[j] * lam_v[j + 1] < 0:
-                # Linear interpolation for zero crossing
                 v_cross = (v_values[j] * abs(lam_v[j + 1])
                            + v_values[j + 1] * abs(lam_v[j])) / (
                     abs(lam_v[j]) + abs(lam_v[j + 1]))
@@ -131,11 +138,13 @@ def plot(data):
     ax.axhline(0, color=COLORS["grey"], lw=0.5, ls="-", alpha=0.5)
     ax.set_xlabel(r"Velocity $v$ (sites/iteration)")
     ax.set_ylabel(r"$\lambda(v)$")
-    ax.set_title(r"Co-moving Lyapunov exponent, CML $\varepsilon = 0.3$",
+    if np.isfinite(y_min) and np.isfinite(y_max):
+        ax.set_ylim(y_min - 0.15, y_max + 0.08)
+    ax.set_title(r"Co-moving Lyapunov exponent, logistic CML",
                  loc="left")
 
-    apply_axes_polish(ax, kind="double", title_loc="left")
-    finalize_legend(ax, kind="double", loc="lower center")
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
+    finalize_legend(ax, kind="double", loc="upper right")
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

@@ -137,7 +137,6 @@ def plot(data):
     """Create the devil's staircase with Lyapunov overlay."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
-        CMAP_DIVERGING,
         COLORS,
         apply_axes_polish,
         figure_spec,
@@ -159,48 +158,46 @@ def plot(data):
     )
     fig.subplots_adjust(hspace=0.08)
 
-    # --- Top panel: Devil's staircase coloured by Lyapunov exponent ---
-    # Use scatter with small points for colour mapping
-    vmax = max(abs(lam.min()), abs(lam.max())) * 0.5
-    sc = ax1.scatter(A, rho, c=lam, cmap=CMAP_DIVERGING, s=0.05,
-                     vmin=-vmax, vmax=vmax, rasterized=True)
+    # --- Top panel: rotation-number staircase ---
+    ax1.plot(A, rho, color=COLORS["black"], lw=0.35, rasterized=True)
     ax1.set_ylabel(r"Rotation number $\rho$")
-    ax1.set_ylim(0, 0.5)
-
-    # Mark some key lockings
-    lockings = {
-        r"$\frac{1}{5}$": 0.2,
-        r"$\frac{1}{4}$": 0.25,
-        r"$\frac{2}{9}$": 2/9,
-        r"$\frac{1}{3}$": 1/3,
-    }
-    for label, val in lockings.items():
-        ax1.axhline(val, color=COLORS["grey"], lw=0.3, ls="--", alpha=0.5)
-        ax1.text(0.002, val + 0.005, label, fontsize=spec.tick_size, color=COLORS["grey"])
-
-    cb = fig.colorbar(sc, ax=ax1, pad=0.02, aspect=30)
-    cb.set_label(r"Lyapunov exponent $\lambda$", fontsize=spec.label_size)
-    cb.ax.tick_params(labelsize=spec.tick_size)
+    ax1.set_ylim(0.0, 0.255)
+    ax1.axhline(1.0 / 5.0, color=COLORS["grey"], lw=0.5, ls="--", alpha=0.7)
+    ax1.text(0.004, 0.2035, r"$\rho = 1/5$", fontsize=spec.tick_size, color=COLORS["grey"])
 
     # --- Bottom panel: Lyapunov exponent vs A ---
     ax2.plot(A, lam, color=COLORS["black"], lw=0.2, linestyle="-", rasterized=True)
-    ax2.axhline(0, color=COLORS["red"], lw=0.5, ls="--")
+    ax2.fill_between(A, 0.0, lam, where=lam > 0.0, color=COLORS["red"], alpha=0.18)
+    ax2.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
     ax2.set_xlabel(r"Nonlinearity parameter $K$")
-    ax2.set_ylabel(r"$\lambda$")
+    ax2.set_ylabel(r"Lyapunov exponent $\lambda$")
     ax2.set_xlim(0, 0.25)
 
-    # Mark Kaneko's K_∞ ≈ 0.15671685 and K_c ≈ 0.18189
-    ax2.axvline(0.15671685, color=COLORS["blue"], lw=0.5, ls=":", alpha=0.7)
-    ax2.text(
-        0.157,
-        ax2.get_ylim()[1] * 0.8,
-        r"$K_\infty$",
+    # Mark the onset of 1/5 locking and the onset of chaos from Kaneko's D=0.25 scan.
+    K_inf = 0.15671685
+    K_c = 0.18189
+    for ax in (ax1, ax2):
+        ax.axvline(K_inf, color=COLORS["blue"], lw=0.7, ls=":", alpha=0.8)
+        ax.axvline(K_c, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)
+    ax1.text(
+        K_inf + 0.002,
+        0.244,
+        r"$K_\infty$: onset of $1/5$ locking",
         fontsize=spec.tick_size,
         color=COLORS["blue"],
     )
+    ax2.set_ylim(min(-2.4, lam.min() * 1.05), 0.18)
+    ax2.text(
+        K_c + 0.002,
+        0.07,
+        r"$K_c$: chaos onset",
+        fontsize=spec.tick_size,
+        color=COLORS["red"],
+        va="bottom",
+    )
 
-    apply_axes_polish(ax1, kind="double")
-    apply_axes_polish(ax2, kind="double")
+    apply_axes_polish(ax1, kind="double", grid=False)
+    apply_axes_polish(ax2, kind="double", grid=False)
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -242,7 +239,7 @@ def compute_zoom():
 def plot_zoom(zoom_data, full_data):
     """Two-panel figure: full staircase with zoom box + zoomed Farey region."""
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle, FancyArrowPatch
+    from matplotlib.patches import Rectangle
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
@@ -257,16 +254,16 @@ def plot_zoom(zoom_data, full_data):
     # --- Left panel: full staircase with zoom box ---
     A_full = full_data["A"]
     rho_full = full_data["rho"]
-    ax_full.plot(A_full, rho_full, color=COLORS["black"], lw=0.2, rasterized=True)
+    ax_full.plot(A_full, rho_full, color=COLORS["black"], lw=0.3, rasterized=True)
     ax_full.set_xlabel(r"Nonlinearity $K$")
     ax_full.set_ylabel(r"Rotation number $\rho$")
-    ax_full.set_title("(a) Full staircase", loc="left")
+    ax_full.set_title("(a) Global staircase", loc="left")
     ax_full.set_xlim(0, 0.25)
-    ax_full.set_ylim(0, 0.5)
+    ax_full.set_ylim(0.0, 0.255)
 
     # Zoom box
-    zoom_K = (0.10, 0.17)
-    zoom_rho = (1.0 / 3.0 - 0.01, 1.0 / 2.0 + 0.01)
+    zoom_K = (0.125, 0.158)
+    zoom_rho = (0.198, 0.226)
     rect = Rectangle(
         (zoom_K[0], zoom_rho[0]),
         zoom_K[1] - zoom_K[0],
@@ -278,29 +275,31 @@ def plot_zoom(zoom_data, full_data):
     # --- Right panel: zoomed Farey region ---
     A_zoom = zoom_data["A"]
     rho_zoom = zoom_data["rho"]
-    ax_zoom.plot(A_zoom, rho_zoom, color=COLORS["black"], lw=0.15, rasterized=True)
+    ax_zoom.plot(A_zoom, rho_zoom, color=COLORS["black"], lw=0.3, rasterized=True)
     ax_zoom.set_xlabel(r"Nonlinearity $K$")
     ax_zoom.set_ylabel(r"Rotation number $\rho$")
-    ax_zoom.set_title("(b) Farey zoom", loc="left")
+    ax_zoom.set_title("(b) Period-adding sequence approaching $1/5$", loc="left")
     ax_zoom.set_xlim(*zoom_K)
     ax_zoom.set_ylim(*zoom_rho)
 
-    # Mark key Farey mediants
-    mediants = {
-        r"$\frac{1}{3}$": 1.0 / 3.0,
-        r"$\frac{2}{5}$": 2.0 / 5.0,
-        r"$\frac{3}{7}$": 3.0 / 7.0,
-        r"$\frac{1}{2}$": 1.0 / 2.0,
+    # Mark the dominant period-adding sequence n/(5n-1) and the 1/5 accumulation plateau.
+    rationals = {
+        r"$2/9$": 2.0 / 9.0,
+        r"$3/14$": 3.0 / 14.0,
+        r"$4/19$": 4.0 / 19.0,
+        r"$1/5$": 1.0 / 5.0,
     }
-    for label, val in mediants.items():
+    for label, val in rationals.items():
         ax_zoom.axhline(val, color=COLORS["grey"], lw=0.3, ls="--", alpha=0.5)
         ax_zoom.text(
-            zoom_K[0] + 0.001, val + 0.003,
+            zoom_K[1] - 0.0008,
+            val + 0.0006,
             label, fontsize=spec.tick_size - 1, color=COLORS["grey"],
+            ha="right",
         )
 
-    apply_axes_polish(ax_full, kind="double", title_loc="left")
-    apply_axes_polish(ax_zoom, kind="double", title_loc="left")
+    apply_axes_polish(ax_full, kind="double", title_loc="left", grid=False)
+    apply_axes_polish(ax_zoom, kind="double", title_loc="left", grid=False)
 
     fig.savefig(ZOOM_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

@@ -345,22 +345,23 @@ def plot_permutation_entropy(data):
 
     spec = figure_spec("double")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
+    h_all = np.concatenate([data["H_logistic"], data["H_delayed"]])
+    y_pad = 0.04 * (h_all.max() - h_all.min())
 
-    ax1.plot(data["a"], data["H_logistic"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
+    ax1.plot(data["a"], data["H_logistic"], color=COLORS["black"], lw=0.9, rasterized=True)
     ax1.set_xlabel(r"$a$")
     ax1.set_ylabel(r"$H_\mathrm{PE}$")
-    ax1.set_title(r"Logistic map $1-ax^2$", loc="left")
-    ax1.set_ylim(-0.05, 1.05)
-    apply_axes_polish(ax1, kind="double", title_loc="left")
+    ax1.set_title(r"(a) Logistic map $1-ax^2$", loc="left")
+    ax1.set_ylim(h_all.min() - y_pad, h_all.max() + y_pad)
+    apply_axes_polish(ax1, kind="double", title_loc="left", grid=False)
 
-    ax2.plot(data["D"], data["H_delayed"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
+    ax2.plot(data["D"], data["H_delayed"], color=COLORS["black"], lw=0.9, rasterized=True)
     ax2.set_xlabel(r"$D$")
     ax2.set_ylabel(r"$H_\mathrm{PE}$")
-    ax2.set_title("Delayed logistic, $\\alpha=0.3$", loc="left")
-    ax2.set_ylim(-0.05, 1.05)
-    apply_axes_polish(ax2, kind="double", title_loc="left")
+    ax2.set_title(r"(b) Delayed logistic, $\alpha = 0.3$", loc="left")
+    ax2.set_ylim(h_all.min() - y_pad, h_all.max() + y_pad)
+    apply_axes_polish(ax2, kind="double", title_loc="left", grid=False)
 
-    fig.suptitle("Permutation entropy ($d=5$)", x=0.01, ha="left", y=1.02, fontsize=spec.title_size)
     fig.savefig(PE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {PE_PNG}")
@@ -381,16 +382,22 @@ def plot_complexity_entropy(data):
     spec = figure_spec("single")
     fig, ax = plt.subplots(figsize=(spec.figsize[0] * 1.25, spec.figsize[1] + 0.35))
 
-    ax.scatter(data["H_logistic"], data["C_logistic"], s=3, alpha=0.6,
+    ax.scatter(data["H_logistic"], data["C_logistic"], s=8, alpha=0.55,
                c=COLORS["blue"], label="Logistic map", rasterized=True)
-    ax.scatter(data["H_delayed"], data["C_delayed"], s=3, alpha=0.6,
+    ax.scatter(data["H_delayed"], data["C_delayed"], s=8, alpha=0.55,
                c=COLORS["red"], label="Delayed logistic", rasterized=True)
+
+    h_all = np.concatenate([data["H_logistic"], data["H_delayed"]])
+    c_all = np.concatenate([data["C_logistic"], data["C_delayed"]])
+    h_pad = 0.05 * (h_all.max() - h_all.min())
+    c_pad = 0.08 * (c_all.max() - c_all.min())
 
     ax.set_xlabel(r"Normalised permutation entropy $H$")
     ax.set_ylabel(r"Statistical complexity $C$")
     ax.set_title("Complexity-entropy plane ($d=5$)", loc="left")
-    apply_axes_polish(ax, kind="single", title_loc="left")
-    ax.set_xlim(-0.05, 1.05)
+    ax.set_xlim(h_all.min() - h_pad, h_all.max() + h_pad)
+    ax.set_ylim(max(0.0, c_all.min() - c_pad), c_all.max() + c_pad)
+    apply_axes_polish(ax, kind="single", title_loc="left", grid=False)
     finalize_legend(ax, kind="single", markerscale=2.6, loc="upper left")
 
     fig.savefig(CH_PNG, dpi=600, bbox_inches="tight")

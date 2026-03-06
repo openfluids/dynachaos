@@ -1,9 +1,10 @@
 import numpy as np
 
 from dynachaos.maps.circle_map import circle_map, circle_map_derivative
+from dynachaos.cml.gcm_clusters import broad_positive_mask
 from dynachaos.maps.coupled_logistic import coupled_logistic, coupled_logistic_jac
 from dynachaos.maps.henon import henon, henon_jac
-from dynachaos.maps.modulated_circle import modulated_circle
+from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
 from dynachaos.maps.primitives import (
     delayed_logistic,
     delayed_logistic_jac,
@@ -31,6 +32,24 @@ def test_coupled_logistic_shapes():
     assert jac.shape == (2, 2)
     assert np.all(np.isfinite(out))
     assert np.all(np.isfinite(jac))
+
+
+def test_coupled_logistic_preserves_diagonal():
+    state = np.array([0.37, 0.37], dtype=np.float64)
+    out = coupled_logistic(state, A=1.3, D=0.1)
+
+    np.testing.assert_allclose(out[0], out[1])
+    np.testing.assert_allclose(out[0], logistic(0.37, 1.3))
+
+
+def test_coupled_logistic_respects_exchange_symmetry():
+    state = np.array([0.2, -0.4], dtype=np.float64)
+    swapped = state[::-1].copy()
+
+    out = coupled_logistic(state, A=1.25, D=0.1)
+    out_swapped = coupled_logistic(swapped, A=1.25, D=0.1)
+
+    np.testing.assert_allclose(out_swapped, out[::-1])
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +151,26 @@ def test_modulated_circle_range():
     assert out.shape == (2,)
     assert 0.0 <= out[0] < 1.0
     assert 0.0 <= out[1] < 1.0
+
+
+def test_longest_plateau_window_selects_widest_run():
+    D = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    rho = np.array([0.00, 0.25, 0.2502, 0.40, 0.25, 0.2501, 0.2502])
+
+    window = longest_plateau_window(D, rho, target=0.25, tol=5e-4)
+
+    assert window == (0.4, 0.6)
+
+
+def test_broad_positive_mask_rejects_short_spikes():
+    values = np.array([-0.1, 0.03, -0.02, 0.04, 0.05, 0.06, 0.07, -0.01])
+
+    mask = broad_positive_mask(values, threshold=0.02, min_run=3)
+
+    np.testing.assert_array_equal(
+        mask,
+        np.array([False, False, False, True, True, True, True, False]),
+    )
 
 
 # ---------------------------------------------------------------------------

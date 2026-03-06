@@ -62,8 +62,8 @@ _THEMES: dict[str, ThemeSpec] = {
         description="Classic Swiss editorial voice: neutral field, black-first hierarchy, red signal accent.",
         colors={
             "black": "#111111",
-            "offwhite": "#F7F7F2",
-            "grid": "#D5D5CD",
+            "offwhite": "#FFFFFF",
+            "grid": "#D9D9D2",
             "red": "#E10600",
             "blue": "#0057B8",
             "green": "#008A5C",
@@ -95,7 +95,7 @@ _THEMES: dict[str, ThemeSpec] = {
         description="Wayfinding-inspired Swiss transit look: high legibility, stronger chromatic coding, crisp geometry.",
         colors={
             "black": "#0F1419",
-            "offwhite": "#FAFAF6",
+            "offwhite": "#FFFFFF",
             "grid": "#D6DDE3",
             "red": "#D90429",
             "blue": "#1D4ED8",
@@ -128,8 +128,8 @@ _THEMES: dict[str, ThemeSpec] = {
         description="Swiss landscape abstraction: glacier blues + sunrise warm accents with generous negative space.",
         colors={
             "black": "#1F2933",
-            "offwhite": "#FFF8ED",
-            "grid": "#DBD8CC",
+            "offwhite": "#FFFFFF",
+            "grid": "#DDD8CC",
             "red": "#E76F51",
             "blue": "#264653",
             "green": "#2A9D8F",
@@ -161,8 +161,8 @@ _THEMES: dict[str, ThemeSpec] = {
         description="Constructivist/Bauhaus echo with bold primary accents and punchy poster contrast.",
         colors={
             "black": "#101010",
-            "offwhite": "#F5F3EE",
-            "grid": "#CAC8BF",
+            "offwhite": "#FFFFFF",
+            "grid": "#D4D0C6",
             "red": "#D62828",
             "blue": "#003049",
             "green": "#2A9D8F",
@@ -196,30 +196,30 @@ DEFAULT_THEME = DEFAULT_FIGURE_THEME
 _FIGURE_SPECS: dict[str, FigureSpec] = {
     "single": FigureSpec(
         kind="single",
-        figsize=(SINGLE_COL, 2.85),
-        label_size=9.2,
-        title_size=9.3,
-        tick_size=8.0,
-        legend_size=7.0,
-        title_pad=4.0,
+        figsize=(SINGLE_COL, 2.65),
+        label_size=8.8,
+        title_size=8.8,
+        tick_size=7.8,
+        legend_size=6.8,
+        title_pad=3.2,
     ),
     "double": FigureSpec(
         kind="double",
-        figsize=(DOUBLE_COL, 3.35),
-        label_size=9.5,
-        title_size=9.8,
-        tick_size=8.2,
-        legend_size=7.2,
-        title_pad=4.2,
+        figsize=(DOUBLE_COL, 3.1),
+        label_size=9.0,
+        title_size=9.1,
+        tick_size=7.9,
+        legend_size=6.9,
+        title_pad=3.3,
     ),
     "grid": FigureSpec(
         kind="grid",
-        figsize=(DOUBLE_COL, 4.9),
-        label_size=8.7,
-        title_size=8.9,
-        tick_size=7.4,
-        legend_size=6.7,
-        title_pad=3.8,
+        figsize=(DOUBLE_COL, 4.55),
+        label_size=8.4,
+        title_size=8.5,
+        tick_size=7.2,
+        legend_size=6.5,
+        title_pad=3.0,
     ),
 }
 
@@ -251,13 +251,24 @@ def figure_spec(kind: str = "double") -> FigureSpec:
     return _FIGURE_SPECS[kind]
 
 
-def apply_axes_polish(ax, *, kind: str = "double", title_loc: str | None = None) -> FigureSpec:
+def apply_axes_polish(
+    ax,
+    *,
+    kind: str = "double",
+    title_loc: str | None = None,
+    grid: bool | None = None,
+    equal: bool = False,
+) -> FigureSpec:
     """Apply consistent typography polish to an axis."""
     spec = figure_spec(kind)
 
     ax.xaxis.label.set_size(spec.label_size)
     ax.yaxis.label.set_size(spec.label_size)
     ax.tick_params(axis="both", which="both", labelsize=spec.tick_size)
+    if grid is not None:
+        ax.grid(grid)
+    if equal:
+        ax.set_aspect("equal", adjustable="box")
 
     active_loc = mpl.rcParams.get("axes.titlelocation", "center") if title_loc is None else title_loc
     title_text = ax.get_title(loc=active_loc)
@@ -369,7 +380,7 @@ def setup(theme: str | None = None) -> None:
         "savefig.facecolor": spec.colors["offwhite"],
         "savefig.dpi": 600,
         "savefig.bbox": "tight",
-        "savefig.pad_inches": 0.04,
+        "savefig.pad_inches": 0.02,
 
         # Typography (sans-serif, left hierarchy)
         "font.family": "sans-serif",
@@ -380,27 +391,27 @@ def setup(theme: str | None = None) -> None:
             "Nimbus Sans",
             "DejaVu Sans",
         ],
-        "font.size": 10,
+        "font.size": 9.2,
         "mathtext.fontset": "dejavusans",
 
         # Axes / structure
         "axes.linewidth": 1.0,
-        "axes.labelsize": 11,
-        "axes.titlesize": 11,
-        "axes.titleweight": "bold",
+        "axes.labelsize": 10,
+        "axes.titlesize": 10,
+        "axes.titleweight": "normal",
         "axes.titlelocation": "left",
         "axes.edgecolor": spec.colors["black"],
         "axes.labelcolor": spec.colors["black"],
         "axes.spines.top": False,
         "axes.spines.right": False,
-        "axes.grid": True,
+        "axes.grid": False,
         "axes.axisbelow": True,
         "axes.prop_cycle": mpl.cycler(color=spec.color_cycle),
 
         # Grid lines (modular rhythm)
         "grid.color": spec.colors["grid"],
-        "grid.linewidth": 0.6,
-        "grid.alpha": 0.82,
+        "grid.linewidth": 0.45,
+        "grid.alpha": 0.55,
 
         # Ticks
         "xtick.direction": "out",
@@ -409,18 +420,18 @@ def setup(theme: str | None = None) -> None:
         "ytick.major.width": 0.9,
         "xtick.minor.width": 0.6,
         "ytick.minor.width": 0.6,
-        "xtick.major.size": 4,
-        "ytick.major.size": 4,
+        "xtick.major.size": 3.5,
+        "ytick.major.size": 3.5,
         "xtick.minor.size": 2.5,
         "ytick.minor.size": 2.5,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
+        "xtick.labelsize": 8.4,
+        "ytick.labelsize": 8.4,
         "xtick.color": spec.colors["black"],
         "ytick.color": spec.colors["black"],
 
         # Lines and markers
-        "lines.linewidth": 1.4,
-        "lines.markersize": 4.2,
+        "lines.linewidth": 1.2,
+        "lines.markersize": 3.8,
         "lines.markeredgewidth": 0.9,
 
         # Text / legend

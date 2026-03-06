@@ -102,44 +102,50 @@ def plot(data):
         shading="auto",
         rasterized=True,
     )
+    pcm.set_clim(0.0, 1.0)
 
     # Critical line K_c = 1/(2π)
     K_c = 1.0 / (2.0 * np.pi)
-    ax.axhline(K_c, color=COLORS["red"], lw=0.8, ls="--", alpha=0.8)
+    ax.axhline(K_c, color=COLORS["red"], lw=0.8, ls="--", alpha=0.85)
     ax.text(
-        0.02, K_c + 0.005,
+        0.985, K_c + 0.005,
         r"$K_c = 1/(2\pi)$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
+        ha="right",
     )
 
-    # Label main tongues
-    tongue_labels = {
-        r"$\frac{0}{1}$": 0.0,
-        r"$\frac{1}{3}$": 1.0 / 3.0,
-        r"$\frac{1}{2}$": 0.5,
-        r"$\frac{2}{3}$": 2.0 / 3.0,
-        r"$\frac{1}{1}$": 1.0,
-    }
-    for label, omega_val in tongue_labels.items():
-        ax.text(
-            omega_val, K[-1] + 0.005,
-            label,
-            fontsize=spec.tick_size,
-            ha="center",
-            color=COLORS["black"],
-        )
+    # Highlight the dominant primary tongues directly on the field.
+    Omega_grid, K_grid = np.meshgrid(Omega, K)
+    contour_levels = [1.0 / 3.0, 0.5, 2.0 / 3.0]
+    ax.contour(
+        Omega_grid,
+        K_grid,
+        rho,
+        levels=contour_levels,
+        colors=COLORS["offwhite"],
+        linewidths=0.35,
+        alpha=0.55,
+    )
 
     ax.set_xlabel(r"Bare frequency $\Omega$")
     ax.set_ylabel(r"Nonlinearity $K$")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, K[-1])
 
+    top = ax.secondary_xaxis("top")
+    top.set_xticks([0.0, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0])
+    top.set_xticklabels(
+        [r"$0/1$", r"$1/3$", r"$1/2$", r"$2/3$", r"$1/1$"],
+        fontsize=spec.tick_size,
+    )
+    top.tick_params(axis="x", pad=2, length=0)
+
     cb = fig.colorbar(pcm, ax=ax, pad=0.02, aspect=30)
     cb.set_label(r"Rotation number $\rho$", fontsize=spec.label_size)
     cb.ax.tick_params(labelsize=spec.tick_size)
 
-    apply_axes_polish(ax, kind="double")
+    apply_axes_polish(ax, kind="double", grid=False)
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

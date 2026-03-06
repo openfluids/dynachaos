@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-coupled_logistic: Transition from torus to chaos in the coupled logistic map.
+coupled_logistic: Symmetry breaking in the coupled logistic map.
 
-Reproduces Kaneko (1983) "Transition from Torus to Chaos Accompanied by
+Revisits Kaneko (1983) "Transition from Torus to Chaos Accompanied by
 Frequency Lockings with Symmetry Breaking", PTP 69(5), 1427-1442.
 
 Map (Eq. 1.1):
@@ -10,18 +10,23 @@ Map (Eq. 1.1):
     y_{n+1} = 1 - A y_n^2 + D(x_n - y_n)
 
 Figures:
-  - Phase diagram in (A, D) space
-  - Attractor portraits at D=0.1 for several A values
-  - Basin of attraction showing self-similar stripe structure
+  - Parameter survey in (A, D) using symmetry-breaking and Lyapunov observables
+  - Representative attractor portraits at D=0.1 along the broken-symmetry route
+  - Basin of attraction showing stripe accumulation near the invariant diagonal
 
 OUTPUTS: figures/sec03_transition/phase_diagram.npz, phase_diagram.png
          figures/sec03_transition/attractors.npz, attractors.png
          figures/sec03_transition/basins.npz, basins.png
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.primitives import logistic, logistic_derivative
-import numpy as np
 
 FIG_DIR = section_dir("sec03_transition")
 
@@ -34,6 +39,26 @@ BASIN_PNG = FIG_DIR / "basins.png"
 ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 
+
+@dataclass(frozen=True)
+class AttractorCase:
+    """One representative attractor panel for the D=0.1 gallery."""
+
+    A: float
+    label: str
+    initial_state: tuple[float, float]
+    xlim: tuple[float, float]
+    ylim: tuple[float, float]
+
+
+ATTRACTOR_CASES = (
+    AttractorCase(1.10, "2T", (0.1, 0.6), (-1.15, 1.15), (-1.15, 1.15)),
+    AttractorCase(1.25, "4T", (0.1, 0.6), (-1.15, 1.15), (-1.15, 1.15)),
+    AttractorCase(1.35, "8T", (0.1, 0.2), (-1.05, 1.05), (-1.05, 1.05)),
+    AttractorCase(1.3525, "8T (zoom)", (0.1, 0.2), (-0.18, 0.18), (-0.18, 0.18)),
+    AttractorCase(1.355, "8C (zoom)", (0.1, 0.2), (-0.18, 0.18), (-0.18, 0.18)),
+    AttractorCase(1.373, "4C", (0.1, 0.2), (-1.05, 1.05), (-1.05, 1.05)),
+)
 
 # ---------------------------------------------------------------------------
 # Map definition
@@ -64,8 +89,11 @@ def compute_phase_diagram():
     """Compute phase diagram in (A, D) space.
 
     Vectorized: for each D, all A values are iterated simultaneously as
-    NumPy arrays.  Uses temporal variance of x as the phase diagnostic
-    (fast proxy for Lyapunov-based classification).
+    NumPy arrays.
+
+    Diagnostics:
+      - asym = <|x - y|> : symmetry-breaking order parameter
+      - lyap = finite-time largest Lyapunov exponent estimate
     """
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +103,8 @@ def compute_phase_diagram():
     A_values = np.linspace(0.5, 1.65, n_A)
     D_values = np.linspace(0.0, 0.3, n_D)
 
-    var_grid = np.empty((n_D, n_A))
+    asym_grid = np.full((n_D, n_A), np.nan)
+    lyap_grid = np.full((n_D, n_A), np.nan)
 
     for j, D in enumerate(D_values):
         # All A values in parallel
@@ -92,28 +121,68 @@ def compute_phase_diagram():
             x = np.where(mask, np.nan, x)
             y = np.where(mask, np.nan, y)
 
-        # Sample: accumulate mean and variance of x
-        sum_x = np.zeros(n_A)
-        sum_x2 = np.zeros(n_A)
+        # Sample diagnostics and tangent-space growth
+        sum_absdiff = np.zeros(n_A)
+        count_absdiff = np.zeros(n_A)
+        lyap_sum = np.zeros(n_A)
+        lyap_count = np.zeros(n_A)
+        vx = np.full(n_A, 1.0 / np.sqrt(2.0))
+        vy = np.full(n_A, 1.0 / np.sqrt(2.0))
+
         for _ in range(n_sample):
+            # Tangent evolution for largest Lyapunov exponent estimate.
+            j11 = logistic_derivative(x, A_values) - D
+            j22 = logistic_derivative(y, A_values) - D
+            tx = j11 * vx + D * vy
+            ty = D * vx + j22 * vy
+            tnorm = np.sqrt(tx * tx + ty * ty)
+            valid_tan = (
+                np.isfinite(x)
+                & np.isfinite(y)
+                & np.isfinite(tnorm)
+                & (tnorm > 0.0)
+            )
+            lyap_sum += np.where(valid_tan, np.log(tnorm), 0.0)
+            lyap_count += valid_tan.astype(float)
+            vx = np.where(valid_tan, tx / tnorm, vx)
+            vy = np.where(valid_tan, ty / tnorm, vy)
+
             x_new = logistic(x, A_values) + D * (y - x)
             y_new = logistic(y, A_values) + D * (x - y)
             x, y = x_new, y_new
             mask = (np.abs(x) > 1e10) | (np.abs(y) > 1e10)
             x = np.where(mask, np.nan, x)
             y = np.where(mask, np.nan, y)
-            sum_x += np.where(np.isnan(x), 0.0, x)
-            sum_x2 += np.where(np.isnan(x), 0.0, x * x)
+            valid_state = np.isfinite(x) & np.isfinite(y)
+            sum_absdiff += np.where(valid_state, np.abs(x - y), 0.0)
+            count_absdiff += valid_state.astype(float)
 
-        mean_x = sum_x / n_sample
-        var_grid[j] = sum_x2 / n_sample - mean_x * mean_x
+        asym_row = np.full(n_A, np.nan)
+        lyap_row = np.full(n_A, np.nan)
+        np.divide(sum_absdiff, count_absdiff, out=asym_row, where=count_absdiff > 0.0)
+        np.divide(lyap_sum, lyap_count, out=lyap_row, where=lyap_count > 0.0)
+        asym_grid[j] = asym_row
+        lyap_grid[j] = lyap_row
 
         if (j + 1) % 50 == 0:
             print(f"  Phase diagram: row {j + 1}/{n_D}")
-            np.savez_compressed(PHASE_NPZ, A=A_values, D=D_values,
-                                var=var_grid)
+            np.savez_compressed(
+                PHASE_NPZ,
+                A=A_values,
+                D=D_values,
+                asym=asym_grid,
+                lyap=lyap_grid,
+                schema_version=np.array([2], dtype=np.int16),
+            )
 
-    np.savez_compressed(PHASE_NPZ, A=A_values, D=D_values, var=var_grid)
+    np.savez_compressed(
+        PHASE_NPZ,
+        A=A_values,
+        D=D_values,
+        asym=asym_grid,
+        lyap=lyap_grid,
+        schema_version=np.array([2], dtype=np.int16),
+    )
     print(f"Saved {PHASE_NPZ}")
 
 
@@ -122,28 +191,38 @@ def compute_phase_diagram():
 # ---------------------------------------------------------------------------
 
 def compute_attractors():
-    """Compute attractor portraits at D=0.1 for several A values."""
+    """Compute representative attractor portraits at D=0.1.
+
+    The first two panels use an off-diagonal initial condition to expose the
+    symmetry-broken tori that coexist with synchronized cycles on x=y.
+    """
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     D = 0.1
-    A_values = [1.10, 1.25, 1.35, 1.3525, 1.355, 1.373]
-    labels = ["2T", "4T", "8T", "8T (zoom)", "8C", "4C"]
 
     results = {}
-    for A, label in zip(A_values, labels):
-        print(f"  A={A} ({label})")
-        state = np.array([0.1, 0.2])
+    for idx, case in enumerate(ATTRACTOR_CASES):
+        print(f"  A={case.A} ({case.label})")
+        state = np.array(case.initial_state, dtype=float)
         for _ in range(50_000):
-            state = coupled_logistic(state, A, D)
+            state = coupled_logistic(state, case.A, D)
         traj = np.empty((100_000, 2))
         for i in range(100_000):
-            state = coupled_logistic(state, A, D)
+            state = coupled_logistic(state, case.A, D)
             traj[i] = state
-        results[f"A_{A}_x"] = traj[:, 0]
-        results[f"A_{A}_y"] = traj[:, 1]
+        results[f"x_{idx}"] = traj[:, 0]
+        results[f"y_{idx}"] = traj[:, 1]
 
-    results["A_values"] = np.array(A_values)
+    results["A_values"] = np.array([case.A for case in ATTRACTOR_CASES], dtype=np.float64)
+    results["labels"] = np.array([case.label for case in ATTRACTOR_CASES])
+    results["initial_states"] = np.array(
+        [case.initial_state for case in ATTRACTOR_CASES],
+        dtype=np.float64,
+    )
+    results["x_limits"] = np.array([case.xlim for case in ATTRACTOR_CASES], dtype=np.float64)
+    results["y_limits"] = np.array([case.ylim for case in ATTRACTOR_CASES], dtype=np.float64)
     results["D"] = np.array([D])
+    results["schema_version"] = np.array([4], dtype=np.int16)
     np.savez_compressed(ATTR_NPZ, **results)
     print(f"Saved {ATTR_NPZ}")
 
@@ -236,10 +315,12 @@ def compute_basins():
 # ---------------------------------------------------------------------------
 
 def plot_phase_diagram(data):
-    """Plot phase diagram in (A, D) space."""
+    """Plot a coarse parameter survey in (A, D) space."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import (
+        CMAP_DIVERGING,
         CMAP_SEQUENTIAL,
+        COLORS,
         apply_axes_polish,
         figure_spec,
         setup,
@@ -248,21 +329,79 @@ def plot_phase_diagram(data):
 
     A = data["A"]
     D = data["D"]
-    var = data["var"]
+    asym = data["asym"]
+    lyap = data["lyap"]
 
     spec = figure_spec("double")
-    fig, ax = plt.subplots(figsize=spec.figsize)
-    # Log-scale variance for better contrast
-    log_var = np.log10(np.where(var > 1e-12, var, 1e-12))
-    im = ax.pcolormesh(A, D, log_var, cmap=CMAP_SEQUENTIAL,
-                       rasterized=True)
-    ax.set_xlabel(r"$a$")
-    ax.set_ylabel(r"$\varepsilon$")
-    ax.set_title("Coupled logistic map: $\\log_{10}$(temporal variance)", loc="left")
-    apply_axes_polish(ax, kind="double", title_loc="left")
-    cb = fig.colorbar(im, ax=ax, pad=0.02)
-    cb.set_label(r"$\log_{10}\,\sigma^2_x$")
-    cb.ax.tick_params(labelsize=spec.tick_size)
+    fig, axes = plt.subplots(1, 2, figsize=(spec.figsize[0], spec.figsize[1] + 0.25), sharey=True)
+    fig.subplots_adjust(wspace=0.18, bottom=0.18)
+
+    asym_cmap = plt.get_cmap(CMAP_SEQUENTIAL).copy()
+    asym_cmap.set_bad(COLORS["offwhite"])
+    asym_valid = asym[np.isfinite(asym)]
+    asym_vmax = float(np.nanpercentile(asym_valid, 99.0)) if asym_valid.size else 0.2
+    asym_vmax = max(asym_vmax, 1e-3)
+    im0 = axes[0].pcolormesh(
+        A,
+        D,
+        asym,
+        cmap=asym_cmap,
+        vmin=0.0,
+        vmax=asym_vmax,
+        rasterized=True,
+        shading="auto",
+    )
+    axes[0].axhline(0.1, color=COLORS["red"], linestyle=(0, (4, 2)), lw=0.8)
+    axes[0].text(
+        0.98,
+        0.04,
+        r"$\varepsilon = 0.1$ gallery slice",
+        transform=axes[0].transAxes,
+        ha="right",
+        va="bottom",
+        color=COLORS["red"],
+        fontsize=spec.legend_size,
+    )
+    axes[0].set_xlabel(r"$a$")
+    axes[0].set_ylabel(r"$\varepsilon$")
+    axes[0].set_title(r"(a) Symmetry breaking: $\langle |x-y| \rangle$", loc="left")
+    apply_axes_polish(axes[0], kind="double", title_loc="left", grid=False)
+    cb0 = fig.colorbar(im0, ax=axes[0], pad=0.02, fraction=0.046)
+    cb0.set_label(r"$\langle |x-y| \rangle$")
+    cb0.ax.tick_params(labelsize=spec.tick_size)
+
+    lyap_cmap = plt.get_cmap(CMAP_DIVERGING).copy()
+    lyap_cmap.set_bad(COLORS["offwhite"])
+    lyap_valid = lyap[np.isfinite(lyap)]
+    lyap_lim = float(np.nanpercentile(np.abs(lyap_valid), 99.0)) if lyap_valid.size else 0.1
+    lyap_lim = max(lyap_lim, 0.02)
+    im1 = axes[1].pcolormesh(
+        A,
+        D,
+        lyap,
+        cmap=lyap_cmap,
+        vmin=-lyap_lim,
+        vmax=lyap_lim,
+        rasterized=True,
+        shading="auto",
+    )
+    axes[1].axhline(0.1, color=COLORS["red"], linestyle=(0, (4, 2)), lw=0.8)
+    axes[1].text(
+        0.98,
+        0.04,
+        r"$\varepsilon = 0.1$ gallery slice",
+        transform=axes[1].transAxes,
+        ha="right",
+        va="bottom",
+        color=COLORS["red"],
+        fontsize=spec.legend_size,
+    )
+    axes[1].set_xlabel(r"$a$")
+    axes[1].set_title(r"(b) Chaos onset: $\lambda_1$ (finite-time)", loc="left")
+    apply_axes_polish(axes[1], kind="double", title_loc="left", grid=False)
+    cb1 = fig.colorbar(im1, ax=axes[1], pad=0.02, fraction=0.046)
+    cb1.set_label(r"$\lambda_1$")
+    cb1.ax.tick_params(labelsize=spec.tick_size)
 
     fig.savefig(PHASE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -270,45 +409,78 @@ def plot_phase_diagram(data):
 
 
 def plot_attractors(data):
-    """Plot attractor portraits."""
+    """Plot representative attractor portraits."""
     import matplotlib.pyplot as plt
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
     A_values = data["A_values"]
-    labels = ["2T", "4T", "8T", "8T (zoom)", "8C", "4C"]
+    labels = data["labels"]
+    initial_states = data["initial_states"]
+    x_limits = data["x_limits"]
+    y_limits = data["y_limits"]
     panel_labels = list("abcdef")
 
     spec = figure_spec("grid")
-    fig, axes = plt.subplots(2, 3, figsize=(spec.figsize[0], spec.figsize[1] - 0.4))
-    fig.subplots_adjust(wspace=0.32, hspace=0.4)
+    fig, axes = plt.subplots(2, 3, figsize=(spec.figsize[0], spec.figsize[1] + 0.15))
+    fig.subplots_adjust(wspace=0.22, hspace=0.3, top=0.92)
+    fig.text(
+        0.01,
+        0.975,
+        r"Coupled logistic map at $\varepsilon = 0.1$",
+        ha="left",
+        va="top",
+        fontsize=spec.title_size,
+    )
     axes_flat = axes.flatten()
 
     for idx, A in enumerate(A_values):
         ax = axes_flat[idx]
-        x = data[f"A_{A}_x"]
-        y = data[f"A_{A}_y"]
-        ax.scatter(x, y, s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True)
-        ax.set_title(f"({panel_labels[idx]}) $a = {A}$ ({labels[idx]})", loc="left", usetex=False)
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$y$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        x = data[f"x_{idx}"]
+        y = data[f"y_{idx}"]
+        point_size = 0.06 if "zoom" not in labels[idx] else 0.045
+        ax.scatter(x, y, s=point_size, c=COLORS["black"], alpha=0.16, rasterized=True)
+        ax.axhline(0.0, color=COLORS["grid"], lw=0.55, zorder=0)
+        ax.axvline(0.0, color=COLORS["grid"], lw=0.55, zorder=0)
+        ax.set_title(
+            f"({panel_labels[idx]}) $a = {float(A):.4g}$, {labels[idx]}",
+            loc="left",
+            usetex=False,
+        )
+        if idx >= 3:
+            ax.set_xlabel("$x$")
+        else:
+            ax.set_xlabel("")
+        if idx % 3 == 0:
+            ax.set_ylabel("$y$")
+        else:
+            ax.set_ylabel("")
+        ax.set_xlim(*x_limits[idx])
+        ax.set_ylim(*y_limits[idx])
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
+        if idx < 2:
+            x0, y0 = initial_states[idx]
+            ax.text(
+                0.03,
+                0.04,
+                rf"$({x0:.1f}, {y0:.1f})$ seed",
+                transform=ax.transAxes,
+                ha="left",
+                va="bottom",
+                fontsize=spec.legend_size,
+                color=COLORS["grey"],
+            )
 
-    fig.suptitle(
-        f"Coupled logistic map, $\\varepsilon = {data['D'][0]}$",
-        x=0.01,
-        ha="left",
-        y=1.02,
-        fontsize=spec.title_size,
-    )
     fig.savefig(ATTR_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {ATTR_PNG}")
 
 
 def plot_basins(data):
-    """Plot basin of attraction with zoom panel near y=x."""
+    """Plot basin of attraction with a zoom panel near y=x."""
     import matplotlib.pyplot as plt
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+    from matplotlib.patches import Patch
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
     setup()
 
@@ -317,28 +489,34 @@ def plot_basins(data):
     basin = data["basin"]
     A_val = data["A"][0]
 
-    # -1=diverged(white), 0=undetermined(grey), 1=orbit A(blue), 2=orbit B(red)
-    from matplotlib.colors import ListedColormap
     cmap = ListedColormap([
         COLORS["offwhite"],
         COLORS["grey"],
         COLORS["blue"],
         COLORS["red"],
     ])
+    norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
 
     spec = figure_spec("double")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(spec.figsize[0], spec.figsize[1] + 0.15))
+    fig.subplots_adjust(wspace=0.18, bottom=0.2)
+    extent = (x[0], x[-1], y[0], y[-1])
 
-    # (a) Full view
-    ax1.pcolormesh(x, y, basin, cmap=cmap, vmin=-1, vmax=2, rasterized=True)
-    ax1.plot(x, x, color=COLORS["black"], linestyle="--", lw=0.3, alpha=0.4)
+    ax1.imshow(
+        basin,
+        origin="lower",
+        extent=extent,
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
+        rasterized=True,
+    )
+    ax1.plot(x, x, color=COLORS["black"], linestyle="--", lw=0.45, alpha=0.45)
     ax1.set_xlabel("$x_0$")
     ax1.set_ylabel("$y_0$")
-    ax1.set_title(f"(a) Full basin, $a={A_val:.5f}$", loc="left")
-    ax1.set_aspect("equal")
-    apply_axes_polish(ax1, kind="double", title_loc="left")
+    ax1.set_title(f"(a) Full basin at $a = {A_val:.5f}$", loc="left")
+    apply_axes_polish(ax1, kind="double", title_loc="left", grid=False, equal=True)
 
-    # Draw zoom box
     zx0, zx1, zy0, zy1 = -0.16, 0.04, -0.11, 0.09
     rect = plt.Rectangle(
         (zx0, zy0),
@@ -350,33 +528,48 @@ def plot_basins(data):
     )
     ax1.add_patch(rect)
 
-    # (b) Zoomed view near y=x showing stripe structure
-    ax2.pcolormesh(x, y, basin, cmap=cmap, vmin=-1, vmax=2, rasterized=True)
+    ax2.imshow(
+        basin,
+        origin="lower",
+        extent=extent,
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
+        rasterized=True,
+    )
     ax2.plot(
         [-0.2, 0.1],
         [-0.2, 0.1],
         color=COLORS["black"],
         linestyle="--",
-        lw=0.3,
-        alpha=0.4,
+        lw=0.45,
+        alpha=0.45,
     )
     ax2.set_xlim(zx0, zx1)
     ax2.set_ylim(zy0, zy1)
     ax2.set_xlabel("$x_0$")
     ax2.set_ylabel("$y_0$")
-    ax2.set_title("(b) Zoom: stripe structure near $y = x$", loc="left")
-    ax2.set_aspect("equal")
-    apply_axes_polish(ax2, kind="double", title_loc="left")
+    ax2.set_title("(b) Zoom near the invariant diagonal", loc="left")
+    apply_axes_polish(ax2, kind="double", title_loc="left", grid=False, equal=True)
 
-    # Legend for basin colours
-    from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor=COLORS["blue"], label="Orbit A"),
-        Patch(facecolor=COLORS["red"], label="Orbit B"),
-        Patch(facecolor=COLORS["offwhite"], edgecolor=COLORS["grey"], label="Diverged"),
+        Patch(facecolor=COLORS["grey"], label="Synchronized 4-cycle"),
+        Patch(facecolor=COLORS["blue"], label="Asymmetric orbit A"),
+        Patch(facecolor=COLORS["red"], label="Asymmetric orbit B"),
     ]
-    fig.legend(handles=legend_elements, loc="lower center", ncol=3,
-               fontsize=spec.legend_size, frameon=False, bbox_to_anchor=(0.5, -0.02))
+    if np.any(basin == -1):
+        legend_elements.insert(
+            0,
+            Patch(facecolor=COLORS["offwhite"], edgecolor=COLORS["grey"], label="Diverged"),
+        )
+    fig.legend(
+        handles=legend_elements,
+        loc="lower center",
+        ncol=len(legend_elements),
+        fontsize=spec.legend_size,
+        frameon=False,
+        bbox_to_anchor=(0.5, -0.02),
+    )
 
     fig.savefig(BASIN_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -429,6 +622,16 @@ def main():
     try:
         phase_data = safe_load(PHASE_NPZ)
         print(f"Loaded {PHASE_NPZ}")
+        if (
+            "schema_version" not in phase_data.files
+            or int(phase_data["schema_version"][0]) < 2
+            or "asym" not in phase_data.files
+            or "lyap" not in phase_data.files
+        ):
+            phase_data.close()
+            print("Phase cache missing updated diagnostics; recomputing...")
+            compute_phase_diagram()
+            phase_data = safe_load(PHASE_NPZ)
     except FileNotFoundError:
         print("Computing phase diagram...")
         compute_phase_diagram()
@@ -439,6 +642,25 @@ def main():
     try:
         attr_data = safe_load(ATTR_NPZ)
         print(f"Loaded {ATTR_NPZ}")
+        attr_needs_recompute = (
+            "schema_version" not in attr_data.files
+            or int(attr_data["schema_version"][0]) < 4
+            or "A_values" not in attr_data.files
+            or "labels" not in attr_data.files
+            or "initial_states" not in attr_data.files
+            or "x_limits" not in attr_data.files
+            or "y_limits" not in attr_data.files
+        )
+        if not attr_needs_recompute:
+            for idx in range(len(ATTRACTOR_CASES)):
+                if f"x_{idx}" not in attr_data.files or f"y_{idx}" not in attr_data.files:
+                    attr_needs_recompute = True
+                    break
+        if attr_needs_recompute:
+            attr_data.close()
+            print("Attractor cache schema mismatch; recomputing...")
+            compute_attractors()
+            attr_data = safe_load(ATTR_NPZ)
     except FileNotFoundError:
         print("Computing attractors...")
         compute_attractors()
@@ -464,7 +686,6 @@ def main():
         compute_animation_data()
         anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
-
 
 if __name__ == "__main__":
     main()

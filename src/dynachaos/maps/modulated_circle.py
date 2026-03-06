@@ -67,6 +67,27 @@ def rotation_numbers(A, C, D, eps,
     return rho_theta, rho_phi
 
 
+def longest_plateau_window(D, rho, target, tol):
+    """Return the widest contiguous D-window with rho close to target."""
+    mask = np.abs(rho - target) <= tol
+    idx = np.flatnonzero(mask)
+    if idx.size == 0:
+        return None
+
+    start = idx[0]
+    best = (start, start)
+    prev = idx[0]
+    for current in idx[1:]:
+        if current != prev + 1:
+            if D[prev] - D[start] > D[best[1]] - D[best[0]]:
+                best = (start, prev)
+            start = current
+        prev = current
+    if D[prev] - D[start] > D[best[1]] - D[best[0]]:
+        best = (start, prev)
+    return float(D[best[0]]), float(D[best[1]])
+
+
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
@@ -119,30 +140,54 @@ def plot(data):
 
     D = data["D"]
     rho_theta = data["rho_theta"]
-    rho_phi = data["rho_phi"]
 
     spec = figure_spec("double")
-    fig, (ax1, ax2) = plt.subplots(
-        2,
-        1,
-        figsize=(spec.figsize[0], spec.figsize[1] * 1.19),
-        sharex=True,
-        gridspec_kw={"height_ratios": [3, 1]},
+    fig, ax = plt.subplots(figsize=(spec.figsize[0], spec.figsize[1] * 0.95))
+
+    zoom_targets = [
+        (0.25, 5e-4, COLORS["blue"], r"zoom (a): plateau near $1/4$"),
+        (C_GOLDEN, 5e-4, COLORS["red"], r"zoom (b): plateau near $C$"),
+    ]
+    for target, tol, color, label in zoom_targets:
+        window = longest_plateau_window(D, rho_theta, target, tol)
+        if window is None:
+            continue
+        pad = 0.003 if target < 0.4 else 0.002
+        ax.axvspan(window[0] - pad, window[1] + pad, color=color, alpha=0.10, lw=0.0)
+        ax.text(
+            window[0],
+            target + (0.03 if target < 0.4 else 0.018),
+            label,
+            color=color,
+            fontsize=spec.legend_size - 0.3,
+        )
+
+    ax.plot(D, D, color=COLORS["grey"], linestyle="--", lw=0.75, alpha=0.7)
+    ax.plot(D, rho_theta, color=COLORS["black"], linestyle="-", lw=0.9, rasterized=True)
+    ax.set_xlabel(r"bare frequency $D$")
+    ax.set_ylabel(r"observed rotation $\rho_\theta$")
+    ax.set_ylim(-0.02, 1.02)
+    ax.text(
+        0.03,
+        0.96,
+        r"$\rho_\varphi \equiv C$ to numerical precision",
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=spec.legend_size,
     )
-    fig.subplots_adjust(hspace=0.08)
+    ax.text(
+        0.03,
+        0.89,
+        r"faint dashed line: rigid-rotation reference $\rho_\theta=D$",
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=spec.legend_size - 0.2,
+        color=COLORS["grey"],
+    )
 
-    ax1.plot(D, rho_theta, color=COLORS["black"], linestyle="-", lw=0.2, rasterized=True)
-    ax1.set_ylabel(r"$\rho_\theta$")
-    ax1.set_ylim(-0.02, 1.02)
-
-    ax2.plot(D, rho_phi, color=COLORS["blue"], linestyle="-", lw=0.2, rasterized=True)
-    ax2.axhline(C_GOLDEN, color=COLORS["red"], ls="--", lw=0.5, zorder=0)
-    ax2.set_ylabel(r"$\rho_\varphi$")
-    ax2.set_xlabel(r"$D$")
-    ax2.set_ylim(0.615, 0.622)
-
-    apply_axes_polish(ax1, kind="double", title_loc="left")
-    apply_axes_polish(ax2, kind="double")
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -169,27 +214,40 @@ def plot_zoom(data):
     )
     fig.subplots_adjust(wspace=0.30)
 
-    # --- Left panel: window near D ∈ [0.10, 0.30] ---
-    mask1 = (D >= 0.10) & (D <= 0.30)
+    window1 = longest_plateau_window(D, rho_theta, 0.25, 5e-4)
+    window2 = longest_plateau_window(D, rho_theta, C_GOLDEN, 5e-4)
+    if window1 is None:
+        window1 = (0.255, 0.275)
+    if window2 is None:
+        window2 = (0.602, 0.622)
+
+    # --- Left panel: narrow plateau around 1/4 ---
+    pad1 = 0.008
+    mask1 = (D >= window1[0] - pad1) & (D <= window1[1] + pad1)
     rt1 = rho_theta[mask1]
     ax1.plot(D[mask1], rt1, color=COLORS["black"], lw=0.3, rasterized=True)
+    ax1.axhline(0.25, color=COLORS["blue"], lw=0.7, ls="--", alpha=0.8)
+    ax1.axvspan(window1[0], window1[1], color=COLORS["blue"], alpha=0.10, lw=0.0)
     ax1.set_xlabel(r"$D$")
     ax1.set_ylabel(r"$\rho_\theta$")
-    ax1.set_title(r"(a) $D \in [0.10, 0.30]$", loc="left")
+    ax1.set_title(r"(a) plateau near $1/4$", loc="left")
     if rt1.size > 0:
-        ax1.set_ylim(rt1.min() - 0.02, rt1.max() + 0.02)
+        ax1.set_ylim(rt1.min() - 0.01, rt1.max() + 0.01)
 
-    # --- Right panel: window near D ∈ [0.40, 0.60] ---
-    mask2 = (D >= 0.40) & (D <= 0.60)
+    # --- Right panel: plateau around the irrational modulation frequency C ---
+    pad2 = 0.006
+    mask2 = (D >= window2[0] - pad2) & (D <= window2[1] + pad2)
     rt2 = rho_theta[mask2]
     ax2.plot(D[mask2], rt2, color=COLORS["black"], lw=0.3, rasterized=True)
+    ax2.axhline(C_GOLDEN, color=COLORS["red"], lw=0.7, ls="--", alpha=0.8)
+    ax2.axvspan(window2[0], window2[1], color=COLORS["red"], alpha=0.10, lw=0.0)
     ax2.set_xlabel(r"$D$")
-    ax2.set_title(r"(b) $D \in [0.40, 0.60]$", loc="left")
+    ax2.set_title(r"(b) plateau near $C$", loc="left")
     if rt2.size > 0:
-        ax2.set_ylim(rt2.min() - 0.02, rt2.max() + 0.02)
+        ax2.set_ylim(rt2.min() - 0.004, rt2.max() + 0.004)
 
-    apply_axes_polish(ax1, kind="double", title_loc="left")
-    apply_axes_polish(ax2, kind="double", title_loc="left")
+    apply_axes_polish(ax1, kind="double", title_loc="left", grid=False)
+    apply_axes_polish(ax2, kind="double", title_loc="left", grid=False)
 
     fig.savefig(ZOOM_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

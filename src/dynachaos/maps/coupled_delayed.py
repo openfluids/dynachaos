@@ -31,6 +31,16 @@ PROJ_PNG = FIG_DIR / "xz_projections.png"
 ANIM_NPZ = FIG_DIR / "three_torus_animation.npz"
 ANIM_GIF = FIG_DIR / "three_torus_animation.gif"
 
+PROJ_SCHEMA_VERSION = 2
+PROJECTION_CASES = (
+    (2.37, "near three-frequency regime", "line"),
+    (2.43, "resonance web", "line"),
+    (2.45, "locked invariant circle", "line"),
+    (2.478, "weak chaos", "density"),
+    (2.497, "periodic window", "points"),
+    (2.55, "developed chaos", "density"),
+)
+
 
 # ---------------------------------------------------------------------------
 # Map definition
@@ -106,11 +116,12 @@ def compute_projections():
 
     A = 0.4
     eps = 5e-3
-    DB_values = [2.35, 2.37, 2.45, 2.46, 2.47, 2.48]
-    labels = ["3-torus", "locking", "locking", "torus", "chaos", "chaos"]
+    DB_values = [case[0] for case in PROJECTION_CASES]
+    labels = [case[1] for case in PROJECTION_CASES]
+    render_modes = [case[2] for case in PROJECTION_CASES]
 
     results = {}
-    for DB, label in zip(DB_values, labels):
+    for DB, label in zip(DB_values, labels, strict=False):
         DA = DB + 0.1
         print(f"  DB={DB} ({label})")
         x0 = np.array([0.5, 0.5, 0.3, 0.3])
@@ -127,6 +138,8 @@ def compute_projections():
 
     results["DB_values"] = np.array(DB_values)
     results["labels"] = np.array(labels)
+    results["render_modes"] = np.array(render_modes)
+    results["schema_version"] = np.array([PROJ_SCHEMA_VERSION])
     np.savez_compressed(PROJ_NPZ, **results)
     print(f"Saved {PROJ_NPZ}")
 
@@ -157,24 +170,31 @@ def plot_lyapunov(data):
         figsize=(panel_spec.figsize[0], panel_spec.figsize[1] * 0.58),
         sharey=True,
     )
+    gallery_db = np.array([case[0] for case in PROJECTION_CASES])
     for idx, eps in enumerate(eps_values):
         ax = axes[idx]
         spectra = data[f"eps_{eps}_spectra"]
         for k in range(3):
-            ax.plot(DB, spectra[:, k], lw=0.3,
+            ax.plot(DB, spectra[:, k], lw=0.9,
                     label=rf"$\lambda_{k+1}$")
-        ax.axhline(0, color=COLORS["red"], lw=0.3, ls="--")
+        ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
+        if np.isclose(eps, 5e-3):
+            for db in gallery_db:
+                ax.axvline(db, color=COLORS["grey"], lw=0.45, alpha=0.3)
         ax.set_xlabel(r"$D_B$")
         ax.set_title(rf"$\varepsilon = {eps}$", loc="left")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False)
         if idx == 0:
             ax.set_ylabel("Lyapunov exponent")
             finalize_legend(ax, kind="grid", loc="lower left")
-
-    fig.suptitle(
-        "Coupled delayed logistic map, $\\alpha = 0.4$, $D_A = D_B + 0.1$",
-        fontsize=panel_spec.title_size,
-        y=1.02,
+    axes[0].set_ylim(-0.315, 0.115)
+    fig.text(
+        0.01,
+        0.995,
+        r"Coupled delayed logistic map: $\alpha = 0.4$, $D_A = D_B + 0.1$",
+        ha="left",
+        va="top",
+        fontsize=panel_spec.legend_size,
     )
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -184,30 +204,81 @@ def plot_lyapunov(data):
 def plot_projections(data):
     """Plot (x_n, z_n) projections."""
     import matplotlib.pyplot as plt
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        CMAP_SEQUENTIAL,
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        setup,
+    )
     setup()
 
     DB_values = data["DB_values"]
     labels = data["labels"]
+    render_modes = data["render_modes"]
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(2, 3, figsize=spec.figsize)
     axes_flat = axes.flatten()
+    x_limits = []
+    z_limits = []
+    for DB in DB_values:
+        xz = data[f"DB_{DB}_xz"]
+        x_limits.extend([xz[:, 0].min(), xz[:, 0].max()])
+        z_limits.extend([xz[:, 1].min(), xz[:, 1].max()])
+    x_pad = 0.03 * (max(x_limits) - min(x_limits))
+    z_pad = 0.03 * (max(z_limits) - min(z_limits))
+    xlim = (min(x_limits) - x_pad, max(x_limits) + x_pad)
+    zlim = (min(z_limits) - z_pad, max(z_limits) + z_pad)
 
     for idx, DB in enumerate(DB_values):
         ax = axes_flat[idx]
         xz = data[f"DB_{DB}_xz"]
-        ax.scatter(xz[:, 0], xz[:, 1], s=0.01, c=COLORS["black"], alpha=0.3,
-                   rasterized=True)
-        ax.set_title(f"$D_B={DB}$ ({labels[idx]})", loc="left")
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$z$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        mode = str(render_modes[idx])
+        if mode == "line":
+            alpha = 0.28 if idx == 0 else 0.09
+            ax.scatter(
+                xz[:, 0],
+                xz[:, 1],
+                s=0.08,
+                c=COLORS["black"],
+                alpha=alpha,
+                linewidths=0,
+                rasterized=True,
+            )
+        elif mode == "points":
+            ax.scatter(xz[:, 0], xz[:, 1], s=2.1, c=COLORS["black"], alpha=0.9, linewidths=0)
+        else:
+            ax.hexbin(
+                xz[:, 0],
+                xz[:, 1],
+                gridsize=60,
+                bins="log",
+                mincnt=1,
+                cmap=CMAP_SEQUENTIAL,
+                linewidths=0.0,
+                rasterized=True,
+            )
+        ax.set_title(f"$D_B = {DB:.3f}$\n{labels[idx]}", loc="left")
+        if idx >= 3:
+            ax.set_xlabel("$x$")
+        else:
+            ax.set_xlabel("")
+        if idx % 3 == 0:
+            ax.set_ylabel("$z$")
+        else:
+            ax.set_ylabel("")
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*zlim)
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
 
-    fig.suptitle(
-        r"$(x_n, z_n)$ projections, $\varepsilon = 5 \times 10^{-3}$",
-        fontsize=spec.title_size,
-        y=1.02,
+    fig.text(
+        0.01,
+        0.995,
+        r"Representative $(x_n, z_n)$ projections at $\varepsilon = 5 \times 10^{-3}$",
+        ha="left",
+        va="top",
+        fontsize=spec.legend_size,
     )
     fig.savefig(PROJ_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -274,8 +345,17 @@ def main():
     try:
         proj_data = safe_load(PROJ_NPZ)
         print(f"Loaded {PROJ_NPZ}")
+        schema_version = int(np.atleast_1d(proj_data.get("schema_version", np.array([0])))[0])
+        if schema_version < PROJ_SCHEMA_VERSION:
+            raise KeyError("stale projection cache")
+        if "render_modes" not in proj_data.files:
+            raise KeyError("projection metadata missing")
     except FileNotFoundError:
         print("Computing projections...")
+        compute_projections()
+        proj_data = safe_load(PROJ_NPZ)
+    except KeyError:
+        print("Recomputing projections with updated gallery metadata...")
         compute_projections()
         proj_data = safe_load(PROJ_NPZ)
     plot_projections(proj_data)

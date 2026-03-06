@@ -152,15 +152,17 @@ def plot(data):
     fig, axes = plt.subplots(3, 3, figsize=(spec.figsize[0], spec.figsize[1] * 1.42))
 
     for row, (model, eps_vals, title) in enumerate(configs):
+        row_arrays = [data[f"{model}_eps_{eps}"] for eps in eps_vals if f"{model}_eps_{eps}" in data]
+        row_stack = np.concatenate([arr.ravel() for arr in row_arrays])
+        vmin, vmax = np.percentile(row_stack, [1.0, 99.0])
+        if vmax - vmin < 1e-12:
+            vmin -= 0.5
+            vmax += 0.5
         for col, eps in enumerate(eps_vals):
             ax = axes[row, col]
             key = f"{model}_eps_{eps}"
             if key in data:
                 st = data[key]
-                # Per-panel normalization to handle different value ranges
-                vmin, vmax = np.nanmin(st), np.nanmax(st)
-                if vmax - vmin < 1e-12:
-                    vmin, vmax = vmin - 0.5, vmax + 0.5
                 ax.imshow(st, aspect="auto", cmap=CMAP_SPACETIME,
                           origin="lower", interpolation="nearest",
                           vmin=vmin, vmax=vmax)
@@ -168,11 +170,13 @@ def plot(data):
             if col == 0:
                 ax.set_ylabel(f"{title}\nTime $n$")
             else:
-                ax.set_ylabel("$n$")
-            ax.set_xlabel("Site $i$")
-            apply_axes_polish(ax, kind="grid", title_loc="left")
+                ax.set_ylabel("")
+            if row == len(configs) - 1:
+                ax.set_xlabel("Site $i$")
+            else:
+                ax.set_xlabel("")
+            apply_axes_polish(ax, kind="grid", title_loc="left", grid=False)
 
-    fig.suptitle("Spatiotemporal intermittency in CML", fontsize=spec.title_size, y=1.01)
     fig.savefig(STI_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {STI_PNG}")

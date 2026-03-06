@@ -121,26 +121,39 @@ def plot_attractors(data):
     setup()
 
     D_values = data["D_values"]
-    labels = ["smooth torus", "torus",
-              "wrinkled torus", "fractal torus",
+    labels = ["smooth torus", "weakly wrinkled",
+              "wrinkled torus", "fractalizing torus",
               "onset of chaos", "chaos"]
+
+    all_x = np.concatenate([data[f"D_{D}_traj"][:, 0] for D in D_values])
+    all_y = np.concatenate([data[f"D_{D}_traj"][:, 1] for D in D_values])
+    pad = 0.05
+    x_span = all_x.max() - all_x.min()
+    y_span = all_y.max() - all_y.min()
+    xlim = (all_x.min() - pad * x_span, all_x.max() + pad * x_span)
+    ylim = (all_y.min() - pad * y_span, all_y.max() + pad * y_span)
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(2, 3, figsize=spec.figsize)
+    fig.subplots_adjust(hspace=0.48, wspace=0.24)
     axes_flat = axes.flatten()
 
     for idx, D in enumerate(D_values):
         ax = axes_flat[idx]
         traj = data[f"D_{D}_traj"]
-        ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
-                   alpha=0.15, rasterized=True)
+        ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"],
+                   alpha=0.16, rasterized=True)
         ax.set_title(f"$D = {D}$\n{labels[idx]}", loc="left")
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$y$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        if idx // 3 == 1:
+            ax.set_xlabel("$x$")
+        if idx % 3 == 0:
+            ax.set_ylabel("$y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
         from matplotlib.ticker import MaxNLocator
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
 
     fig.suptitle(
         r"Fractalization of torus, $\alpha = 0.3$",
@@ -170,16 +183,15 @@ def plot_dimension(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, D2, color=COLORS["black"], linestyle="-", lw=0.8)
-    ax.axhline(1.0, color=COLORS["blue"], lw=0.5, ls="--", alpha=0.6,
-               label="$D_2 = 1$ (smooth curve)")
-    ax.axhline(2.0, color=COLORS["red"], lw=0.5, ls="--", alpha=0.6,
-               label="$D_2 = 2$ (area-filling)")
+    ax.axhline(1.0, color=COLORS["blue"], lw=0.6, ls="--", alpha=0.7,
+               label="$D_2 = 1$ (smooth torus)")
+    ax.axvspan(1.92, 1.95, color=COLORS["grey"], alpha=0.10, zorder=0)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Correlation dimension $D_2$")
     ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
-    ax.set_ylim(0.5, 2.5)
-    apply_axes_polish(ax, kind="double", title_loc="left")
-    finalize_legend(ax, kind="single", loc="best")
+    ax.set_ylim(0.9, 1.45)
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
+    finalize_legend(ax, kind="single", loc="upper left")
 
     fig.savefig(DIM_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

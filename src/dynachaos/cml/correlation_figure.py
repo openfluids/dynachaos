@@ -244,7 +244,6 @@ def plot(data):
     from dynachaos.utils.style import (
         apply_axes_polish,
         figure_spec,
-        finalize_legend,
         series_style,
         setup,
     )
@@ -259,56 +258,63 @@ def plot(data):
     density = data["density"]
 
     labels = [
-        r"$a=1.50$ (frozen random)",
-        r"$a=1.70$ (pattern selection)",
-        r"$a=1.85$ (defect turbulence)",
-        r"$a=1.95$ (FDT)",
+        r"$a=1.50$",
+        r"$a=1.70$",
+        r"$a=1.85$",
+        r"$a=1.95$",
     ]
 
     spec = figure_spec("double")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(spec.figsize[0], spec.figsize[1] + 0.2),
+        gridspec_kw={"width_ratios": (1.25, 0.95)},
+    )
 
     # --- Panel (a): Spatial correlation decay ---
-    # Stagger annotation vertical positions to avoid overlap
-    annot_y_offsets = [2e-1, 5e-2, 1e-2, 3e-3]
-
     for ia in range(len(a_corr)):
         sty = series_style(ia)
+        sty.pop("marker", None)
+        sty.pop("markersize", None)
+        sty.pop("markerfacecolor", None)
+        sty.pop("markeredgewidth", None)
         abs_corr = np.abs(all_corr[ia])
-        # Avoid log(0): mask zeros
         mask = abs_corr > 0
         r_plot = r_vals[mask]
         c_plot = abs_corr[mask]
-        ax1.semilogy(r_plot, c_plot, markevery=8, label=labels[ia], **sty)
-
-        # Annotate correlation length
         xi = xi_values[ia]
-        if np.isfinite(xi) and xi < r_vals[-1]:
-            ax1.annotate(
-                rf"$\xi\!\approx\!{xi:.1f}$",
-                xy=(min(xi * 1.2, r_vals[-1] * 0.55), annot_y_offsets[ia]),
-                fontsize=spec.legend_size - 0.5,
-                color=sty["color"],
-            )
+        label = labels[ia]
+        if np.isfinite(xi):
+            label += rf", $\xi \approx {xi:.1f}$"
+        ax1.semilogy(r_plot, c_plot, label=label, **sty)
 
     ax1.set_xlabel(r"Separation $r$")
     ax1.set_ylabel(r"$|C(r)|/C(0)$")
-    ax1.set_title("(a)", loc="left")
-    apply_axes_polish(ax1, kind="double", title_loc="left")
-    finalize_legend(ax1, kind="double", loc="upper right")
+    ax1.set_title(r"(a) Spatial correlation decay", loc="left")
+    apply_axes_polish(ax1, kind="double", title_loc="left", grid=False)
+    handles, labels_out = ax1.get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels_out,
+        loc="upper center",
+        ncol=4,
+        frameon=False,
+        fontsize=spec.legend_size,
+        bbox_to_anchor=(0.5, 1.01),
+    )
 
     # --- Panel (b): Lyapunov density convergence ---
     for ia in range(len(a_lyap)):
         sty = series_style(ia)
-        ax2.plot(L_vals, density[ia], markevery=1, label=labels[ia], **sty)
+        ax2.plot(L_vals, density[ia], markevery=1, **sty)
 
     ax2.set_xlabel(r"Subsystem size $L$")
     ax2.set_ylabel(r"$\lambda_{\max}/L$")
-    ax2.set_title("(b)", loc="left")
-    apply_axes_polish(ax2, kind="double", title_loc="left")
-    finalize_legend(ax2, kind="double", loc="upper right")
+    ax2.set_title(r"(b) Finite-size proxy $\lambda_{\max}/L$", loc="left")
+    apply_axes_polish(ax2, kind="double", title_loc="left", grid=False)
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.90])
     fig.savefig(CORR_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {CORR_PNG}")

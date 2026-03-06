@@ -181,18 +181,19 @@ def plot_map_I(data):
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(1, 3, figsize=(spec.figsize[0], 2.75))
-    fig.subplots_adjust(wspace=0.34)
+    fig.subplots_adjust(wspace=0.24)
     for idx, D in enumerate(D_values):
         ax = axes[idx]
         key = f"D_{D}_traj"
         if key in data:
             traj = data[key]
-            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
-                       alpha=0.3, rasterized=True)
+            ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"],
+                       alpha=0.22, rasterized=True)
         ax.set_title(f"$D={D}$ ({labels[idx]})", loc="left")
         ax.set_xlabel("$X$")
-        ax.set_ylabel("$Y$")
-        apply_axes_polish(ax, kind="grid", title_loc="left")
+        if idx == 0:
+            ax.set_ylabel("$Y$")
+        apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
 
     fig.suptitle(
         "Map (I), $\\alpha = 0.4$: projection onto $(X, Y)$",
@@ -266,6 +267,7 @@ def plot_map_IV(data):
 def plot_lyapunov(data):
     """Plot Lyapunov exponents for Map (IV) vs D."""
     import matplotlib.pyplot as plt
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -291,8 +293,17 @@ def plot_lyapunov(data):
     ax.set_xlabel(r"$D$")
     ax.set_ylabel("Lyapunov exponent")
     ax.set_title("Map (IV), $\\alpha = 0.3$", loc="left")
-    apply_axes_polish(ax, kind="double", title_loc="left")
+    apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="double", loc="upper right")
+
+    axins = inset_axes(ax, width="38%", height="42%", loc="lower left", borderpad=1.0)
+    axins.plot(D, spectra[:, 1], color=COLORS["blue"], lw=0.8)
+    axins.axhline(0, color=COLORS["red"], lw=0.4, ls="--")
+    axins.set_xlim(D.min(), D.max())
+    axins.set_ylim(-1.8e-4, 2.0e-5)
+    axins.set_title(r"$\lambda_2$ near zero", loc="left", fontsize=spec.tick_size)
+    apply_axes_polish(axins, kind="grid", title_loc="left", grid=False)
+    axins.tick_params(labelsize=spec.tick_size - 0.8)
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
