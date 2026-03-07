@@ -26,6 +26,7 @@ USAGE:   python src/dynachaos/maps/fractalization.py
 
 from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.delayed_logistic import delayed_logistic
 import numpy as np
 
@@ -49,15 +50,12 @@ def iterate(A, D, n_transient=20_000, n_record=100_000, x0=None):
         fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
         x0 = np.array([fp + 0.01, fp - 0.01])
 
-    state = x0.copy()
-    for _ in range(n_transient):
-        state = delayed_logistic(state, A, D)
-
-    traj = np.empty((n_record, 2))
-    for i in range(n_record):
-        state = delayed_logistic(state, A, D)
-        traj[i] = state
-    return traj
+    return trajectory_after_transient(
+        x0,
+        lambda state: delayed_logistic(state, A, D),
+        n_transient,
+        n_record,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -204,15 +202,13 @@ def plot_dimension(data):
 
 def compute_animation_data():
     """Sweep D from 1.75 to 1.96 for fractalization animation."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     A = 0.3
     D_sweep = np.linspace(1.75, 1.96, 200)
 
     def iterate_fn(D):
         return iterate(A, D, n_transient=30_000, n_record=5_000)
 
-    compute_animation_sweep(iterate_fn, D_sweep, ANIM_NPZ, n_plot=5_000)
+    run_animation_sweep(iterate_fn, D_sweep, ANIM_NPZ, n_plot=5_000)
 
 
 def make_animation_gif(data):

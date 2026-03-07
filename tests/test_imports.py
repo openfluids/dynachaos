@@ -1,4 +1,5 @@
 import dynachaos
+import pytest
 from dynachaos.io.paths import output_root, section_dir
 
 
@@ -42,3 +43,10 @@ def test_cml_reexports():
 def test_safe_load_reexport():
     from dynachaos.io import safe_load
     assert callable(safe_load)
+
+
+def test_viz_reexports():
+    pytest.importorskip("matplotlib")
+    from dynachaos.viz import poincare_section_plot, return_map_plot
+    assert callable(poincare_section_plot)
+    assert callable(return_map_plot)

@@ -123,6 +123,24 @@ def _quality_metrics(crossing_times: np.ndarray, signal: np.ndarray) -> dict[str
     }
 
 
+def _empty_result(arr, fs, dimension, interpolation_used, mean_signal, delay_samples):
+    """Canonical empty Poincare section result."""
+    empty = np.empty(0, dtype=np.float64)
+    return {
+        "crossing_times": empty,
+        "crossing_values": empty,
+        "planes": {},
+        "metrics": _quality_metrics(empty, arr),
+        "delay": int(delay_samples),
+        "dimension": int(max(1, dimension)),
+        "interpolation_used": bool(interpolation_used),
+        "mean_signal": float(mean_signal),
+        "sampling_frequency": float(fs),
+        "section_plane_type": "unavailable",
+        "section_points": np.empty((0, 2), dtype=np.float64),
+    }
+
+
 def poincare_section(
     signal: np.ndarray,
     fs: float,
@@ -170,26 +188,10 @@ def poincare_section(
 
     arr = _coerce_signal(signal)
     if arr.size < 3:
-        empty = np.empty(0, dtype=np.float64)
-        return {
-            "crossing_times": empty,
-            "crossing_values": empty,
-            "planes": {},
-            "metrics": {
-                "coefficient_of_variation": np.nan,
-                "mean_period": np.nan,
-                "spectral_peak_ratio": np.nan,
-                "quality": "insufficient_data",
-                "num_crossings": 0,
-            },
-            "delay": 1,
-            "dimension": int(max(1, dimension)),
-            "interpolation_used": bool(interpolation),
-            "mean_signal": float(np.mean(arr)) if arr.size else 0.0,
-            "sampling_frequency": float(fs),
-            "section_plane_type": "unavailable",
-            "section_points": np.empty((0, 2), dtype=np.float64),
-        }
+        return _empty_result(
+            arr, fs, dimension, interpolation,
+            float(np.mean(arr)) if arr.size else 0.0, 1,
+        )
 
     mean_signal = float(np.mean(arr)) if level is None else float(level)
     shifted = arr - mean_signal
@@ -197,20 +199,10 @@ def poincare_section(
 
     crossing_idx = _crossing_indices(shifted, direction=direction, eps=eps)
     if crossing_idx.size == 0:
-        empty = np.empty(0, dtype=np.float64)
-        return {
-            "crossing_times": empty,
-            "crossing_values": empty,
-            "planes": {},
-            "metrics": _quality_metrics(empty, arr),
-            "delay": int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
-            "dimension": int(max(1, dimension)),
-            "interpolation_used": bool(interpolation),
-            "mean_signal": mean_signal,
-            "sampling_frequency": float(fs),
-            "section_plane_type": "unavailable",
-            "section_points": np.empty((0, 2), dtype=np.float64),
-        }
+        return _empty_result(
+            arr, fs, dimension, interpolation, mean_signal,
+            int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
+        )
 
     if interpolation:
         den = shifted[crossing_idx + 1] - shifted[crossing_idx]
@@ -218,20 +210,10 @@ def poincare_section(
         crossing_idx = crossing_idx[good]
         den = den[good]
         if crossing_idx.size == 0:
-            empty = np.empty(0, dtype=np.float64)
-            return {
-                "crossing_times": empty,
-                "crossing_values": empty,
-                "planes": {},
-                "metrics": _quality_metrics(empty, arr),
-                "delay": int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
-                "dimension": int(max(1, dimension)),
-                "interpolation_used": True,
-                "mean_signal": mean_signal,
-                "sampling_frequency": float(fs),
-                "section_plane_type": "unavailable",
-                "section_points": np.empty((0, 2), dtype=np.float64),
-            }
+            return _empty_result(
+                arr, fs, dimension, True, mean_signal,
+                int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
+            )
         alpha = -shifted[crossing_idx] / den
     else:
         alpha = np.zeros(crossing_idx.size, dtype=np.float64)

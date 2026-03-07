@@ -13,6 +13,7 @@ from dynachaos.diagnostics.embedding import (
     false_nearest_neighbors,
     optimal_delay,
     optimal_dimension,
+    select_dimension_cao,
 )
 from dynachaos.diagnostics.lyapunov import (
     flow_lyapunov_spectrum,
@@ -21,6 +22,7 @@ from dynachaos.diagnostics.lyapunov import (
 )
 from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
+from dynachaos.diagnostics.poincare import poincare_section
 from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
 from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
@@ -45,9 +47,11 @@ __all__ = [
     "optimal_delay",
     "optimal_dimension",
     "permutation_entropy",
+    "poincare_section",
     "recurrence_matrix",
     "rqa",
     "sali",
     "sample_entropy",
+    "select_dimension_cao",
     "zero_one_statistic",
 ]

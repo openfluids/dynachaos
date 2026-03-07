@@ -26,6 +26,7 @@ USAGE:   python src/dynachaos/maps/delayed_logistic.py
 """
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 import numpy as np
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -71,20 +72,13 @@ def compute_attractor(A, D, n_transient=10_000, n_plot=50_000, x0=None):
         fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
         x0 = np.array([fp + 0.01, fp - 0.01])
 
-    state = x0.copy()
-    for _ in range(n_transient):
-        state = delayed_logistic(state, A, D)
-        if np.any(np.abs(state) > 1e10):
-            return None
-
-    traj = np.empty((n_plot, 2))
-    for i in range(n_plot):
-        state = delayed_logistic(state, A, D)
-        if np.any(np.abs(state) > 1e10):
-            return None
-        traj[i] = state
-
-    return traj
+    return trajectory_after_transient(
+        x0,
+        lambda state: delayed_logistic(state, A, D),
+        n_transient,
+        n_plot,
+        diverged_fn=lambda state: np.any(np.abs(state) > 1e10),
+    )
 
 
 def compute_attractors():
@@ -339,15 +333,13 @@ def plot_locking_sequence(data):
 
 def compute_animation_data():
     """Sweep D from 1.4 to 3.5 and store attractor trajectories for animation."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     A = 0.3
     D_sweep = np.linspace(1.4, 3.5, 200)
 
     def iterate_fn(D):
         return compute_attractor(A, D, n_transient=20_000, n_plot=5_000)
 
-    compute_animation_sweep(iterate_fn, D_sweep, ANIM_NPZ, n_plot=5_000)
+    run_animation_sweep(iterate_fn, D_sweep, ANIM_NPZ, n_plot=5_000)
 
 
 def make_animation_gif(data):

@@ -18,22 +18,13 @@ from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.primitives import logistic
 import numpy as np
 
+from dynachaos.cml.primitives import gcm_step
+
 FIG_DIR = section_dir("sec10_gcm")
 
 GCM_NPZ = FIG_DIR / "gcm_results.npz"
 GCM_PNG = FIG_DIR / "gcm_msd.png"
 DIST_PNG = FIG_DIR / "gcm_distribution.png"
-
-
-# ---------------------------------------------------------------------------
-# GCM model
-# ---------------------------------------------------------------------------
-
-def gcm_step(x, a, eps):
-    """One GCM step."""
-    fx = logistic(x, a)
-    mean_field = np.mean(fx)
-    return (1.0 - eps) * fx + eps * mean_field
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ OUTPUTS: figures/sec06_three_torus/double_staircase.npz, .png
 """
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import iterate_unwrapped
 import numpy as np
 
 FIG_DIR = section_dir("sec06_three_torus")
@@ -48,22 +49,19 @@ def rotation_numbers(A, C, D, eps,
     if state0 is None:
         state0 = np.array([0.1, 0.1])
 
-    theta_uw, phi_uw = float(state0[0]), float(state0[1])
+    unwrapped = np.array(state0, dtype=np.float64, copy=True)
 
-    # Transient (unwrapped)
-    for _ in range(n_transient):
-        dt = A * np.sin(2 * np.pi * theta_uw) + D + eps * np.sin(2 * np.pi * phi_uw)
-        theta_uw += dt
-        phi_uw += C
+    def increment(state):
+        theta_uw, phi_uw = state
+        dtheta = A * np.sin(2 * np.pi * theta_uw) + D + eps * np.sin(2 * np.pi * phi_uw)
+        return np.array([dtheta, C], dtype=np.float64)
 
-    theta_start, phi_start = theta_uw, phi_uw
-    for _ in range(n_iter):
-        dt = A * np.sin(2 * np.pi * theta_uw) + D + eps * np.sin(2 * np.pi * phi_uw)
-        theta_uw += dt
-        phi_uw += C
+    unwrapped = iterate_unwrapped(unwrapped, increment, n_transient)
+    start = unwrapped.copy()
+    unwrapped = iterate_unwrapped(unwrapped, increment, n_iter)
 
-    rho_theta = (theta_uw - theta_start) / n_iter
-    rho_phi = (phi_uw - phi_start) / n_iter
+    rho_theta = (unwrapped[0] - start[0]) / n_iter
+    rho_phi = (unwrapped[1] - start[1]) / n_iter
     return rho_theta, rho_phi
 
 

@@ -26,7 +26,11 @@ USAGE:   python src/dynachaos/cml/gcm_clusters.py
 from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
-from dynachaos.cml.globally_coupled import gcm_step
+from dynachaos.cml.primitives import (
+    cluster_labels_by_tolerance,
+    gcm_step,
+    sustained_positive_mask,
+)
 
 FIG_DIR = section_dir("sec10_gcm")
 
@@ -37,51 +41,17 @@ COLL_PNG = FIG_DIR / "collective_lyapunov.png"
 
 
 # ---------------------------------------------------------------------------
-# Cluster detection
+# Cluster computation
 # ---------------------------------------------------------------------------
 
 def detect_clusters(x, tol=1e-6):
-    """Assign cluster labels to sites based on proximity.
-
-    Two sites i, j belong to the same cluster if |x(i) - x(j)| < tol.
-    Returns an integer array of cluster labels (0, 1, 2, ...).
-    """
-    N = len(x)
-    labels = -np.ones(N, dtype=int)
-    cluster_id = 0
-
-    idx_sorted = np.argsort(x)
-    x_sorted = x[idx_sorted]
-
-    labels[idx_sorted[0]] = cluster_id
-    for k in range(1, N):
-        if x_sorted[k] - x_sorted[k - 1] > tol:
-            cluster_id += 1
-        labels[idx_sorted[k]] = cluster_id
-
-    return labels
+    """Backward-compatible alias for shared cluster labelling."""
+    return cluster_labels_by_tolerance(x, tol=tol)
 
 
 def broad_positive_mask(values, threshold=0.02, min_run=4):
-    """Keep only sustained positive runs above a small threshold."""
-    mask = values > threshold
-    broad = np.zeros_like(mask, dtype=bool)
-    start = None
-    for idx, flag in enumerate(mask):
-        if flag and start is None:
-            start = idx
-        elif not flag and start is not None:
-            if idx - start >= min_run:
-                broad[start:idx] = True
-            start = None
-    if start is not None and len(mask) - start >= min_run:
-        broad[start:] = True
-    return broad
-
-
-# ---------------------------------------------------------------------------
-# Cluster computation
-# ---------------------------------------------------------------------------
+    """Backward-compatible alias for sustained positive-run masking."""
+    return sustained_positive_mask(values, threshold=threshold, min_run=min_run)
 
 def compute_clusters():
     """Compute GCM cluster spacetime diagram."""
@@ -108,7 +78,7 @@ def compute_clusters():
 
     for t in range(n_record):
         x = gcm_step(x, a, eps)
-        cluster_labels[t] = detect_clusters(x)
+        cluster_labels[t] = cluster_labels_by_tolerance(x)
         x_record[t] = x
 
     np.savez_compressed(
@@ -301,7 +271,7 @@ def plot_collective(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
 
-    positive = broad_positive_mask(lyap_c)
+    positive = sustained_positive_mask(lyap_c)
 
     sty = series_style(0)
     ax.plot(

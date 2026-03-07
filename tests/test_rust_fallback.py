@@ -168,27 +168,7 @@ class TestAMIParity:
                                    err_msg="AMI Rust vs Python mismatch")
 
 
-@needs_rust
-class TestCaoParity:
-    """Verify Rust and Python Cao E/E* agree."""
-
-    def test_cao_parity(self):
-        series = logistic_series(n=2000)
-        from dynachaos.diagnostics import embedding as emb_mod
-
-        # Rust path
-        from dynachaos._rust import cao_statistic as rust_cao
-        E_rust, Es_rust = rust_cao(series, tau=1, d_max=6, theiler_window=0)
-        E_rust = np.asarray(E_rust)
-        Es_rust = np.asarray(Es_rust)
-
-        # Python path
-        E_py, Es_py = emb_mod._cao_python(series, tau=1, d_max=6, theiler_window=0)
-
-        np.testing.assert_allclose(E_rust, E_py, rtol=1e-8,
-                                   err_msg="Cao E(d) Rust vs Python mismatch")
-        np.testing.assert_allclose(Es_rust, Es_py, rtol=1e-8,
-                                   err_msg="Cao E*(d) Rust vs Python mismatch")
+# TestCaoParity removed: Rust cao_statistic disabled (scipy cKDTree is 70x faster).
 
 
 @needs_rust
@@ -284,33 +264,7 @@ class TestCaoSelectorParity:
         assert d_rust == d_python == expected
 
 
-@needs_rust
-class TestFNNParity:
-    """Verify Rust and Python FNN fractions agree."""
-
-    def test_fnn_parity(self):
-        series = logistic_series(n=2000)
-        from dynachaos.diagnostics import embedding as emb_mod
-
-        # Rust path
-        from dynachaos._rust import fnn_statistic as rust_fnn
-        f1_rs, f2_rs, f3_rs = rust_fnn(series, tau=1, d_max=5,
-                                        r_tol=15.0, a_tol=2.0, theiler_window=0)
-        f1_rs = np.asarray(f1_rs)
-        f2_rs = np.asarray(f2_rs)
-        f3_rs = np.asarray(f3_rs)
-
-        # Python path
-        f1_py, f2_py, f3_py = emb_mod._fnn_python(series, tau=1, d_max=5,
-                                                    R_tol=15.0, A_tol=2.0,
-                                                    theiler_window=0)
-
-        np.testing.assert_allclose(f1_rs, f1_py, atol=1e-8,
-                                   err_msg="FNN f1 Rust vs Python mismatch")
-        np.testing.assert_allclose(f2_rs, f2_py, atol=1e-8,
-                                   err_msg="FNN f2 Rust vs Python mismatch")
-        np.testing.assert_allclose(f3_rs, f3_py, atol=1e-8,
-                                   err_msg="FNN f3 Rust vs Python mismatch")
+# TestFNNParity removed: Rust fnn_statistic disabled (scipy cKDTree is 100x faster).
 
 
 @needs_rust

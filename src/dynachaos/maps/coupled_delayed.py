@@ -20,6 +20,7 @@ OUTPUTS: figures/sec06_three_torus/*.npz, *.png
 """
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 import numpy as np
 
 FIG_DIR = section_dir("sec06_three_torus")
@@ -124,17 +125,14 @@ def compute_projections():
     for DB, label in zip(DB_values, labels, strict=False):
         DA = DB + 0.1
         print(f"  DB={DB} ({label})")
-        x0 = np.array([0.5, 0.5, 0.3, 0.3])
-        state = x0.copy()
-        for _ in range(30_000):
-            state = coupled_delayed(state, A, DA, DB, eps)
-
-        n_plot = 50_000
-        traj = np.empty((n_plot, 4))
-        for i in range(n_plot):
-            state = coupled_delayed(state, A, DA, DB, eps)
-            traj[i] = state
-        results[f"DB_{DB}_xz"] = traj[:, [0, 2]]
+        traj = trajectory_after_transient(
+            np.array([0.5, 0.5, 0.3, 0.3], dtype=np.float64),
+            lambda state: coupled_delayed(state, A, DA, DB, eps),
+            30_000,
+            50_000,
+            project_fn=lambda state: state[[0, 2]],
+        )
+        results[f"DB_{DB}_xz"] = traj
 
     results["DB_values"] = np.array(DB_values)
     results["labels"] = np.array(labels)
@@ -291,25 +289,22 @@ def plot_projections(data):
 
 def compute_animation_data():
     """Sweep DB from 2.1 to 2.65 for the three-torus animation."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     A = 0.4
     eps = 5e-3
     DB_sweep = np.linspace(2.1, 2.65, 300)
-    x0 = np.array([0.5, 0.5, 0.3, 0.3])
+    x0 = np.array([0.5, 0.5, 0.3, 0.3], dtype=np.float64)
 
     def iterate_fn(DB):
         DA = DB + 0.1
-        state = x0.copy()
-        for _ in range(30_000):
-            state = coupled_delayed(state, A, DA, DB, eps)
-        traj = np.empty((10_000, 2))
-        for i in range(10_000):
-            state = coupled_delayed(state, A, DA, DB, eps)
-            traj[i] = state[[0, 2]]  # project (x, z)
-        return traj
+        return trajectory_after_transient(
+            x0,
+            lambda state: coupled_delayed(state, A, DA, DB, eps),
+            30_000,
+            10_000,
+            project_fn=lambda state: state[[0, 2]],
+        )
 
-    compute_animation_sweep(
+    run_animation_sweep(
         iterate_fn, DB_sweep, ANIM_NPZ, n_plot=10_000, progress_interval=50,
     )
 

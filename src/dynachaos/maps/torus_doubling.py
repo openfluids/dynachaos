@@ -18,6 +18,7 @@ OUTPUTS: figures/sec04_doubling/*.npz, *.png
 """
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
 import numpy as np
 
@@ -85,21 +86,14 @@ def map_IV_jac(state, A, D):
 
 def iterate_map(f, x0, A, D, n_transient=20_000, n_plot=100_000):
     """Iterate a map and return trajectory after transient."""
-    state = np.asarray(x0, dtype=np.float64)
-    for _ in range(n_transient):
-        state = f(state, A, D)
-        if np.any(np.abs(state) > 1e10):
-            return None  # diverged
-
-    dim = len(state)
-    traj = np.empty((n_plot, dim))
-    for i in range(n_plot):
-        state = f(state, A, D)
-        traj[i] = state
-        if np.any(np.abs(state) > 1e10):
-            return traj[:i]
-
-    return traj
+    return trajectory_after_transient(
+        x0,
+        lambda state: f(state, A, D),
+        n_transient,
+        n_plot,
+        diverged_fn=lambda state: np.any(np.abs(state) > 1e10),
+        allow_partial=True,
+    )
 
 
 def compute_map_I():
@@ -316,8 +310,6 @@ def plot_lyapunov(data):
 
 def compute_map_I_animation():
     """Sweep D from 1.9 to 2.25 for Map (I) animation at A=0.4."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     A = 0.4
     D_sweep = np.linspace(1.9, 2.25, 200)
     x0 = np.array([0.5, 0.5, 0.5])
@@ -328,7 +320,7 @@ def compute_map_I_animation():
             return None
         return traj[:, :2]
 
-    compute_animation_sweep(iterate_fn, D_sweep, MAP1_ANIM_NPZ, n_plot=5_000)
+    run_animation_sweep(iterate_fn, D_sweep, MAP1_ANIM_NPZ, n_plot=5_000)
 
 
 def make_map_I_animation_gif(data):
@@ -345,8 +337,6 @@ def make_map_I_animation_gif(data):
 
 def compute_map_IV_animation():
     """Sweep D from 1.48 to 1.53 for Map (IV) animation at A=0.3."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     A = 0.3
     D_sweep = np.linspace(1.48, 1.53, 200)
     x0 = np.array([0.5, 0.5, 0.5, 0.5])
@@ -357,7 +347,7 @@ def compute_map_IV_animation():
             return None
         return traj[:, :2]
 
-    compute_animation_sweep(iterate_fn, D_sweep, MAP4_ANIM_NPZ, n_plot=5_000)
+    run_animation_sweep(iterate_fn, D_sweep, MAP4_ANIM_NPZ, n_plot=5_000)
 
 
 def make_map_IV_animation_gif(data):

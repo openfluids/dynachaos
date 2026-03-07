@@ -26,6 +26,8 @@ from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.primitives import logistic
 import numpy as np
 
+from dynachaos.cml.primitives import cml_step
+
 FIG_DIR = section_dir("sec08_sti")
 
 STI_NPZ = FIG_DIR / "spacetime_diagrams.npz"
@@ -61,20 +63,6 @@ def model_B_g(x):
 def model_C_f(x, A=1.752):
     """Logistic map for model (C)."""
     return logistic(x, A)
-
-
-# ---------------------------------------------------------------------------
-# CML iteration
-# ---------------------------------------------------------------------------
-
-def cml_step(x, f, g, eps):
-    """One CML step with periodic boundary conditions."""
-    fx = f(x)
-    gx = g(x)
-    gx_left = np.roll(gx, -1)
-    gx_right = np.roll(gx, 1)
-    coupling = eps / 2.0 * (gx_left + gx_right - 2.0 * gx)
-    return fx + coupling
 
 
 def simulate_cml(f, g, eps, N=200, n_transient=2000, n_record=500,

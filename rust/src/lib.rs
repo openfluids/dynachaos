@@ -17,8 +17,8 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(recurrence::vertical_lines, m)?)?;
     m.add_function(wrap_pyfunction!(permutation::ordinal_distribution, m)?)?;
     m.add_function(wrap_pyfunction!(ami::ami_histogram, m)?)?;
-    m.add_function(wrap_pyfunction!(embedding::cao_statistic, m)?)?;
-    m.add_function(wrap_pyfunction!(embedding::fnn_statistic, m)?)?;
+    // cao_statistic and fnn_statistic disabled: scipy cKDTree is 70-100x faster.
+    m.add_function(wrap_pyfunction!(embedding::select_dimension_cao, m)?)?;
     m.add_function(wrap_pyfunction!(correlation_gp::correlation_counts, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::fuzzy_entropy_sum, m)?)?;
     m.add_function(wrap_pyfunction!(multifractal::multifractal_moments, m)?)?;

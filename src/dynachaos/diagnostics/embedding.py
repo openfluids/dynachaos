@@ -45,14 +45,14 @@ try:
     import dynachaos._rust as _rust_mod
 
     _ami_histogram_rs = _rust_mod.ami_histogram
-    _cao_statistic_rs = _rust_mod.cao_statistic
-    _fnn_statistic_rs = _rust_mod.fnn_statistic
     _select_dimension_cao_rs = getattr(_rust_mod, "select_dimension_cao", None)
 
     _RUST_AVAILABLE = True
 except ImportError:
     _RUST_AVAILABLE = False
     _select_dimension_cao_rs = None
+
+# Cao/FNN always use Python (scipy cKDTree) — Rust brute-force is 70-100x slower.
 
 
 def _embed(x, d, tau):
@@ -256,12 +256,7 @@ def cao_method(x, tau, d_max=15, theiler_window=0):
     """
     x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
 
-    if _RUST_AVAILABLE:
-        E, E_star = _cao_statistic_rs(x, tau, d_max, theiler_window)
-        E = np.asarray(E)
-        E_star = np.asarray(E_star)
-    else:
-        E, E_star = _cao_python(x, tau, d_max, theiler_window)
+    E, E_star = _cao_python(x, tau, d_max, theiler_window)
 
     # E1[d] = E[d+1] / E[d], E2[d] = E*[d+1] / E*[d]
     E1 = np.empty(d_max - 1)
@@ -372,10 +367,6 @@ def false_nearest_neighbors(x, tau, d_max=15, R_tol=15.0, A_tol=2.0,
     Kennel, M.B. et al. (1992), Phys. Rev. A, 45(6), 3403-3411.
     """
     x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
-
-    if _RUST_AVAILABLE:
-        f1, f2, f3 = _fnn_statistic_rs(x, tau, d_max, R_tol, A_tol, theiler_window)
-        return np.asarray(f1), np.asarray(f2), np.asarray(f3)
 
     return _fnn_python(x, tau, d_max, R_tol, A_tol, theiler_window)
 
@@ -531,6 +522,14 @@ def optimal_dimension(x, tau, d_max=15, method="cao", theiler_window=0):
     d_opt : int
         Estimated optimal embedding dimension.
     """
+    if d_max < 1:
+        raise ValueError(f"d_max must be >= 1 (got {d_max})")
+    if method in ("cao", "cao_legacy") and d_max < 2:
+        raise ValueError(
+            f"d_max must be >= 2 for Cao's method (got {d_max}); "
+            "at least two dimensions are needed to compute E1(d)"
+        )
+
     if method == "cao":
         E1, _ = cao_method(x, tau, d_max, theiler_window=theiler_window)
         return select_dimension_cao(E1, min_dim=2, max_dim=d_max)

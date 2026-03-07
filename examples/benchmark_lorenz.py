@@ -87,7 +87,7 @@ def compute():
 
 
 def plot(data):
-    from _pipeline import plot_benchmark
+    from _pipeline import plot_benchmark, plot_multifractal, plot_zero_one_test
 
     traj = data["traj"]
     spectrum = data["spectrum"]
@@ -112,10 +112,11 @@ def plot(data):
 
     # (x, z) projection
     attractor_xy = (traj[:, 0], traj[:, 2])
+    system_name = r"Lorenz system ($\sigma$=10, $\rho$=28, $\beta$=8/3)"
 
     plot_benchmark(
         results, attractor_xy, OUTPUT_PNG,
-        system_name=r"Lorenz system ($\sigma$=10, $\rho$=28, $\beta$=8/3)",
+        system_name=system_name,
         ref_D2=REF_D2,
         ref_lambda1=REF_LAMBDA1,
         computed_lambda1=float(spectrum[0]),
@@ -123,6 +124,19 @@ def plot(data):
         ref_spectrum=REF_SPECTRUM,
         attractor_xlabel="$x$",
         attractor_ylabel="$z$",
+    )
+
+    # 0-1 test (on subsampled x-component — raw dt=0.01 is too correlated)
+    sub = CONFIG["subsample"]
+    plot_zero_one_test(
+        traj[::sub, 0], OUTPUT_PNG.with_name("benchmark_lorenz_01test.png"),
+        system_name=system_name,
+    )
+
+    # Multifractal
+    plot_multifractal(
+        attractor_xy, OUTPUT_PNG.with_name("benchmark_lorenz_multifractal.png"),
+        system_name=system_name,
     )
 
 

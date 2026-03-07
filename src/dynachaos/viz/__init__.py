@@ -14,6 +14,12 @@ except ImportError as exc:
 
 from dynachaos.viz.bifurcation import bifurcation_diagram
 from dynachaos.viz.cobweb import cobweb_diagram
+from dynachaos.viz.poincare import poincare_section_plot
 from dynachaos.viz.return_map import return_map_plot
 
-__all__ = ["bifurcation_diagram", "cobweb_diagram", "return_map_plot"]
+__all__ = [
+    "bifurcation_diagram",
+    "cobweb_diagram",
+    "poincare_section_plot",
+    "return_map_plot",
+]

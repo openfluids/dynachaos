@@ -26,6 +26,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import (
+    run_animation_sweep,
+    run_transient,
+    sample_trajectory,
+    trajectory_after_transient,
+)
 from dynachaos.maps.primitives import logistic, logistic_derivative
 
 FIG_DIR = section_dir("sec03_transition")
@@ -203,13 +209,12 @@ def compute_attractors():
     results = {}
     for idx, case in enumerate(ATTRACTOR_CASES):
         print(f"  A={case.A} ({case.label})")
-        state = np.array(case.initial_state, dtype=float)
-        for _ in range(50_000):
-            state = coupled_logistic(state, case.A, D)
-        traj = np.empty((100_000, 2))
-        for i in range(100_000):
-            state = coupled_logistic(state, case.A, D)
-            traj[i] = state
+        traj = trajectory_after_transient(
+            np.array(case.initial_state, dtype=float),
+            lambda state: coupled_logistic(state, case.A, D),
+            50_000,
+            100_000,
+        )
         results[f"x_{idx}"] = traj[:, 0]
         results[f"y_{idx}"] = traj[:, 1]
 
@@ -233,14 +238,16 @@ def compute_attractors():
 
 def _find_reference_orbit(A, D, x0, y0, n_transient=500_000, period=32):
     """Find a reference periodic orbit by iterating from (x0, y0)."""
-    state = np.array([x0, y0])
-    for _ in range(n_transient):
-        state = coupled_logistic(state, A, D)
-    ref = np.empty((period, 2))
-    for i in range(period):
-        state = coupled_logistic(state, A, D)
-        ref[i] = state
-    return ref
+    state = run_transient(
+        np.array([x0, y0], dtype=np.float64),
+        lambda s: coupled_logistic(s, A, D),
+        n_transient,
+    )
+    return sample_trajectory(
+        state,
+        lambda s: coupled_logistic(s, A, D),
+        period,
+    )
 
 
 def compute_basins():
@@ -582,22 +589,18 @@ def plot_basins(data):
 
 def compute_animation_data():
     """Sweep A from 0.9 to 1.45 at D=0.1 for animation."""
-    from dynachaos.utils.animation import compute_animation_sweep
-
     D = 0.1
     A_sweep = np.linspace(0.9, 1.45, 200)
 
     def iterate_fn(A):
-        state = np.array([0.1, 0.2])
-        for _ in range(20_000):
-            state = coupled_logistic(state, A, D)
-        traj = np.empty((5_000, 2))
-        for i in range(5_000):
-            state = coupled_logistic(state, A, D)
-            traj[i] = state
-        return traj
+        return trajectory_after_transient(
+            np.array([0.1, 0.2], dtype=np.float64),
+            lambda state: coupled_logistic(state, A, D),
+            20_000,
+            5_000,
+        )
 
-    compute_animation_sweep(iterate_fn, A_sweep, ANIM_NPZ, n_plot=5_000)
+    run_animation_sweep(iterate_fn, A_sweep, ANIM_NPZ, n_plot=5_000)
 
 
 def make_animation_gif(data):

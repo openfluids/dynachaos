@@ -72,7 +72,7 @@ def compute():
 
 
 def plot(data):
-    from _pipeline import plot_benchmark
+    from _pipeline import plot_benchmark, plot_multifractal, plot_zero_one_test
 
     x = data["x"]
     tau_opt = int(data["tau_opt"])
@@ -98,15 +98,28 @@ def plot(data):
     # Time-delay embedding for attractor visualization
     n = len(x) - tau_opt
     attractor_xy = (x[:n], x[tau_opt:tau_opt + n])
+    system_name = r"Mackey-Glass DDE ($\tau$=17)"
 
     plot_benchmark(
         results, attractor_xy, OUTPUT_PNG,
-        system_name=r"Mackey-Glass DDE ($\tau$=17)",
+        system_name=system_name,
         ref_D2=REF_D2,
         ref_lambda1=REF_LAMBDA1,
         computed_lambda1=None,  # not computed for DDE
         attractor_xlabel=r"$x(t)$",
         attractor_ylabel=rf"$x(t-{tau_opt})$",
+    )
+
+    # 0-1 test (subsample by tau_opt to decorrelate the DDE output)
+    plot_zero_one_test(
+        x[::tau_opt], OUTPUT_PNG.with_name("benchmark_mackey_glass_01test.png"),
+        system_name=system_name,
+    )
+
+    # Multifractal
+    plot_multifractal(
+        attractor_xy, OUTPUT_PNG.with_name("benchmark_mackey_glass_multifractal.png"),
+        system_name=system_name,
     )
 
 

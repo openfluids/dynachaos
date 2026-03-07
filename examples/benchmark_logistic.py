@@ -79,9 +79,13 @@ def compute():
 
 
 def plot(data):
-    from _pipeline import plot_benchmark
+    from _pipeline import plot_benchmark, plot_multifractal, plot_zero_one_test
+
+    from dynachaos.maps.base import LogisticMap
+    from dynachaos.viz.cobweb import cobweb_diagram
 
     traj = data["traj"]
+    a = float(data["a"])
     results = {
         "tau_opt": int(data["tau_opt"]),
         "d_opt": int(data["d_opt"]),
@@ -101,17 +105,38 @@ def plot(data):
         "scaling_mask": data["scaling_mask"].astype(bool),
     }
 
-    # Return map: x_n vs x_{n+1}
+    # Return map xy still needed for D2 projection computation
     attractor_xy = (traj[:-1], traj[1:])
+
+    # Cobweb diagram for panel (a)
+    lm = LogisticMap(a=a)
+
+    def cobweb_panel(ax):
+        cobweb_diagram(lm.f, x0=CONFIG["x0"], n_iter=80,
+                       x_range=(-1.0, 1.0), ax=ax)
+        ax.set_aspect("auto")
+
+    system_name = f"Logistic map, a={a:.1f}"
 
     plot_benchmark(
         results, attractor_xy, OUTPUT_PNG,
-        system_name=f"Logistic map, a={float(data['a']):.1f}",
+        system_name=system_name,
         ref_D2=REF_D2,
         ref_lambda1=REF_LAMBDA1,
         computed_lambda1=float(data["lambda1"]),
-        attractor_xlabel=r"$x_n$",
-        attractor_ylabel=r"$x_{n+1}$",
+        attractor_plot_fn=cobweb_panel,
+    )
+
+    # 0-1 test
+    plot_zero_one_test(
+        traj, OUTPUT_PNG.with_name("benchmark_logistic_01test.png"),
+        system_name=system_name,
+    )
+
+    # Multifractal
+    plot_multifractal(
+        attractor_xy, OUTPUT_PNG.with_name("benchmark_logistic_multifractal.png"),
+        system_name=system_name,
     )
 
 

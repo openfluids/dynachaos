@@ -16,6 +16,7 @@ USAGE:   python src/dynachaos/maps/circle_map.py                        # .npz e
 """
 
 from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps._iter import iterate_unwrapped, run_transient
 import numpy as np
 
 FIG_DIR = section_dir("sec02_circle_map")
@@ -48,27 +49,25 @@ def rotation_number(A, D=0.25, n_transient=5000, n_iter=50_000, theta0=0.1):
 
     The rotation number is the average advance per iteration (without mod 1).
     """
-    theta = theta0
-    # Transient — iterate without mod to track total advance, then reset
-    theta_unwrapped = theta
-    for _ in range(n_transient):
-        theta_unwrapped += D + A * np.sin(2 * np.pi * theta_unwrapped)
-        # Keep the "wrapped" version for the sin evaluation
-        # but track the unwrapped total
-
-    # Now accumulate for the rotation number
+    # Transient and accumulation are both done in unwrapped coordinates.
+    theta_unwrapped = iterate_unwrapped(
+        theta0,
+        lambda theta: D + A * np.sin(2 * np.pi * theta),
+        n_transient,
+    )
     theta_start = theta_unwrapped
-    for _ in range(n_iter):
-        theta_unwrapped += D + A * np.sin(2 * np.pi * theta_unwrapped)
+    theta_unwrapped = iterate_unwrapped(
+        theta_unwrapped,
+        lambda theta: D + A * np.sin(2 * np.pi * theta),
+        n_iter,
+    )
 
     return (theta_unwrapped - theta_start) / n_iter
 
 
 def lyapunov_exponent(A, D=0.25, n_transient=5000, n_iter=50_000, theta0=0.1):
     """Compute Lyapunov exponent of the circle map at given A, D."""
-    theta = theta0
-    for _ in range(n_transient):
-        theta = circle_map(theta, A, D)
+    theta = float(run_transient(theta0, lambda th: circle_map(th, A, D), n_transient))
 
     log_sum = 0.0
     for _ in range(n_iter):
@@ -106,8 +105,11 @@ def compute():
     theta = np.full(n_params, 0.1)
 
     # Transient (unwrapped)
-    for _ in range(n_transient):
-        theta += D + A_values * np.sin(TWO_PI * theta)
+    theta = iterate_unwrapped(
+        theta,
+        lambda th: D + A_values * np.sin(TWO_PI * th),
+        n_transient,
+    )
     print("  Transient done")
 
     # Record start for rotation number
@@ -221,8 +223,11 @@ def compute_zoom():
     TWO_PI = 2.0 * np.pi
 
     theta = np.full(n_params, 0.1)
-    for _ in range(n_transient):
-        theta += D + A_values * np.sin(TWO_PI * theta)
+    theta = iterate_unwrapped(
+        theta,
+        lambda th: D + A_values * np.sin(TWO_PI * th),
+        n_transient,
+    )
     print("  Zoom transient done")
 
     theta_start = theta.copy()

@@ -16,10 +16,12 @@ OUTPUTS: figures/sec09_pattern/*.npz, *.png
 """
 
 from dynachaos.io.paths import safe_load, section_dir
-from dynachaos.maps.primitives import logistic
 import numpy as np
 
-from dynachaos.cml.primitives import cml_step_logistic as cml_step
+from dynachaos.cml.primitives import (
+    cml_step_logistic as cml_step,
+    cml_step_logistic_batch as _cml_step_batch,
+)
 
 FIG_DIR = section_dir("sec09_pattern")
 
@@ -36,18 +38,6 @@ SPACE_CASES = (
     (1.80, 0.10, "Pattern competition\nintermittency", "d"),
     (1.90, 0.10, "Fully developed\nturbulence", "e"),
 )
-
-
-# ---------------------------------------------------------------------------
-# Phase diagram computation
-# ---------------------------------------------------------------------------
-
-def _cml_step_batch(x, a_col, eps):
-    """Batched CML step: x is (n_a, N), a_col is (n_a, 1)."""
-    fx = logistic(x, a_col)
-    fx_left = np.roll(fx, -1, axis=1)
-    fx_right = np.roll(fx, 1, axis=1)
-    return (1.0 - eps) * fx + eps / 2.0 * (fx_left + fx_right)
 
 
 def compute_phase_diagram():

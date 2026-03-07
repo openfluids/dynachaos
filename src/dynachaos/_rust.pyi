@@ -25,25 +25,16 @@ def ami_histogram(
     n_bins: int = 64,
 ) -> npt.NDArray[np.float64]: ...
 
-def cao_statistic(
-    x: npt.NDArray[np.float64],
-    tau: int,
-    d_max: int,
-    theiler_window: int = 0,
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
-
-def fnn_statistic(
-    x: npt.NDArray[np.float64],
-    tau: int,
-    d_max: int,
-    r_tol: float = 15.0,
-    a_tol: float = 2.0,
-    theiler_window: int = 0,
-) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-]: ...
+def select_dimension_cao(
+    e1: npt.NDArray[np.float64],
+    near_one_lower: float = 0.95,
+    near_one_upper: float = 1.05,
+    saturation_tol: float = 0.02,
+    plateau_span: int = 3,
+    smoothing_window: int = 1,
+    min_dim: int = 2,
+    max_dim: int | None = None,
+) -> int: ...
 
 def correlation_counts(
     traj: npt.NDArray[np.float64],
@@ -51,6 +42,13 @@ def correlation_counts(
     theiler_window: int = 0,
     use_chebyshev: bool = True,
 ) -> npt.NDArray[np.int64]: ...
+
+def fuzzy_entropy_sum(
+    traj: npt.NDArray[np.float64],
+    r: float,
+    n: int,
+    theiler_window: int = 0,
+) -> float: ...
 
 def multifractal_moments(
     field: npt.NDArray[np.float64],

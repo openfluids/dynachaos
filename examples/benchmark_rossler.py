@@ -84,7 +84,7 @@ def compute():
 
 
 def plot(data):
-    from _pipeline import plot_benchmark
+    from _pipeline import plot_benchmark, plot_multifractal, plot_zero_one_test
 
     traj = data["traj"]
     spectrum = data["spectrum"]
@@ -109,15 +109,31 @@ def plot(data):
 
     # (x, y) projection
     attractor_xy = (traj[:, 0], traj[:, 1])
+    system_name = "Rossler system (a=0.2, b=0.2, c=5.7)"
 
     plot_benchmark(
         results, attractor_xy, OUTPUT_PNG,
-        system_name="Rossler system (a=0.2, b=0.2, c=5.7)",
+        system_name=system_name,
         ref_D2=REF_D2,
         ref_lambda1=REF_LAMBDA1,
         computed_lambda1=float(spectrum[0]),
         computed_spectrum=spectrum,
         ref_spectrum=REF_SPECTRUM,
+    )
+
+    # 0-1 test: subsample by tau_opt on the embedding-rate series to
+    # decorrelate.  Rossler's slow orbit needs aggressive subsampling.
+    sub = CONFIG["subsample"]
+    tau_01 = results["tau_opt"]
+    plot_zero_one_test(
+        traj[::sub * tau_01, 0], OUTPUT_PNG.with_name("benchmark_rossler_01test.png"),
+        system_name=system_name,
+    )
+
+    # Multifractal
+    plot_multifractal(
+        attractor_xy, OUTPUT_PNG.with_name("benchmark_rossler_multifractal.png"),
+        system_name=system_name,
     )
 
 

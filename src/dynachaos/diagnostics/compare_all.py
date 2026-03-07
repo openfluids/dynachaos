@@ -16,12 +16,19 @@ OUTPUTS: figures/sec11_diagnostics/*.npz, *.png
 USAGE:   python src/dynachaos/diagnostics/compare_all.py
 """
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import section_dir
 from dynachaos.maps.coupled_delayed import (
     coupled_delayed as _coupled_delayed_map,
     coupled_delayed_jac as _coupled_delayed_jac,
 )
-from dynachaos.maps.primitives import delayed_logistic, delayed_logistic_jac, logistic
+from dynachaos.diagnostics.compare_all_helpers import (
+    delayed_logistic_series,
+    delayed_logistic_trajectory,
+    load_or_compute_npz,
+    logistic_series,
+    sweep_pair_metric,
+    sweep_scalar_metric,
+)
 import numpy as np
 
 FIG_DIR = section_dir("sec11_diagnostics")
@@ -39,35 +46,6 @@ RQA_PNG = FIG_DIR / "rqa_measures.png"
 
 
 # ---------------------------------------------------------------------------
-# Map helpers
-# ---------------------------------------------------------------------------
-
-def _logistic_series(a, n_transient=5000, n_record=10_000):
-    """Scalar time series from the logistic map f(x) = 1 - a x^2."""
-    x = 0.1
-    for _ in range(n_transient):
-        x = logistic(x, a)
-    series = np.empty(n_record)
-    for i in range(n_record):
-        x = logistic(x, a)
-        series[i] = x
-    return series
-
-
-def _delayed_logistic_series(D, A=0.3, n_transient=10_000, n_record=10_000):
-    """Scalar time series (x component) from the delayed logistic map."""
-    fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
-    state = np.array([fp + 0.01, fp - 0.01])
-    for _ in range(n_transient):
-        state = delayed_logistic(state, A, D)
-    series = np.empty(n_record)
-    for i in range(n_record):
-        state = delayed_logistic(state, A, D)
-        series[i] = state[0]
-    return series
-
-
-# ---------------------------------------------------------------------------
 # 0-1 test sweep
 # ---------------------------------------------------------------------------
 
@@ -81,7 +59,7 @@ def compute_01_test():
     K_values = np.empty(n_a)
 
     for i, a in enumerate(a_values):
-        series = _logistic_series(a, n_transient=5000, n_record=5000)
+        series = logistic_series(a, n_transient=5000, n_record=5000)
         K_values[i] = zero_one_statistic(series, n_c=50)
         if (i + 1) % 100 == 0:
             print(f"  0-1 test: {i + 1}/{n_a}")
@@ -141,22 +119,24 @@ def compute_permutation_entropy():
     # Logistic map sweep
     n_a = 500
     a_values = np.linspace(1.0, 2.0, n_a)
-    H_logistic = np.empty(n_a)
-    for i, a in enumerate(a_values):
-        series = _logistic_series(a, n_transient=5000, n_record=5000)
-        H_logistic[i] = permutation_entropy(series, d=5)
-        if (i + 1) % 100 == 0:
-            print(f"  PE logistic: {i + 1}/{n_a}")
+    H_logistic = sweep_scalar_metric(
+        a_values,
+        lambda a: logistic_series(a, n_transient=5000, n_record=5000),
+        lambda series: permutation_entropy(series, d=5),
+        progress_every=100,
+        progress_label="PE logistic",
+    )
 
     # Delayed logistic sweep
     n_D = 300
     D_values = np.linspace(1.5, 2.2, n_D)
-    H_delayed = np.empty(n_D)
-    for i, D in enumerate(D_values):
-        series = _delayed_logistic_series(D, n_transient=5000, n_record=5000)
-        H_delayed[i] = permutation_entropy(series, d=5)
-        if (i + 1) % 100 == 0:
-            print(f"  PE delayed: {i + 1}/{n_D}")
+    H_delayed = sweep_scalar_metric(
+        D_values,
+        lambda D: delayed_logistic_series(D, n_transient=5000, n_record=5000),
+        lambda series: permutation_entropy(series, d=5),
+        progress_every=100,
+        progress_label="PE delayed",
+    )
 
     np.savez_compressed(PE_NPZ, a=a_values, H_logistic=H_logistic,
                         D=D_values, H_delayed=H_delayed)
@@ -174,25 +154,23 @@ def compute_complexity_entropy():
 
     # Sample many parameter values for the logistic map
     a_values = np.linspace(1.0, 2.0, 200)
-    H_vals = np.empty(len(a_values))
-    C_vals = np.empty(len(a_values))
-
-    for i, a in enumerate(a_values):
-        series = _logistic_series(a, n_transient=5000, n_record=5000)
-        H_vals[i], C_vals[i] = complexity_entropy(series, d=5)
-        if (i + 1) % 50 == 0:
-            print(f"  C-H logistic: {i + 1}/{len(a_values)}")
+    H_vals, C_vals = sweep_pair_metric(
+        a_values,
+        lambda a: logistic_series(a, n_transient=5000, n_record=5000),
+        lambda series: complexity_entropy(series, d=5),
+        progress_every=50,
+        progress_label="C-H logistic",
+    )
 
     # Delayed logistic
     D_values = np.linspace(1.5, 2.2, 200)
-    H_del = np.empty(len(D_values))
-    C_del = np.empty(len(D_values))
-
-    for i, D in enumerate(D_values):
-        series = _delayed_logistic_series(D, n_transient=5000, n_record=5000)
-        H_del[i], C_del[i] = complexity_entropy(series, d=5)
-        if (i + 1) % 50 == 0:
-            print(f"  C-H delayed: {i + 1}/{len(D_values)}")
+    H_del, C_del = sweep_pair_metric(
+        D_values,
+        lambda D: delayed_logistic_series(D, n_transient=5000, n_record=5000),
+        lambda series: complexity_entropy(series, d=5),
+        progress_every=50,
+        progress_label="C-H delayed",
+    )
 
     np.savez_compressed(CH_NPZ, a=a_values, H_logistic=H_vals,
                         C_logistic=C_vals, D=D_values,
@@ -219,15 +197,8 @@ def compute_rqa():
     ENTR = np.empty(n_D)
 
     for i, D in enumerate(D_values):
-        fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
-        state = np.array([fp + 0.01, fp - 0.01])
-        for _ in range(10_000):
-            state = delayed_logistic(state, A, D)
-
-        traj = np.empty((2000, 2))
-        for t in range(2000):
-            state = delayed_logistic(state, A, D)
-            traj[t] = state
+        traj = delayed_logistic_trajectory(
+            D, A=A, n_transient=10_000, n_record=2000)
 
         R, _ = recurrence_matrix(traj, percentile=5)
         stats = rqa(R, l_min=2, v_min=2)
@@ -469,13 +440,7 @@ def main():
     ]
 
     for name, npz_path, compute_fn, plot_fn in sections:
-        try:
-            data = safe_load(npz_path)
-            print(f"Loaded {npz_path}")
-        except FileNotFoundError:
-            print(f"Computing {name}...")
-            compute_fn()
-            data = safe_load(npz_path)
+        data = load_or_compute_npz(npz_path, name, compute_fn)
         plot_fn(data)
 
 

@@ -15,10 +15,12 @@ USAGE:   python src/dynachaos/cml/correlation_figure.py
 """
 
 from dynachaos.io.paths import safe_load, section_dir
-from dynachaos.maps.primitives import logistic_derivative
 import numpy as np
 
-from dynachaos.cml.primitives import cml_step_logistic as cml_step
+from dynachaos.cml.primitives import (
+    cml_jacobian_subblock_logistic as _cml_jacobian_subblock,
+    cml_step_logistic as cml_step,
+)
 
 FIG_DIR = section_dir("sec08_sti")
 CORR_NPZ = FIG_DIR / "correlation_decay.npz"
@@ -82,41 +84,6 @@ def compute_correlations():
             all_corr[ia] = corr_sum
 
     return a_values, np.arange(r_max + 1), all_corr
-
-
-# ---------------------------------------------------------------------------
-# Panel 2: Lyapunov density convergence
-# ---------------------------------------------------------------------------
-
-def _cml_jacobian_subblock(x, a, eps, L):
-    """Build the L x L Jacobian block for sites 0..L-1 of the full lattice.
-
-    The CML Jacobian for site i is:
-        J_{ii} = (1 - eps) * f'(x_i)
-        J_{i,i+1} = J_{i,i-1} = (eps/2) * f'(x_{neighbor})
-    with f'(x) = -2 a x.
-
-    For the subsystem (sites 0..L-1), coupling from site L and site N-1
-    (periodic) enters only at the boundary -- those are treated as the
-    external drive on the subsystem and DO contribute via the tangent
-    propagation of the perturbation vector restricted to 0..L-1.
-    """
-    N = len(x)
-    dfx = logistic_derivative(x, a)  # f'(x_i) for all sites
-
-    J = np.zeros((L, L))
-    for i in range(L):
-        J[i, i] = (1.0 - eps) * dfx[i]
-        # Left neighbor
-        i_left = (i - 1) % N
-        if 0 <= i_left < L:
-            J[i, i_left] = (eps / 2.0) * dfx[i_left]
-        # Right neighbor
-        i_right = (i + 1) % N
-        if 0 <= i_right < L:
-            J[i, i_right] = (eps / 2.0) * dfx[i_right]
-
-    return J
 
 
 def compute_lyapunov_density():

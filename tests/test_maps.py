@@ -1,7 +1,27 @@
 import numpy as np
 
+from dynachaos.cml.primitives import (
+    cluster_labels_by_tolerance,
+    cml_step,
+    cml_step_logistic,
+    cml_step_logistic_batch,
+    cml_jacobian_subblock_logistic,
+    gcm_step,
+    sustained_positive_mask,
+)
+from dynachaos.diagnostics.compare_all_helpers import (
+    load_or_compute_npz,
+    sweep_pair_metric,
+    sweep_scalar_metric,
+)
 from dynachaos.maps.circle_map import circle_map, circle_map_derivative
 from dynachaos.cml.gcm_clusters import broad_positive_mask
+from dynachaos.maps._iter import (
+    iterate_unwrapped,
+    run_transient,
+    sample_trajectory,
+    trajectory_after_transient,
+)
 from dynachaos.maps.coupled_logistic import coupled_logistic, coupled_logistic_jac
 from dynachaos.maps.henon import henon, henon_jac
 from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
@@ -171,6 +191,182 @@ def test_broad_positive_mask_rejects_short_spikes():
         mask,
         np.array([False, False, False, True, True, True, True, False]),
     )
+
+
+def test_sustained_positive_mask_matches_legacy_alias():
+    values = np.array([-0.1, 0.03, -0.02, 0.04, 0.05, 0.06, 0.07, -0.01])
+
+    np.testing.assert_array_equal(
+        sustained_positive_mask(values, threshold=0.02, min_run=3),
+        broad_positive_mask(values, threshold=0.02, min_run=3),
+    )
+
+
+def test_cluster_labels_by_tolerance_groups_sorted_runs():
+    values = np.array([0.10, 0.1000002, 0.50, 0.5000001, 0.90])
+
+    labels = cluster_labels_by_tolerance(values, tol=1e-5)
+
+    np.testing.assert_array_equal(labels, np.array([0, 0, 1, 1, 2]))
+
+
+def test_iterate_unwrapped_scalar_matches_manual_accumulation():
+    value = 0.1
+    for _ in range(5):
+        value += 0.25 + 0.1 * value
+
+    helper = iterate_unwrapped(0.1, lambda x: 0.25 + 0.1 * x, 5)
+
+    np.testing.assert_allclose(helper, value)
+
+
+def test_run_transient_and_sample_helpers_record_post_step_states():
+    state = np.array([0.0, 1.0])
+    step_fn = lambda s: s + 1.0
+
+    after = run_transient(state, step_fn, 2)
+    np.testing.assert_allclose(after, np.array([2.0, 3.0]))
+
+    samples = sample_trajectory(after, step_fn, 3)
+    np.testing.assert_allclose(
+        samples,
+        np.array([[3.0, 4.0], [4.0, 5.0], [5.0, 6.0]]),
+    )
+
+    combined = trajectory_after_transient(state, step_fn, 2, 3)
+    np.testing.assert_allclose(combined, samples)
+
+
+def test_cml_step_matches_manual_generic_update():
+    x = np.array([0.1, -0.2, 0.3, -0.4])
+    eps = 0.2
+    f = lambda arr: 2.0 * arr
+    g = lambda arr: arr + 1.0
+
+    out = cml_step(x, f, g, eps)
+    manual = f(x) + eps / 2.0 * (np.roll(g(x), -1) + np.roll(g(x), 1) - 2.0 * g(x))
+
+    np.testing.assert_allclose(out, manual)
+
+
+def test_cml_step_default_preserves_flattened_roll_behavior_for_2d_input():
+    x = np.array([[0.1, -0.2], [0.3, -0.4]])
+    eps = 0.2
+    f = lambda arr: 2.0 * arr
+    g = lambda arr: arr + 1.0
+
+    out = cml_step(x, f, g, eps)
+    gx = g(x)
+    manual = f(x) + eps / 2.0 * (np.roll(gx, -1) + np.roll(gx, 1) - 2.0 * gx)
+
+    np.testing.assert_allclose(out, manual)
+
+
+def test_cml_step_logistic_axis_argument_enables_rowwise_topology():
+    x = np.array([[0.1, 0.2, -0.1], [0.3, -0.4, 0.5]])
+    eps = 0.2
+
+    explicit = cml_step_logistic(x, 1.6, eps, axis=1)
+    rowwise = np.vstack([cml_step_logistic(row, 1.6, eps) for row in x])
+
+    np.testing.assert_allclose(explicit, rowwise)
+
+
+def test_cml_step_logistic_batch_matches_rowwise_update():
+    x = np.array([[0.1, 0.2, -0.1], [0.3, -0.4, 0.5]])
+    a_col = np.array([[1.5], [1.8]])
+    eps = 0.2
+
+    batch = cml_step_logistic_batch(x, a_col, eps)
+    rowwise = np.vstack([
+        cml_step_logistic(x[idx], float(a_col[idx, 0]), eps)
+        for idx in range(len(x))
+    ])
+
+    np.testing.assert_allclose(batch, rowwise)
+
+
+def test_cml_jacobian_subblock_logistic_matches_manual_matrix():
+    x = np.array([0.1, -0.2, 0.3, -0.4])
+    a = 1.5
+    eps = 0.2
+    L = 3
+
+    J = cml_jacobian_subblock_logistic(x, a, eps, L)
+    dfx = logistic_derivative(x, a)
+    expected = np.array([
+        [(1.0 - eps) * dfx[0], (eps / 2.0) * dfx[1], 0.0],
+        [(eps / 2.0) * dfx[0], (1.0 - eps) * dfx[1], (eps / 2.0) * dfx[2]],
+        [0.0, (eps / 2.0) * dfx[1], (1.0 - eps) * dfx[2]],
+    ])
+
+    np.testing.assert_allclose(J, expected)
+
+
+def test_gcm_step_matches_manual_formula():
+    x = np.array([0.1, -0.2, 0.3, -0.4])
+    a = 1.7
+    eps = 0.15
+
+    out = gcm_step(x, a, eps)
+    fx = logistic(x, a)
+    manual = (1.0 - eps) * fx + eps * np.mean(fx)
+
+    np.testing.assert_allclose(out, manual)
+
+
+def test_run_transient_returns_none_when_diverged():
+    state = np.array([0.0, 1.0])
+    step_fn = lambda s: s + 1.0
+    out = run_transient(state, step_fn, 5, diverged_fn=lambda s: s[0] > 2.5)
+    assert out is None
+
+
+def test_sample_trajectory_allow_partial_returns_prefix():
+    state = np.array([0.0, 1.0])
+    step_fn = lambda s: s + 1.0
+    samples = sample_trajectory(
+        state,
+        step_fn,
+        5,
+        diverged_fn=lambda s: s[0] > 2.5,
+        allow_partial=True,
+    )
+
+    np.testing.assert_allclose(samples, np.array([[1.0, 2.0], [2.0, 3.0]]))
+
+
+def test_iterate_unwrapped_vectorized_updates_elementwise():
+    state = np.array([0.0, 1.0, 2.0])
+    out = iterate_unwrapped(state, lambda s: np.array([1.0, -1.0, 0.5]), 3)
+    np.testing.assert_allclose(out, np.array([3.0, -2.0, 3.5]))
+
+
+def test_sweep_metric_helpers_return_expected_arrays():
+    values = np.array([1.0, 2.0, 3.0])
+    series_fn = lambda v: np.array([v, 2.0 * v])
+
+    scalar = sweep_scalar_metric(values, series_fn, lambda s: float(np.sum(s)))
+    first, second = sweep_pair_metric(
+        values,
+        series_fn,
+        lambda s: (float(np.min(s)), float(np.max(s))),
+    )
+
+    np.testing.assert_allclose(scalar, np.array([3.0, 6.0, 9.0]))
+    np.testing.assert_allclose(first, np.array([1.0, 2.0, 3.0]))
+    np.testing.assert_allclose(second, np.array([2.0, 4.0, 6.0]))
+
+
+def test_load_or_compute_npz_computes_when_missing(tmp_path):
+    path = tmp_path / "sample.npz"
+
+    def compute_fn():
+        np.savez_compressed(path, values=np.array([1.0, 2.0]))
+
+    data = load_or_compute_npz(path, "sample", compute_fn)
+
+    np.testing.assert_allclose(data["values"], np.array([1.0, 2.0]))
 
 
 # ---------------------------------------------------------------------------

@@ -6,9 +6,10 @@ Correctness tests use known-dimension systems:
 - Delayed logistic: Cao E1 should saturate near d=2-3
 """
 
+import importlib
+from conftest import logistic_series
 import numpy as np
 import pytest
-from conftest import logistic_series
 
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
@@ -16,6 +17,7 @@ from dynachaos.diagnostics.embedding import (
     false_nearest_neighbors,
     optimal_delay,
     optimal_dimension,
+    select_dimension_cao,
 )
 
 
@@ -94,15 +96,92 @@ class TestFNN:
 
 
 class TestOptimalDimension:
+    def test_cao_selector_env_forced_python_backend(self, monkeypatch):
+        import dynachaos.diagnostics.embedding as emb_mod
+
+        monkeypatch.setenv("DYNACHAOS_NO_RUST", "1")
+        emb_mod = importlib.reload(emb_mod)
+        try:
+            e1 = np.array(
+                [0.0024, 0.0559, 0.2308, 1.0013, 0.9835, 0.9979, 1.0000, 1.0000],
+                dtype=np.float64,
+            )
+            d = emb_mod.select_dimension_cao(
+                e1, near_one_lower=0.97, near_one_upper=1.03, min_dim=2
+            )
+            assert emb_mod._RUST_AVAILABLE is False
+            assert d == 4
+        finally:
+            monkeypatch.delenv("DYNACHAOS_NO_RUST", raising=False)
+            importlib.reload(emb_mod)
+
+    def test_cao_selector_python_fallback_path(self):
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        e1 = np.array(
+            [0.0024, 0.0559, 0.2308, 1.0013, 0.9835, 0.9979, 1.0000, 1.0000],
+            dtype=np.float64,
+        )
+        old_selector = emb_mod._select_dimension_cao_rs
+        emb_mod._select_dimension_cao_rs = None
+        try:
+            d = select_dimension_cao(e1, near_one_lower=0.97, near_one_upper=1.03, min_dim=2)
+        finally:
+            emb_mod._select_dimension_cao_rs = old_selector
+
+        assert d == 4
+
+    def test_cao_selector_onset_not_tail(self):
+        e1 = np.array(
+            [0.0024, 0.0559, 0.2308, 1.0013, 0.9835, 0.9979, 1.0000, 1.0000],
+            dtype=np.float64,
+        )
+        d = select_dimension_cao(e1, near_one_lower=0.97, near_one_upper=1.03, min_dim=2)
+        assert d == 4
+
+    def test_cao_selector_ignores_low_dim_artifacts(self):
+        e1 = np.array(
+            [0.0010, 0.1340, 0.1587, 0.8184, 0.8658, 0.9646, 0.9961, 0.9948, 0.9989],
+            dtype=np.float64,
+        )
+        d = select_dimension_cao(e1, near_one_lower=0.97, near_one_upper=1.03, min_dim=2)
+        assert d >= 6
+
     def test_cao_method(self):
         x = logistic_series(n=5000, a=1.99)
         d = optimal_dimension(x, tau=1, d_max=10, method="cao")
+        assert 1 <= d <= 4, f"Expected d_opt near 1-3 for logistic, got {d}"
+
+    def test_cao_legacy_method(self):
+        x = logistic_series(n=5000, a=1.99)
+        d = optimal_dimension(x, tau=1, d_max=10, method="cao_legacy")
         assert 1 <= d <= 4, f"Expected d_opt near 1-3 for logistic, got {d}"
 
     def test_fnn_method(self):
         x = logistic_series(n=5000, a=1.99)
         d = optimal_dimension(x, tau=1, d_max=10, method="fnn")
         assert 1 <= d <= 5, f"Expected d_opt near 1-3 for logistic, got {d}"
+
+    def test_cao_rejects_d_max_below_2(self):
+        series = logistic_series(n=500)
+        with pytest.raises(ValueError, match="d_max must be >= 2"):
+            optimal_dimension(series, tau=1, d_max=1, method="cao")
+
+    def test_cao_legacy_rejects_d_max_below_2(self):
+        series = logistic_series(n=500)
+        with pytest.raises(ValueError, match="d_max must be >= 2"):
+            optimal_dimension(series, tau=1, d_max=1, method="cao_legacy")
+
+    def test_cao_d_max_2_succeeds(self):
+        """Boundary: d_max=2 is the minimum valid value for Cao."""
+        series = logistic_series(n=500)
+        d = optimal_dimension(series, tau=1, d_max=2, method="cao")
+        assert 1 <= d <= 2
+
+    def test_d_max_zero_rejects_all_methods(self):
+        series = logistic_series(n=500)
+        with pytest.raises(ValueError, match="d_max must be >= 1"):
+            optimal_dimension(series, tau=1, d_max=0, method="fnn")
 
     def test_invalid_method_raises(self):
         x = logistic_series(n=1000)
