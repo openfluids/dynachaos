@@ -41,7 +41,7 @@ AMI + Cao + FNN embedding
 
 **Rust backends** — correlation integral (Grassberger-Procaccia), fuzzy
 entropy sum, recurrence line extraction, ordinal distribution counting,
-AMI histograms, Cao/FNN embedding statistics, multifractal moments
+AMI histograms, Cao dimension selection, multifractal moments
 
 **Visualization** — bifurcation diagrams, cobweb plots, return maps,
 curated Swiss-inspired style themes
@@ -132,8 +132,8 @@ offering several advantages over common baseline scripts (e.g., [notsebastiano/G
 
 The Rust kernel uses:
 
-- **Raw slice indexing** — C-contiguous pointer arithmetic, bypassing
-  ndarray's bounds-checked `Index` trait
+- **Raw slice indexing** — C-contiguous slice access, avoiding ndarray's
+  per-index `Index` overhead while staying in safe Rust
 - **Prefix-sum binning** — one write per pair instead of up to 50;
   converted to cumulative counts with a single O(n_r) pass after the loop
 - **Squared-distance comparison** — pre-squared thresholds eliminate
@@ -185,6 +185,16 @@ Kaneko's foundational work on chaos with reproducible Python/Rust diagnostics.
 dynachaos list                    # list paper sections
 dynachaos run sec02_circle_map    # reproduce a figure
 dynachaos run all                 # full pipeline
+```
+
+To rebuild the tracked manuscript PDF:
+
+```bash
+cd paper
+pdflatex -interaction=nonstopmode -halt-on-error main.tex
+bibtex main
+pdflatex -interaction=nonstopmode -halt-on-error main.tex
+pdflatex -interaction=nonstopmode -halt-on-error main.tex
 ```
 
 ## Development
