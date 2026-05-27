@@ -1,11 +1,13 @@
 # dynachaos
 
 [![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **High-performance chaos analysis in Python.**
+
+Status: private research and development repository. Public release,
+package publication, and final paper citation details are future work.
 
 > *"Chaos: When the present determines the future, but the approximate present*
 > *does not approximately determine the future."*
@@ -15,12 +17,12 @@
 
 ## Why dynachaos?
 
-Most chaos libraries stop at Lyapunov exponents.
-dynachaos goes further: Rust-accelerated all-pairs kernels make correlation
-dimension practical at N = 500 K; a full entropy family (SampEn, FuzzyEn,
-MSE) handles physiological and financial series; and the Kaneko atlas
-reproduces 30 years of CML literature at 1 000× finer resolution — all with
-pure-Python fallbacks so every routine works without a compiler.
+Most chaos libraries stop at Lyapunov exponents. dynachaos collects maps,
+coupled-map lattices, recurrence analysis, entropy diagnostics,
+Grassberger-Procaccia correlation dimension, multifractal spectra, and
+paper-generation pipelines in one codebase. Performance-sensitive kernels have
+optional Rust backends, while pure-Python fallbacks keep the diagnostics usable
+without a compiler.
 
 ## Features
 
@@ -44,11 +46,26 @@ AMI histograms, Cao/FNN embedding statistics, multifractal moments
 **Visualization** — bifurcation diagrams, cobweb plots, return maps,
 curated Swiss-inspired style themes
 
-## Installation
+## Private Development Setup
 
 ```bash
-pip install dynachaos           # pure Python (all features work)
-pip install dynachaos[viz]      # adds matplotlib plotting
+git clone https://github.com/ricardofrantz/dynachaos.git
+cd dynachaos
+uv sync
+uv run --extra viz pytest tests/ -q
+```
+
+To exercise the installed Rust extension locally:
+
+```bash
+uv run maturin develop --release
+uv run --extra viz pytest tests/ -q
+```
+
+To verify the pure-Python fallback path:
+
+```bash
+DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 ```
 
 ## Quick Start
@@ -88,8 +105,8 @@ print(f"SampEn = {se:.4f}")
 ```
 
 ```bash
-# Compare Grassberger-Procaccia vs multifractal D2 (accuracy + runtime)
-python examples/benchmark_gp_vs_multifractal.py
+# Compare Grassberger-Procaccia vs multifractal D2
+uv run --extra viz python examples/benchmark_gp_vs_multifractal.py
 ```
 
 ## Rust-Accelerated Backends
@@ -102,7 +119,7 @@ Pure-Python fallbacks are always available and produce identical results.
 
 The all-pairs kernel evaluates all N(N−1)/2 pairs with Theiler-window
 exclusion and multi-radius binning in a single pass.
-Our implementation is designed for both correctness and extreme performance,
+The implementation is designed for correctness and low memory use,
 offering several advantages over common baseline scripts (e.g., [notsebastiano/GP_algorithm](https://github.com/notsebastiano/GP_algorithm/blob/master/GP_algorithm.py)):
 
 - **Algorithmic Correctness** — Supports the **Theiler window** ($|i-j| > w$) to
@@ -111,10 +128,9 @@ offering several advantages over common baseline scripts (e.g., [notsebastiano/G
 - **Scaling Region Detection** — Employs a **stable plateau search** on local
   slopes instead of simple heuristics, making it robust to noise and saturation.
 - **Memory Efficiency** — Uses **O(1) auxiliary memory** per pair (streaming)
-  instead of an $O(N^2)$ distance matrix, enabling analysis of $N = 500,000+$
-  points on consumer hardware.
+  instead of an $O(N^2)$ distance matrix.
 
-Six optimizations combine for a **13.6× speedup** over baseline NumPy:
+The Rust kernel uses:
 
 - **Raw slice indexing** — C-contiguous pointer arithmetic, bypassing
   ndarray's bounds-checked `Index` trait
@@ -126,19 +142,11 @@ Six optimizations combine for a **13.6× speedup** over baseline NumPy:
   separated, enabling independent auto-vectorization
 - **Rayon parallelism** — outer loop distributed across all cores via
   Rayon; GIL released with `py.detach()` before the parallel region
-- **Native SIMD** — `target-cpu=native` in `.cargo/config.toml` unlocks
-  NEON (Apple Silicon) or AVX2 (x86); combined with `lto=true`,
-  `codegen-units=1`, and `panic="abort"`
+- **Native compiler optimization** — release builds can use the local CPU
+  target configured under `.cargo/`.
 
-**Benchmarks** (Apple M1 Pro, 6 P-cores + 2 E-cores, 16 GB):
-
-| N | Pairs | Time (Python) | Time (Rust) | Throughput | Speedup |
-|---|-------|---------------|-------------|------------|---------|
-| 50,000 | 1.25 B | 25.9 s | 1.9 s | 32.8 G pairs/s | 13.6× |
-| 500,000 | 125 B | ~4 300 s (est.) | 237 s | 26.3 G pairs/s | ~18× |
-
-Memory stays at O(N·d) regardless of N (no distance matrix stored):
-74 MB at N = 50 K, 99 MB at N = 500 K.
+Benchmark numbers should be regenerated on the release target hardware before
+being used in public documentation.
 
 ### Fuzzy entropy sum
 
@@ -169,9 +177,9 @@ templates, using the same Rayon parallel fold + reduce pattern.
 
 ## Showcase: Kaneko Atlas
 
-A companion manuscript is the first major
-application of dynachaos — a tribute to Kunihiko Kaneko's foundational
-work on chaos, reproduced at 100–1 000× finer resolution using this library.
+A companion manuscript and figure
+pipeline currently driving dynachaos development. It revisits Kunihiko
+Kaneko's foundational work on chaos with reproducible Python/Rust diagnostics.
 
 ```bash
 dynachaos list                    # list paper sections
@@ -182,20 +190,21 @@ dynachaos run all                 # full pipeline
 ## Development
 
 ```bash
-git clone https://github.com/ricardofrantz/dynachaos.git
-cd dynachaos
 uv sync
 uv run --extra viz pytest tests/ -q
+uv run --extra viz ruff check src/ tests/
+uv run --extra viz ruff format src/ tests/ --check
 
 # With Rust extension:
 uv run maturin develop --release
-uv run pytest tests/ -q
+uv run --extra viz pytest tests/ -q
 ```
 
 ## Citation
 
-If you use dynachaos in published work, please cite the software and,
-if applicable, the companion paper:
+Citation metadata is provisional while the repository and manuscript remain
+private. Do not treat the companion paper entry as a published article until
+the public release phase is explicitly completed.
 
 ```bibtex
 @software{dynachaos2026,
