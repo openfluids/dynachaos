@@ -3,7 +3,11 @@ import pytest
 from conftest import logistic_series
 
 from dynachaos.diagnostics.correlation import correlation_dimension
-from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
+from dynachaos.diagnostics.permutation import (
+    complexity_entropy,
+    ordinal_distribution,
+    permutation_entropy,
+)
 from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
@@ -31,6 +35,22 @@ def test_permutation_entropy_bounds():
     assert 0.0 <= h2 <= 1.0
     assert np.isfinite(c2)
     assert c2 >= 0.0
+
+
+@pytest.mark.parametrize(
+    ("d", "tau", "message"),
+    [
+        (0, 1, "d must be >= 2"),
+        (1, 1, "d must be >= 2"),
+        (11, 1, "d must be <= 10"),
+        (2, 0, "tau must be >= 1"),
+        (2, 1.5, "d and tau must be positive integers"),
+        (5, 1, "time series is too short"),
+    ],
+)
+def test_ordinal_distribution_rejects_invalid_embedding_parameters(d, tau, message):
+    with pytest.raises(ValueError, match=message):
+        ordinal_distribution(np.arange(3.0), d=d, tau=tau)
 
 
 def test_recurrence_and_rqa_sanity():

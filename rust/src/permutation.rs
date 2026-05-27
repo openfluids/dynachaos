@@ -81,15 +81,30 @@ pub fn ordinal_distribution<'py>(
     d: usize,
     tau: usize,
 ) -> PyResult<(Bound<'py, PyArray1<i64>>, i64)> {
+    if d < 2 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "d must be >= 2",
+        ));
+    }
     if d > 10 {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "ordinal dimension d must be <= 10 (stack buffer limit)",
+            "d must be <= 10",
+        ));
+    }
+    if tau < 1 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "tau must be >= 1",
         ));
     }
 
     let arr = x.as_slice()?;
     let n = arr.len();
     let n_windows = n.saturating_sub((d - 1) * tau);
+    if n_windows == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "time series is too short for the requested d and tau",
+        ));
+    }
     let n_perm = factorial(d);
 
     let mut counts = vec![0i64; n_perm];

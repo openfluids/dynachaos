@@ -73,6 +73,28 @@ def _decode_table(d):
     return [_lehmer_to_permutation(i, d) for i in range(factorial(d))]
 
 
+def _validate_ordinal_parameters(x, d, tau):
+    """Validate ordinal-pattern embedding parameters."""
+    try:
+        d_int = int(d)
+        tau_int = int(tau)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("d and tau must be positive integers") from exc
+    if d_int != d or tau_int != tau:
+        raise ValueError("d and tau must be positive integers")
+    if d_int < 2:
+        raise ValueError("d must be >= 2")
+    if d_int > 10:
+        raise ValueError("d must be <= 10")
+    if tau_int < 1:
+        raise ValueError("tau must be >= 1")
+
+    n_windows = len(x) - (d_int - 1) * tau_int
+    if n_windows <= 0:
+        raise ValueError("time series is too short for the requested d and tau")
+    return d_int, tau_int, n_windows
+
+
 def ordinal_distribution(x, d=5, tau=1):
     """Compute the probability distribution of ordinal patterns.
 
@@ -94,6 +116,7 @@ def ordinal_distribution(x, d=5, tau=1):
         Total number of windows analysed.
     """
     x = np.asarray(x, dtype=np.float64)
+    d, tau, _ = _validate_ordinal_parameters(x, d, tau)
 
     if _RUST_AVAILABLE:
         counts_arr, n_windows = _ordinal_distribution_rs(x, d, tau)

@@ -120,6 +120,22 @@ class TestPermutationParity:
         for perm in py_probs:
             assert py_probs[perm] == pytest.approx(rs_probs[perm], abs=1e-12)
 
+    @pytest.mark.parametrize(
+        ("d", "tau", "message"),
+        [
+            (0, 1, "d must be >= 2"),
+            (1, 1, "d must be >= 2"),
+            (11, 1, "d must be <= 10"),
+            (2, 0, "tau must be >= 1"),
+            (5, 1, "time series is too short"),
+        ],
+    )
+    def test_ordinal_distribution_rejects_invalid_direct_rust_inputs(self, d, tau, message):
+        from dynachaos._rust import ordinal_distribution as rust_ord
+
+        with pytest.raises(ValueError, match=message):
+            rust_ord(np.arange(3.0), d=d, tau=tau)
+
     def test_permutation_entropy_parity(self):
         """Full permutation entropy should agree regardless of backend."""
         series = logistic_series(n=5000)
