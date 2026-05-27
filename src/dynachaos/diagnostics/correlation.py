@@ -90,6 +90,34 @@ def _valid_pair_count(n, theiler_window):
     return n_eff * (n_eff + 1) // 2
 
 
+def _validate_correlation_inputs(r_values, theiler_window, norm):
+    """Validate correlation-count parameters shared by Python and Rust paths."""
+    try:
+        theiler_int = int(theiler_window)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("theiler_window must be >= 0") from exc
+    if theiler_int != theiler_window or theiler_int < 0:
+        raise ValueError("theiler_window must be >= 0")
+    if norm not in {"chebyshev", "euclidean"}:
+        raise ValueError("norm must be one of: 'chebyshev', 'euclidean'")
+
+    r_values = np.asarray(r_values, dtype=np.float64)
+    if r_values.ndim != 1:
+        raise ValueError("r_values must be a 1D array")
+    if not np.all(np.isfinite(r_values)):
+        raise ValueError("r_values must contain only finite values")
+    if np.any(r_values < 0.0):
+        raise ValueError("r_values must be non-negative")
+    if np.any(np.diff(r_values) < 0.0):
+        raise ValueError("r_values must be sorted in ascending order")
+    return r_values, theiler_int, norm == "chebyshev"
+
+
+def _undefined_dimension_result():
+    empty = np.array([], dtype=np.float64)
+    return np.nan, empty, empty, empty, np.array([], dtype=bool)
+
+
 def correlation_integral(
     traj, r_values, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
 ):
@@ -123,8 +151,9 @@ def correlation_integral(
     traj = np.asarray(traj, dtype=np.float64)
     if traj.ndim == 1:
         traj = traj[:, np.newaxis]
-    r_values = np.asarray(r_values, dtype=np.float64)
-    use_chebyshev = norm == "chebyshev"
+    r_values, theiler_window, use_chebyshev = _validate_correlation_inputs(
+        r_values, theiler_window, norm
+    )
 
     N = len(traj)
     n_valid = _valid_pair_count(N, theiler_window)
@@ -268,15 +297,29 @@ def correlation_dimension(
     traj = np.asarray(traj, dtype=np.float64)
     if traj.ndim == 1:
         traj = traj[:, np.newaxis]
+    if n_r < 1:
+        raise ValueError("n_r must be >= 1")
 
     N = len(traj)
+    if N < 2:
+        return _undefined_dimension_result()
 
     if r_range is None:
         # Organic: attractor bounding-box diameter sets the scale
         diameter = np.max(np.ptp(traj, axis=0))
+        if not np.isfinite(diameter) or diameter <= 0.0:
+            return _undefined_dimension_result()
         r_min = diameter / N  # below this, pair count -> 0
         r_max = diameter  # beyond this, C(r) -> 1
         r_range = (r_min, r_max)
+    elif (
+        len(r_range) != 2
+        or not np.all(np.isfinite(r_range))
+        or r_range[0] <= 0.0
+        or r_range[1] <= 0.0
+        or r_range[0] > r_range[1]
+    ):
+        raise ValueError("r_range must be a positive ascending (min, max) pair")
 
     r_values = np.logspace(np.log10(r_range[0]), np.log10(r_range[1]), n_r)
     C_values = correlation_integral(

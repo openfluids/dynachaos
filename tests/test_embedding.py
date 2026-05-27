@@ -215,6 +215,41 @@ class TestCorrelationIntegralImproved:
         # With theiler window, C should generally change (fewer pairs)
         assert not np.allclose(C0, C10), "Theiler window should affect C(r)"
 
+    def test_invalid_norm_raises(self):
+        from dynachaos.diagnostics.correlation import correlation_integral
+
+        with pytest.raises(ValueError, match="norm must be one of"):
+            correlation_integral(np.arange(5), [1.0], norm="manhattan")
+
+    def test_negative_theiler_window_raises(self):
+        from dynachaos.diagnostics.correlation import correlation_integral
+
+        with pytest.raises(ValueError, match="theiler_window must be >= 0"):
+            correlation_integral(np.arange(5), [1.0], theiler_window=-1)
+
+    def test_constant_trajectory_returns_nan_dimension(self):
+        from dynachaos.diagnostics.correlation import correlation_dimension
+
+        D2, r_values, C_values, slopes, scaling = correlation_dimension(np.ones((10, 2)))
+
+        assert np.isnan(D2)
+        assert r_values.shape == (0,)
+        assert C_values.shape == (0,)
+        assert slopes.shape == (0,)
+        assert scaling.shape == (0,)
+
+    def test_too_short_trajectory_returns_nan_dimension(self):
+        from dynachaos.diagnostics.correlation import correlation_dimension
+
+        for traj in (np.array([]), np.array([1.0])):
+            D2, r_values, C_values, slopes, scaling = correlation_dimension(traj)
+
+            assert np.isnan(D2)
+            assert r_values.shape == (0,)
+            assert C_values.shape == (0,)
+            assert slopes.shape == (0,)
+            assert scaling.shape == (0,)
+
     def test_correlation_dimension_circle(self):
         """Circle (D=1) should give D2 ~ 1 with improved G-P."""
         from dynachaos.diagnostics.correlation import correlation_dimension
