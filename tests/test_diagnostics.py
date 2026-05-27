@@ -53,6 +53,14 @@ def test_recurrence_and_rqa_sanity():
     assert stats["Lmax"] >= 0
 
 
+def test_recurrence_matrix_constant_signal_uses_zero_threshold():
+    rmat, eps = recurrence_matrix(np.ones(5))
+
+    assert eps == 0.0
+    assert rmat.shape == (5, 5)
+    assert np.all(rmat)
+
+
 @pytest.mark.parametrize(
     ("d", "tau"),
     [

@@ -74,7 +74,8 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
     dists = squareform(pdist(X, metric=metric))
 
     if eps is None:
-        eps = np.percentile(dists[dists > 0], percentile)
+        positive_dists = dists[dists > 0]
+        eps = 0.0 if positive_dists.size == 0 else float(np.percentile(positive_dists, percentile))
 
     R = dists <= eps
     return R, eps
