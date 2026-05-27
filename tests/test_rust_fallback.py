@@ -4,6 +4,8 @@ These tests force both paths and compare outputs to ensure the Rust
 acceleration is a transparent drop-in.
 """
 
+import os
+
 import numpy as np
 import pytest
 from conftest import logistic_series
@@ -11,7 +13,7 @@ from conftest import logistic_series
 try:
     from dynachaos._rust import diagonal_lines  # noqa: F401
 
-    _HAS_RUST = True
+    _HAS_RUST = not os.environ.get("DYNACHAOS_NO_RUST")
 except ImportError:
     _HAS_RUST = False
 

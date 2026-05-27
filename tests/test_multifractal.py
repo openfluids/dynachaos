@@ -1,5 +1,7 @@
 """Tests for multifractal diagnostics."""
 
+import os
+
 import numpy as np
 import pytest
 
@@ -8,7 +10,7 @@ from dynachaos.diagnostics.multifractal import local_multifractality, multifract
 try:
     from dynachaos._rust import multifractal_moments as _mf_moments  # noqa: F401
 
-    _HAS_RUST = True
+    _HAS_RUST = not os.environ.get("DYNACHAOS_NO_RUST")
 except ImportError:
     _HAS_RUST = False
 
