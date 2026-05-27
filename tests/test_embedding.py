@@ -215,6 +215,24 @@ class TestCorrelationIntegralImproved:
         # With theiler window, C should generally change (fewer pairs)
         assert not np.allclose(C0, C10), "Theiler window should affect C(r)"
 
+    def test_correlation_integral_is_monotone_in_radius(self):
+        from dynachaos.diagnostics.correlation import correlation_integral
+
+        rng = np.random.default_rng(123)
+        traj = rng.normal(size=(200, 2))
+        r_values = np.array([0.05, 0.1, 0.2, 0.4, 0.8], dtype=np.float64)
+
+        C = correlation_integral(traj, r_values, theiler_window=3)
+
+        assert np.all(np.diff(C) >= 0.0)
+
+    def test_valid_pair_count_decreases_with_theiler_window(self):
+        from dynachaos.diagnostics.correlation import _valid_pair_count
+
+        counts = np.array([_valid_pair_count(20, w) for w in range(6)])
+
+        assert np.all(np.diff(counts) < 0)
+
     def test_invalid_norm_raises(self):
         from dynachaos.diagnostics.correlation import correlation_integral
 
