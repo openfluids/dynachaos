@@ -99,6 +99,18 @@ def test_recurrence_matrix_rejects_invalid_percentile(percentile):
         recurrence_matrix(np.arange(5.0), percentile=percentile)
 
 
+def test_recurrence_matrix_translation_invariance():
+    t = np.linspace(0.0, 10.0, 120)
+    traj = np.column_stack([np.sin(t), np.cos(2.0 * t)])
+    shifted = traj + np.array([10.0, -4.0])
+
+    rmat, eps = recurrence_matrix(traj, percentile=7)
+    shifted_rmat, shifted_eps = recurrence_matrix(shifted, percentile=7)
+
+    assert shifted_eps == pytest.approx(eps)
+    np.testing.assert_array_equal(shifted_rmat, rmat)
+
+
 @pytest.mark.parametrize(
     ("d", "tau"),
     [

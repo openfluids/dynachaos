@@ -96,6 +96,39 @@ def test_entropy_functions_reject_nonfinite_series(func, bad_value):
         func(x, **kwargs)
 
 
+@pytest.mark.parametrize(
+    "func", [sample_entropy, approximate_entropy, fuzzy_entropy, multiscale_entropy]
+)
+def test_entropy_translation_invariance_with_fixed_tolerance(func):
+    x = logistic_series(n=600, a=1.99, burn=200)
+    r = 0.2 * np.std(x, ddof=1)
+
+    kwargs = {"scales": [1, 2], "r": r} if func is multiscale_entropy else {"r": r}
+    base = func(x, **kwargs)
+    shifted = func(x + 17.0, **kwargs)
+
+    np.testing.assert_allclose(shifted, base, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "func", [sample_entropy, approximate_entropy, fuzzy_entropy, multiscale_entropy]
+)
+def test_entropy_positive_scaling_invariance_when_tolerance_scales(func):
+    x = logistic_series(n=600, a=1.99, burn=200)
+    r = 0.2 * np.std(x, ddof=1)
+    scale = 3.5
+
+    base_kwargs = {"scales": [1, 2], "r": r} if func is multiscale_entropy else {"r": r}
+    scaled_kwargs = (
+        {"scales": [1, 2], "r": r * scale} if func is multiscale_entropy else {"r": r * scale}
+    )
+
+    base = func(x, **base_kwargs)
+    scaled = func(scale * x, **scaled_kwargs)
+
+    np.testing.assert_allclose(scaled, base, rtol=1e-12, atol=1e-12)
+
+
 # ── ApEn ──────────────────────────────────────────────────────────────────────
 
 
