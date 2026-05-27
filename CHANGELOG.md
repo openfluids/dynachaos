@@ -10,11 +10,17 @@ history.
 
 - Renamed the default branch to `main` and hardened project checks around that
   branch convention ([e71ed4e](https://github.com/ricardofrantz/dynachaos/commit/e71ed4e)).
-- Added the two-loop, skill-driven improvement goal that now governs agent
-  maintenance work ([c8da3a0](https://github.com/ricardofrantz/dynachaos/commit/c8da3a0)).
+- Added and sharpened the two-loop, skill-driven improvement goal that now
+  governs agent maintenance work, including private-only pushes and per-skill
+  review/commit discipline
+  ([c8da3a0](https://github.com/ricardofrantz/dynachaos/commit/c8da3a0),
+  [cdda594](https://github.com/ricardofrantz/dynachaos/commit/cdda594)).
 - Clarified that the repository, package publication, benchmark numbers, and
   citation metadata remain private/provisional until a future public release
   phase ([5ec636a](https://github.com/ricardofrantz/dynachaos/commit/5ec636a)).
+- Refreshed README backend notes so they match the exported Rust surface and
+  documented the verified manuscript build sequence
+  ([0c0ae1c](https://github.com/ricardofrantz/dynachaos/commit/0c0ae1c)).
 
 ### Diagnostics correctness and numerical edge cases
 
@@ -24,6 +30,19 @@ history.
   fuzz-style tests ([7ce6f50](https://github.com/ricardofrantz/dynachaos/commit/7ce6f50)).
 - Fixed degenerate recurrence auto-thresholding for constant signals
   ([0ff1cb3](https://github.com/ricardofrantz/dynachaos/commit/0ff1cb3)).
+- Rejected non-finite entropy and recurrence diagnostic inputs, invalid
+  recurrence thresholds, invalid 0-1 test parameters, and zero-MSD 0-1 test
+  regressions found during loop-2 bug hunting
+  ([4ff83ad](https://github.com/ricardofrantz/dynachaos/commit/4ff83ad),
+  [b473141](https://github.com/ricardofrantz/dynachaos/commit/b473141),
+  [8dc0541](https://github.com/ricardofrantz/dynachaos/commit/8dc0541),
+  [93c02e2](https://github.com/ricardofrantz/dynachaos/commit/93c02e2)).
+- Added entropy and recurrence metamorphic tests for translation and scaling
+  invariants ([9c8f596](https://github.com/ricardofrantz/dynachaos/commit/9c8f596)).
+- Tightened RQA recurrence-matrix and line-threshold validation across Python
+  and direct Rust entry points
+  ([66f4d6e](https://github.com/ricardofrantz/dynachaos/commit/66f4d6e),
+  [d1340b1](https://github.com/ricardofrantz/dynachaos/commit/d1340b1)).
 - Added metamorphic tests for correlation-integral radius monotonicity and
   Theiler-window valid-pair counts ([c1c316a](https://github.com/ricardofrantz/dynachaos/commit/c1c316a)).
 
@@ -34,14 +53,20 @@ history.
 - Added direct validation for ordinal-pattern Rust inputs and matching Python
   wrapper validation ([d511c11](https://github.com/ricardofrantz/dynachaos/commit/d511c11)).
 - Recorded that the in-tree Rust extension contains no `unsafe` sites
-  ([e0d1fc4](https://github.com/ricardofrantz/dynachaos/commit/e0d1fc4)).
+  ([e0d1fc4](https://github.com/ricardofrantz/dynachaos/commit/e0d1fc4),
+  [0f58ef2](https://github.com/ricardofrantz/dynachaos/commit/0f58ef2)).
 - Avoided debug-build overflow in direct Rust calls with huge Theiler windows
   ([4735647](https://github.com/ricardofrantz/dynachaos/commit/4735647)).
+- Validated Rust AMI inputs directly and recorded the loop-2 Rust UB audit
+  ([dd8ee6c](https://github.com/ricardofrantz/dynachaos/commit/dd8ee6c),
+  [66f4d6e](https://github.com/ricardofrantz/dynachaos/commit/66f4d6e)).
 
 ### Pipeline architecture and performance evidence
 
 - Added a reusable NPZ cache contract with required-key validation for figure
   pipeline caches ([d605795](https://github.com/ricardofrantz/dynachaos/commit/d605795)).
+- Adopted the cache contract in the circle-map figure pipeline
+  ([eff0b34](https://github.com/ricardofrantz/dynachaos/commit/eff0b34)).
 - Added architecture, simplification, complexity, profiling, and optimization
   decision artifacts so future agents can distinguish measured work from
   deferred ideas ([acbaa38](https://github.com/ricardofrantz/dynachaos/commit/acbaa38),
@@ -49,6 +74,14 @@ history.
   [e7ef0ec](https://github.com/ricardofrantz/dynachaos/commit/e7ef0ec),
   [9ab2bb4](https://github.com/ricardofrantz/dynachaos/commit/9ab2bb4),
   [bc997b5](https://github.com/ricardofrantz/dynachaos/commit/bc997b5)).
+- Captured loop-2 architecture, simplification, complexity, profiling, and
+  optimization artifacts, including an RQA count-reuse optimization measured at
+  roughly 1.3--1.5x faster in the profiled range
+  ([2b56ac5](https://github.com/ricardofrantz/dynachaos/commit/2b56ac5),
+  [60dd71f](https://github.com/ricardofrantz/dynachaos/commit/60dd71f),
+  [ee0f98c](https://github.com/ricardofrantz/dynachaos/commit/ee0f98c),
+  [4c7a153](https://github.com/ricardofrantz/dynachaos/commit/4c7a153),
+  [8295d26](https://github.com/ricardofrantz/dynachaos/commit/8295d26)).
 - Added a `dynachaos --version` CLI path for installed-package introspection
   ([049782e](https://github.com/ricardofrantz/dynachaos/commit/049782e)).
 
@@ -56,6 +89,9 @@ history.
 
 - Relaxed optional dependencies in the vendored journal class so local builds can
   progress farther on smaller TeX installations ([3072d1c](https://github.com/ricardofrantz/dynachaos/commit/3072d1c)).
+- Removed optional `enumitem`/TikZ manuscript dependencies and regenerated the
+  tracked paper PDF after a clean pdflatex/BibTeX build
+  ([69ee577](https://github.com/ricardofrantz/dynachaos/commit/69ee577)).
 - Added Python, Rust unsafe, and LaTeX review artifacts for Loop 1 of the
   improvement campaign ([e5164df](https://github.com/ricardofrantz/dynachaos/commit/e5164df),
   [e0d1fc4](https://github.com/ricardofrantz/dynachaos/commit/e0d1fc4),
