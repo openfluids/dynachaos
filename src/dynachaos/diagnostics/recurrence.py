@@ -74,6 +74,13 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
         raise ValueError("X must be a non-empty 1D or 2D trajectory")
     if not np.all(np.isfinite(X)):
         raise ValueError("X must contain only finite values")
+    if eps is not None:
+        eps = float(eps)
+        if not np.isfinite(eps) or eps < 0.0:
+            raise ValueError("eps must be a finite non-negative number")
+    percentile = float(percentile)
+    if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
+        raise ValueError("percentile must be in [0, 100]")
 
     dists = squareform(pdist(X, metric=metric))
 

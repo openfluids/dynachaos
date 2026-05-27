@@ -87,6 +87,18 @@ def test_recurrence_matrix_rejects_empty_or_nonfinite_input(bad_input):
         recurrence_matrix(bad_input, eps=1.0)
 
 
+@pytest.mark.parametrize("eps", [-0.1, np.nan, np.inf])
+def test_recurrence_matrix_rejects_invalid_eps(eps):
+    with pytest.raises(ValueError, match="eps must be"):
+        recurrence_matrix(np.arange(5.0), eps=eps)
+
+
+@pytest.mark.parametrize("percentile", [-1.0, 101.0, np.nan])
+def test_recurrence_matrix_rejects_invalid_percentile(percentile):
+    with pytest.raises(ValueError, match="percentile must be"):
+        recurrence_matrix(np.arange(5.0), percentile=percentile)
+
+
 @pytest.mark.parametrize(
     ("d", "tau"),
     [
