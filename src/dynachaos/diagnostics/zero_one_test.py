@@ -32,6 +32,33 @@ Usage
 import numpy as np
 
 
+def _validate_zero_one_inputs(phi, n_c, n_cut):
+    """Validate and normalize 0-1 test inputs."""
+    phi = np.asarray(phi, dtype=np.float64).ravel()
+    if len(phi) < 3:
+        raise ValueError("phi must contain at least three values")
+    if not np.all(np.isfinite(phi)):
+        raise ValueError("phi must contain only finite values")
+    try:
+        n_c_int = int(n_c)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("n_c must be a positive integer") from exc
+    if n_c_int != n_c or n_c_int < 1:
+        raise ValueError("n_c must be a positive integer")
+    if n_cut is None:
+        n_cut_int = max(2, len(phi) // 10)
+    else:
+        try:
+            n_cut_int = int(n_cut)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("n_cut must be a positive integer") from exc
+        if n_cut_int != n_cut:
+            raise ValueError("n_cut must be a positive integer")
+    if n_cut_int < 2 or n_cut_int > len(phi):
+        raise ValueError("n_cut must be in [2, len(phi)]")
+    return phi, n_c_int, n_cut_int
+
+
 def _msd_regression(p, q, n_cut):
     """Compute K from mean-square displacement of (p, q) extension.
 
@@ -91,7 +118,7 @@ def zero_one_statistic(phi, n_c=100, n_cut=None, rng=None):
     K : float
         The 0-1 test statistic.  K ≈ 0 for regular, K ≈ 1 for chaotic.
     """
-    phi = np.asarray(phi, dtype=np.float64)
+    phi, n_c, n_cut = _validate_zero_one_inputs(phi, n_c, n_cut)
     N = len(phi)
 
     if rng is None:
@@ -120,7 +147,7 @@ def zero_one_series(phi, n_c=100, n_cut=None, rng=None):
     Same as ``zero_one_statistic`` but returns all individual K values instead
     of the median, useful for checking consistency.
     """
-    phi = np.asarray(phi, dtype=np.float64)
+    phi, n_c, n_cut = _validate_zero_one_inputs(phi, n_c, n_cut)
     N = len(phi)
 
     if rng is None:

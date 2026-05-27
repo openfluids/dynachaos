@@ -26,6 +26,22 @@ def test_zero_one_regular_vs_chaotic():
     assert k_chaotic > 0.6
 
 
+@pytest.mark.parametrize(
+    ("phi", "n_c", "n_cut", "message"),
+    [
+        ([1.0, 2.0], 1, None, "at least three"),
+        ([1.0, np.nan, 2.0], 1, None, "finite values"),
+        ([1.0, 2.0, 3.0, 4.0], 0, None, "n_c must be"),
+        ([1.0, 2.0, 3.0, 4.0], 1.5, None, "n_c must be"),
+        ([1.0, 2.0, 3.0, 4.0], 1, 1, "n_cut must be"),
+        ([1.0, 2.0, 3.0, 4.0], 1, 5, "n_cut must be"),
+    ],
+)
+def test_zero_one_statistic_rejects_fuzzed_invalid_inputs(phi, n_c, n_cut, message):
+    with pytest.raises(ValueError, match=message):
+        zero_one_statistic(phi, n_c=n_c, n_cut=n_cut)
+
+
 def test_permutation_entropy_bounds():
     x = np.sin(np.linspace(0.0, 60.0, 2000))
     h = permutation_entropy(x, d=5)
