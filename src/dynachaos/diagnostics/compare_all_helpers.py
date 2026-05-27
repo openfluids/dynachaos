@@ -7,8 +7,17 @@ from collections.abc import Callable
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load
+from dynachaos.io.paths import load_or_compute_npz
 from dynachaos.maps.primitives import delayed_logistic, logistic
+
+__all__ = [
+    "delayed_logistic_series",
+    "delayed_logistic_trajectory",
+    "load_or_compute_npz",
+    "logistic_series",
+    "sweep_pair_metric",
+    "sweep_scalar_metric",
+]
 
 
 def _delayed_logistic_state_after_transient(D, A, n_transient):
@@ -94,15 +103,3 @@ def sweep_pair_metric(
         ):
             print(f"  {progress_label}: {i + 1}/{len(values)}")
     return first, second
-
-
-def load_or_compute_npz(npz_path, section_name: str, compute_fn):
-    """Load cached NPZ or compute it on demand."""
-    try:
-        data = safe_load(npz_path)
-        print(f"Loaded {npz_path}")
-    except FileNotFoundError:
-        print(f"Computing {section_name}...")
-        compute_fn()
-        data = safe_load(npz_path)
-    return data

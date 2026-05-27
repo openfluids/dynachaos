@@ -478,15 +478,33 @@ def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     sections = [
-        ("0-1 test", TEST01_NPZ, compute_01_test, plot_01_test),
-        ("SALI", SALI_NPZ, compute_sali, plot_sali),
-        ("Permutation entropy", PE_NPZ, compute_permutation_entropy, plot_permutation_entropy),
-        ("C-H plane", CH_NPZ, compute_complexity_entropy, plot_complexity_entropy),
-        ("RQA", RQA_NPZ, compute_rqa, plot_rqa),
+        ("0-1 test", TEST01_NPZ, compute_01_test, plot_01_test, ("a", "K")),
+        (
+            "SALI",
+            SALI_NPZ,
+            compute_sali,
+            plot_sali,
+            ("DB_values", "DB_2.35_sali", "DB_2.37_sali", "DB_2.47_sali", "DB_2.55_sali"),
+        ),
+        (
+            "Permutation entropy",
+            PE_NPZ,
+            compute_permutation_entropy,
+            plot_permutation_entropy,
+            ("a", "H_logistic", "D", "H_delayed"),
+        ),
+        (
+            "C-H plane",
+            CH_NPZ,
+            compute_complexity_entropy,
+            plot_complexity_entropy,
+            ("a", "H_logistic", "C_logistic", "D", "H_delayed", "C_delayed"),
+        ),
+        ("RQA", RQA_NPZ, compute_rqa, plot_rqa, ("D", "RR", "DET", "LAM", "ENTR")),
     ]
 
-    for name, npz_path, compute_fn, plot_fn in sections:
-        data = load_or_compute_npz(npz_path, name, compute_fn)
+    for name, npz_path, compute_fn, plot_fn, required_keys in sections:
+        data = load_or_compute_npz(npz_path, name, compute_fn, required_keys=required_keys)
         plot_fn(data)
 
 

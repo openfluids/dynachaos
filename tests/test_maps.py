@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from dynachaos.cml.gcm_clusters import broad_positive_mask
 from dynachaos.cml.primitives import (
@@ -399,6 +400,32 @@ def test_load_or_compute_npz_computes_when_missing(tmp_path):
     data = load_or_compute_npz(path, "sample", compute_fn)
 
     np.testing.assert_allclose(data["values"], np.array([1.0, 2.0]))
+
+
+def test_load_or_compute_npz_recomputes_when_required_keys_missing(tmp_path):
+    path = tmp_path / "sample.npz"
+    np.savez_compressed(path, stale=np.array([0.0]))
+    calls = 0
+
+    def compute_fn():
+        nonlocal calls
+        calls += 1
+        np.savez_compressed(path, values=np.array([3.0, 4.0]))
+
+    data = load_or_compute_npz(path, "sample", compute_fn, required_keys=("values",))
+
+    assert calls == 1
+    np.testing.assert_allclose(data["values"], np.array([3.0, 4.0]))
+
+
+def test_load_or_compute_npz_raises_when_compute_leaves_required_keys_missing(tmp_path):
+    path = tmp_path / "sample.npz"
+
+    def compute_fn():
+        np.savez_compressed(path, other=np.array([1.0]))
+
+    with pytest.raises(KeyError, match="missing required keys"):
+        load_or_compute_npz(path, "sample", compute_fn, required_keys=("values",))
 
 
 # ---------------------------------------------------------------------------
