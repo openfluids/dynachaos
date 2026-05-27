@@ -208,8 +208,24 @@ def embed_time_delay(x, d, tau):
         Embedded trajectory.
     """
     x = np.asarray(x, dtype=np.float64)
+    try:
+        d_int = int(d)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("d must be a positive integer") from exc
+    if d_int != d or d_int < 1:
+        raise ValueError("d must be a positive integer")
+    try:
+        tau_int = int(tau)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tau must be a positive integer") from exc
+    if tau_int != tau or tau_int < 1:
+        raise ValueError("tau must be a positive integer")
+    d = d_int
+    tau = tau_int
     N = len(x)
     M = N - (d - 1) * tau
+    if M <= 0:
+        raise ValueError(f"Series too short (N={N}) for d={d}, tau={tau}")
     X = np.empty((M, d))
     for j in range(d):
         X[:, j] = x[j * tau : j * tau + M]

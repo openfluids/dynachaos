@@ -1,9 +1,10 @@
 import numpy as np
+import pytest
 from conftest import logistic_series
 
 from dynachaos.diagnostics.correlation import correlation_dimension
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
-from dynachaos.diagnostics.recurrence import recurrence_matrix, rqa
+from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
 
@@ -50,6 +51,43 @@ def test_recurrence_and_rqa_sanity():
     assert stats["TT"] >= 0.0
     assert stats["ENTR"] >= 0.0
     assert stats["Lmax"] >= 0
+
+
+@pytest.mark.parametrize(
+    ("d", "tau"),
+    [
+        (0, 1),
+        (-1, 1),
+        (2, 0),
+        (2, -1),
+        (1.5, 1),
+        (2, None),
+        (4, 2),
+    ],
+)
+def test_embed_time_delay_rejects_fuzzed_impossible_parameters(d, tau):
+    x = np.arange(5, dtype=np.float64)
+
+    with pytest.raises(ValueError):
+        embed_time_delay(x, d=d, tau=tau)
+
+
+def test_embed_time_delay_fuzzed_valid_parameters_preserve_shape_and_values():
+    rng = np.random.default_rng(2027)
+
+    for _ in range(25):
+        n = int(rng.integers(6, 30))
+        d = int(rng.integers(1, 5))
+        tau = int(rng.integers(1, 4))
+        if n <= (d - 1) * tau:
+            continue
+
+        x = rng.normal(size=n)
+        embedded = embed_time_delay(x, d=d, tau=tau)
+
+        assert embedded.shape == (n - (d - 1) * tau, d)
+        for j in range(d):
+            np.testing.assert_allclose(embedded[:, j], x[j * tau : j * tau + embedded.shape[0]])
 
 
 def test_correlation_dimension_circle():
