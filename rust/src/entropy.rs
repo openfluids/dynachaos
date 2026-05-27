@@ -62,7 +62,7 @@ pub fn fuzzy_entropy_sum<'py>(
             .fold(
                 || 0.0_f64,
                 |mut local_sum, i| {
-                    let j_start = i + theiler_window + 1;
+                    let j_start = i.saturating_add(theiler_window).saturating_add(1);
                     if j_start >= n_pts {
                         return local_sum;
                     }

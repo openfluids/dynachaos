@@ -78,7 +78,7 @@ pub fn correlation_counts<'py>(
                 .fold(
                     || vec![0i64; n_r],
                     |mut local, i| {
-                        let j_start = i + theiler_window + 1;
+                        let j_start = i.saturating_add(theiler_window).saturating_add(1);
                         if j_start >= n {
                             return local;
                         }
@@ -122,7 +122,7 @@ pub fn correlation_counts<'py>(
                 .fold(
                     || vec![0i64; n_r],
                     |mut local, i| {
-                        let j_start = i + theiler_window + 1;
+                        let j_start = i.saturating_add(theiler_window).saturating_add(1);
                         if j_start >= n {
                             return local;
                         }

@@ -5,6 +5,7 @@ acceleration is a transparent drop-in.
 """
 
 import os
+import sys
 
 import numpy as np
 import pytest
@@ -316,6 +317,26 @@ class TestCorrelationCountsParity:
         np.testing.assert_allclose(
             C_rust, C_py, atol=1e-10, err_msg="Correlation integral Rust vs Python mismatch"
         )
+
+    def test_correlation_counts_huge_theiler_window_has_no_pairs(self):
+        from dynachaos._rust import correlation_counts
+
+        traj = np.arange(12.0).reshape(6, 2)
+        r_values = np.array([0.1, 10.0], dtype=np.float64)
+
+        counts = np.asarray(correlation_counts(traj, r_values, sys.maxsize, True))
+
+        np.testing.assert_array_equal(counts, np.zeros_like(r_values, dtype=np.int64))
+
+
+@needs_rust
+class TestEntropyRustBoundaries:
+    def test_fuzzy_entropy_sum_huge_theiler_window_has_no_pairs(self):
+        from dynachaos._rust import fuzzy_entropy_sum
+
+        traj = np.arange(12.0).reshape(6, 2)
+
+        assert fuzzy_entropy_sum(traj, 1.0, 2, sys.maxsize) == 0.0
 
 
 class TestDiscreteMap:
