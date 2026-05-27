@@ -70,6 +70,10 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
     X = np.asarray(X, dtype=np.float64)
     if X.ndim == 1:
         X = X[:, np.newaxis]
+    if X.ndim != 2 or len(X) == 0:
+        raise ValueError("X must be a non-empty 1D or 2D trajectory")
+    if not np.all(np.isfinite(X)):
+        raise ValueError("X must contain only finite values")
 
     dists = squareform(pdist(X, metric=metric))
 

@@ -45,6 +45,14 @@ def _default_r(x):
     return 0.2 * np.std(x, ddof=1)
 
 
+def _as_finite_series(x):
+    """Return a 1D finite float64 series."""
+    x = np.asarray(x, dtype=np.float64).ravel()
+    if not np.all(np.isfinite(x)):
+        raise ValueError("x must contain only finite values")
+    return x
+
+
 def _print_timing(backend, N, n_pairs, elapsed):
     """Print timing and memory usage in the diagnostics style."""
     throughput = n_pairs / elapsed / 1e6 if elapsed > 0 else 0.0
@@ -118,7 +126,7 @@ def sample_entropy(x, m=2, r=None, verbose=False):
     Richman, J.S. & Moorman, J.R. (2000), Am. J. Physiol. Heart Circ.
     Physiol. 278(6), H2039-H2049.
     """
-    x = np.asarray(x, dtype=np.float64).ravel()
+    x = _as_finite_series(x)
     if m < 1:
         raise ValueError("m must be >= 1")
     if len(x) < m + 1:
@@ -189,7 +197,7 @@ def approximate_entropy(x, m=2, r=None, verbose=False):
     ----------
     Pincus, S.M. (1991), Proc. Natl. Acad. Sci. USA 88(6), 2297-2301.
     """
-    x = np.asarray(x, dtype=np.float64).ravel()
+    x = _as_finite_series(x)
     if m < 1:
         raise ValueError("m must be >= 1")
     if len(x) < m + 1:
@@ -255,7 +263,7 @@ def fuzzy_entropy(x, m=2, r=None, n=2, verbose=False):
     ----------
     Chen, W. et al. (2007), Medical Engineering & Physics 29(2), 164-169.
     """
-    x = np.asarray(x, dtype=np.float64).ravel()
+    x = _as_finite_series(x)
     if m < 1:
         raise ValueError("m must be >= 1")
     if n <= 0:
@@ -332,7 +340,7 @@ def multiscale_entropy(x, scales=None, m=2, r=None, verbose=False):
     ----------
     Costa, M. et al. (2002), Phys. Rev. Lett. 89(6), 068102.
     """
-    x = np.asarray(x, dtype=np.float64).ravel()
+    x = _as_finite_series(x)
     if m < 1:
         raise ValueError("m must be >= 1")
 

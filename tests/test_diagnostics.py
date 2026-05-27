@@ -81,6 +81,12 @@ def test_recurrence_matrix_constant_signal_uses_zero_threshold():
     assert np.all(rmat)
 
 
+@pytest.mark.parametrize("bad_input", [[], [0.0, np.nan, 1.0], [[0.0, 1.0], [np.inf, 2.0]]])
+def test_recurrence_matrix_rejects_empty_or_nonfinite_input(bad_input):
+    with pytest.raises(ValueError, match="finite values|non-empty"):
+        recurrence_matrix(bad_input, eps=1.0)
+
+
 @pytest.mark.parametrize(
     ("d", "tau"),
     [

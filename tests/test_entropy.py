@@ -83,6 +83,19 @@ def test_sample_entropy_invalid_m():
         sample_entropy(np.ones(100), m=0)
 
 
+@pytest.mark.parametrize(
+    "func", [sample_entropy, approximate_entropy, fuzzy_entropy, multiscale_entropy]
+)
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+def test_entropy_functions_reject_nonfinite_series(func, bad_value):
+    x = np.linspace(0.0, 1.0, 20)
+    x[4] = bad_value
+
+    kwargs = {"scales": [1], "r": 0.2} if func is multiscale_entropy else {"r": 0.2}
+    with pytest.raises(ValueError, match="finite values"):
+        func(x, **kwargs)
+
+
 # ── ApEn ──────────────────────────────────────────────────────────────────────
 
 
