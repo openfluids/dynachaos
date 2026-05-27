@@ -158,9 +158,10 @@ def rqa(R, l_min=2, v_min=2):
     """
     N = R.shape[0]
     total_points = N * N
+    n_recurrent_all = np.sum(R)
 
     # Recurrence rate
-    RR = np.sum(R) / total_points
+    RR = n_recurrent_all / total_points
 
     # Diagonal lines
     diag_lens = _diagonal_lines(R, l_min)
@@ -169,7 +170,7 @@ def rqa(R, l_min=2, v_min=2):
         # DET = fraction of recurrent points forming diagonal structures
         # (over all recurrent points in upper triangle, excluding main diagonal)
         # Upper-triangle sum without O(N²) allocation (R is symmetric)
-        n_recurrent = (np.sum(R) - np.trace(R)) // 2
+        n_recurrent = (n_recurrent_all - np.trace(R)) // 2
         DET = diag_sum / n_recurrent if n_recurrent > 0 else 0.0
         L = np.mean(diag_lens)
         Lmax = np.max(diag_lens)
@@ -185,7 +186,6 @@ def rqa(R, l_min=2, v_min=2):
     vert_lens = _vertical_lines(R, v_min)
     if len(vert_lens) > 0:
         vert_sum = np.sum(vert_lens)
-        n_recurrent_all = np.sum(R)
         LAM = vert_sum / n_recurrent_all if n_recurrent_all > 0 else 0.0
         TT = np.mean(vert_lens)
     else:
