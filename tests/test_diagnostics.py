@@ -26,6 +26,12 @@ def test_zero_one_regular_vs_chaotic():
     assert k_chaotic > 0.6
 
 
+def test_zero_one_zero_observable_is_regular():
+    k = zero_one_statistic(np.zeros(100), n_c=5, rng=np.random.default_rng(2027))
+
+    assert k == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize(
     ("phi", "n_c", "n_cut", "message"),
     [

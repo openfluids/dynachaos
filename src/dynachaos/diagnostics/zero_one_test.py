@@ -92,6 +92,8 @@ def _msd_regression(p, q, n_cut):
 
     # Linear regression: D(n) ≈ K * n for n = 1..n_cut
     ns = np.arange(1, n_cut + 1, dtype=np.float64)
+    if np.allclose(D[:n_cut], D[0], rtol=0.0, atol=1e-15):
+        return 0.0
     # Use correlation coefficient as K estimator (G&M 2009 Eq. 8)
     K = np.corrcoef(ns, D[:n_cut])[0, 1]
     return K
