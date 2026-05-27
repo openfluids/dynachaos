@@ -115,6 +115,8 @@ def test_rqa_rejects_invalid_matrix_shape(rmat, message):
         ({"v_min": 0}, "v_min"),
         ({"l_min": 1.5}, "l_min"),
         ({"v_min": None}, "v_min"),
+        ({"l_min": True}, "l_min"),
+        ({"v_min": False}, "v_min"),
     ],
 )
 def test_rqa_rejects_invalid_line_thresholds(kwargs, message):

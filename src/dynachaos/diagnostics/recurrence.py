@@ -143,6 +143,18 @@ def _vertical_lines(R, v_min=2):
     return np.array(lengths, dtype=int)
 
 
+def _positive_int(value, name):
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a positive integer")
+    try:
+        value_int = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive integer") from exc
+    if value_int != value or value_int < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value_int
+
+
 def rqa(R, l_min=2, v_min=2):
     """Compute Recurrence Quantification Analysis measures.
 
@@ -163,24 +175,8 @@ def rqa(R, l_min=2, v_min=2):
     R = np.asarray(R, dtype=bool)
     if R.ndim != 2 or R.shape[0] == 0 or R.shape[0] != R.shape[1]:
         raise ValueError("R must be a non-empty square matrix")
-    try:
-        l_min_int = int(l_min)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("l_min must be a positive integer") from exc
-    if l_min_int != l_min or l_min_int < 1:
-        raise ValueError("l_min must be a positive integer")
-    try:
-        v_min_int = int(v_min)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("v_min must be a positive integer") from exc
-    if v_min_int != v_min or v_min_int < 1:
-        raise ValueError("v_min must be a positive integer")
-    l_min = l_min_int
-    v_min = v_min_int
-    if l_min < 1:
-        raise ValueError("l_min must be >= 1")
-    if v_min < 1:
-        raise ValueError("v_min must be >= 1")
+    l_min = _positive_int(l_min, "l_min")
+    v_min = _positive_int(v_min, "v_min")
 
     N = R.shape[0]
     total_points = N * N
