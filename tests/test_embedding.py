@@ -46,6 +46,21 @@ class TestAMI:
         # First few values should decrease (MI drops with delay for chaotic series)
         assert mi[0] > mi[2], "AMI should decrease initially for chaotic series"
 
+    def test_ami_rejects_invalid_public_inputs(self):
+        with pytest.raises(ValueError, match="at least two"):
+            average_mutual_information([1.0], tau_max=3)
+        with pytest.raises(ValueError, match="finite values"):
+            average_mutual_information([1.0, np.nan, 2.0], tau_max=3)
+        with pytest.raises(ValueError, match="positive integers"):
+            average_mutual_information(np.arange(10.0), tau_max=0)
+        with pytest.raises(ValueError, match="positive integers"):
+            average_mutual_information(np.arange(10.0), n_bins=1.5)
+
+    def test_ami_constant_series_returns_zero(self):
+        _, mi = average_mutual_information(np.ones(10), tau_max=5, n_bins=4)
+
+        np.testing.assert_array_equal(mi, np.zeros(5))
+
 
 class TestCao:
     def test_cao_returns_correct_shape(self):

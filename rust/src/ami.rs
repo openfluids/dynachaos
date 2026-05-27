@@ -41,6 +41,12 @@ pub fn ami_histogram<'py>(
 
     let arr = x.as_slice()?;
     let n = arr.len();
+    if n < 2 {
+        return Err(PyValueError::new_err("x must contain at least two values"));
+    }
+    if arr.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err("x must contain only finite values"));
+    }
 
     // Find data range
     let mut x_min = f64::INFINITY;
@@ -55,6 +61,9 @@ pub fn ami_histogram<'py>(
     }
     // Slight padding so max value falls inside last bin
     let range = x_max - x_min;
+    if range <= 0.0 {
+        return Ok(PyArray1::from_vec(py, vec![0.0f64; tau_max]));
+    }
     let x_max_padded = x_max + range * 1e-10;
     let bin_width = (x_max_padded - x_min) / n_bins as f64;
 

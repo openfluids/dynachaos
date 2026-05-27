@@ -192,6 +192,21 @@ class TestAMIParity:
             I_rust, I_python, atol=1e-10, err_msg="AMI Rust vs Python mismatch"
         )
 
+    def test_ami_direct_rust_rejects_invalid_inputs(self):
+        from dynachaos._rust import ami_histogram
+
+        with pytest.raises(ValueError, match="at least two"):
+            ami_histogram(np.array([1.0]), tau_max=3, n_bins=4)
+        with pytest.raises(ValueError, match="finite values"):
+            ami_histogram(np.array([1.0, np.nan, 2.0]), tau_max=3, n_bins=4)
+
+    def test_ami_direct_rust_constant_series_returns_zero(self):
+        from dynachaos._rust import ami_histogram
+
+        mi = ami_histogram(np.ones(10), tau_max=5, n_bins=4)
+
+        np.testing.assert_array_equal(mi, np.zeros(5))
+
 
 # TestCaoParity removed: Rust cao_statistic disabled (scipy cKDTree is 70x faster).
 

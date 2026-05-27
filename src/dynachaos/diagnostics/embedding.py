@@ -135,6 +135,21 @@ def average_mutual_information(x, tau_max=100, n_bins=64):
     Fraser, A.M. & Swinney, H.L. (1986), Phys. Rev. A, 33(2), 1134-1140.
     """
     x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
+    if x.ndim != 1:
+        x = x.ravel()
+    if len(x) < 2:
+        raise ValueError("x must contain at least two values")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("x must contain only finite values")
+    try:
+        tau_max_int = int(tau_max)
+        n_bins_int = int(n_bins)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tau_max and n_bins must be positive integers") from exc
+    if tau_max_int != tau_max or n_bins_int != n_bins or tau_max_int < 1 or n_bins_int < 1:
+        raise ValueError("tau_max and n_bins must be positive integers")
+    tau_max = tau_max_int
+    n_bins = n_bins_int
     tau_values = np.arange(1, tau_max + 1)
 
     if _RUST_AVAILABLE:
