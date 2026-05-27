@@ -64,6 +64,25 @@ class TestRecurrenceParity:
 
         np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
 
+    @pytest.mark.parametrize(
+        ("function_name", "kwargs", "message"),
+        [
+            ("diagonal_lines", {"l_min": 0}, "l_min"),
+            ("vertical_lines", {"v_min": 0}, "v_min"),
+            ("diagonal_lines", {}, "square"),
+            ("vertical_lines", {}, "square"),
+        ],
+    )
+    def test_direct_rust_recurrence_rejects_invalid_inputs(self, function_name, kwargs, message):
+        import dynachaos._rust as rust_mod
+
+        rmat = np.ones((2, 3), dtype=bool)
+        if "l_min" in kwargs or "v_min" in kwargs:
+            rmat = np.eye(3, dtype=bool)
+
+        with pytest.raises(ValueError, match=message):
+            getattr(rust_mod, function_name)(rmat, **kwargs)
+
     def test_rqa_parity(self):
         """Full RQA pipeline should give same results via either path."""
         R = self._recurrence_matrix()

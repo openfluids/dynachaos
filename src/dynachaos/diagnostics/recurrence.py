@@ -94,6 +94,8 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
 
 def _diagonal_lines(R, l_min=2):
     """Extract diagonal line lengths from recurrence matrix (upper triangle)."""
+    if l_min < 1:
+        raise ValueError("l_min must be >= 1")
     if _RUST_AVAILABLE:
         return _diagonal_lines_rs(R, l_min)
 
@@ -118,6 +120,8 @@ def _diagonal_lines(R, l_min=2):
 
 def _vertical_lines(R, v_min=2):
     """Extract vertical line lengths from recurrence matrix."""
+    if v_min < 1:
+        raise ValueError("v_min must be >= 1")
     if _RUST_AVAILABLE:
         return _vertical_lines_rs(R, v_min)
 
@@ -156,6 +160,28 @@ def rqa(R, l_min=2, v_min=2):
     dict
         Keys: 'RR', 'DET', 'LAM', 'L', 'TT', 'ENTR', 'Lmax'.
     """
+    R = np.asarray(R, dtype=bool)
+    if R.ndim != 2 or R.shape[0] == 0 or R.shape[0] != R.shape[1]:
+        raise ValueError("R must be a non-empty square matrix")
+    try:
+        l_min_int = int(l_min)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("l_min must be a positive integer") from exc
+    if l_min_int != l_min or l_min_int < 1:
+        raise ValueError("l_min must be a positive integer")
+    try:
+        v_min_int = int(v_min)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("v_min must be a positive integer") from exc
+    if v_min_int != v_min or v_min_int < 1:
+        raise ValueError("v_min must be a positive integer")
+    l_min = l_min_int
+    v_min = v_min_int
+    if l_min < 1:
+        raise ValueError("l_min must be >= 1")
+    if v_min < 1:
+        raise ValueError("v_min must be >= 1")
+
     N = R.shape[0]
     total_points = N * N
     n_recurrent_all = np.sum(R)

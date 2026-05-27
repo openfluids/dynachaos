@@ -95,6 +95,33 @@ def test_recurrence_and_rqa_sanity():
     assert stats["Lmax"] >= 0
 
 
+@pytest.mark.parametrize(
+    ("rmat", "message"),
+    [
+        (np.array([], dtype=bool), "square"),
+        (np.ones((0, 0), dtype=bool), "square"),
+        (np.ones((2, 3), dtype=bool), "square"),
+    ],
+)
+def test_rqa_rejects_invalid_matrix_shape(rmat, message):
+    with pytest.raises(ValueError, match=message):
+        rqa(rmat)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"l_min": 0}, "l_min"),
+        ({"v_min": 0}, "v_min"),
+        ({"l_min": 1.5}, "l_min"),
+        ({"v_min": None}, "v_min"),
+    ],
+)
+def test_rqa_rejects_invalid_line_thresholds(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        rqa(np.eye(3, dtype=bool), **kwargs)
+
+
 def test_recurrence_matrix_constant_signal_uses_zero_threshold():
     rmat, eps = recurrence_matrix(np.ones(5))
 

@@ -5,6 +5,7 @@
 //! columns (laminarity).
 
 use numpy::{PyArray1, PyReadonlyArray2};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 /// Extract diagonal line lengths from the upper triangle of a recurrence matrix.
@@ -29,9 +30,15 @@ pub fn diagonal_lines<'py>(
     py: Python<'py>,
     r: PyReadonlyArray2<'py, bool>,
     l_min: usize,
-) -> Bound<'py, PyArray1<i64>> {
+) -> PyResult<Bound<'py, PyArray1<i64>>> {
+    if l_min == 0 {
+        return Err(PyValueError::new_err("l_min must be > 0"));
+    }
     let arr = r.as_array();
     let n = arr.shape()[0];
+    if n == 0 || arr.shape()[1] != n {
+        return Err(PyValueError::new_err("R must be a non-empty square matrix"));
+    }
     let mut lengths: Vec<i64> = Vec::new();
 
     for k in 1..n {
@@ -53,7 +60,7 @@ pub fn diagonal_lines<'py>(
         }
     }
 
-    PyArray1::from_vec(py, lengths)
+    Ok(PyArray1::from_vec(py, lengths))
 }
 
 /// Extract vertical line lengths from a recurrence matrix.
@@ -77,9 +84,15 @@ pub fn vertical_lines<'py>(
     py: Python<'py>,
     r: PyReadonlyArray2<'py, bool>,
     v_min: usize,
-) -> Bound<'py, PyArray1<i64>> {
+) -> PyResult<Bound<'py, PyArray1<i64>>> {
+    if v_min == 0 {
+        return Err(PyValueError::new_err("v_min must be > 0"));
+    }
     let arr = r.as_array();
     let n = arr.shape()[0];
+    if n == 0 || arr.shape()[1] != n {
+        return Err(PyValueError::new_err("R must be a non-empty square matrix"));
+    }
     let mut lengths: Vec<i64> = Vec::new();
 
     // Transpose so column scans become row scans (cache-friendly).
@@ -103,5 +116,5 @@ pub fn vertical_lines<'py>(
         }
     }
 
-    PyArray1::from_vec(py, lengths)
+    Ok(PyArray1::from_vec(py, lengths))
 }
