@@ -21,7 +21,7 @@ USAGE:
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_npz, section_dir
 from dynachaos.maps._iter import iterate_unwrapped, run_transient
 
 FIG_DIR = section_dir("sec02_circle_map")
@@ -340,23 +340,21 @@ def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Devil's staircase
-    try:
-        data = safe_load(OUTPUT_NPZ)
-        print(f"Loaded {OUTPUT_NPZ} ({len(data['A'])} points)")
-    except FileNotFoundError:
-        print("Computing devil's staircase...")
-        compute()
-        data = safe_load(OUTPUT_NPZ)
+    data = load_or_compute_npz(
+        OUTPUT_NPZ,
+        "devil's staircase",
+        compute,
+        required_keys=("A", "rho", "lam"),
+    )
     plot(data)
 
     # Staircase zoom
-    try:
-        zoom_data = safe_load(ZOOM_NPZ)
-        print(f"Loaded {ZOOM_NPZ}")
-    except FileNotFoundError:
-        print("Computing staircase zoom...")
-        compute_zoom()
-        zoom_data = safe_load(ZOOM_NPZ)
+    zoom_data = load_or_compute_npz(
+        ZOOM_NPZ,
+        "staircase zoom",
+        compute_zoom,
+        required_keys=("A", "rho"),
+    )
     plot_zoom(zoom_data, data)
 
 
