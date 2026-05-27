@@ -23,6 +23,20 @@ def test_cli_list_sections():
     assert "sec11_diagnostics" in proc.stdout
 
 
+def test_cli_version():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(_repo_src())
+    proc = subprocess.run(
+        [sys.executable, "-m", "dynachaos.cli", "--version"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip().startswith("dynachaos ")
+
+
 def test_cli_run_smoke_on_existing_figure_cache():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(_repo_src())

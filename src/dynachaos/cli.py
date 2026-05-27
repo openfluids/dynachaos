@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from dynachaos import __version__
 from dynachaos.pipelines.registry import get_section, list_sections
 from dynachaos.pipelines.runner import run_all, run_section
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dynachaos", description="Run dynachaos paper pipelines")
+    parser.add_argument("--version", action="version", version=f"dynachaos {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("list", help="List available section IDs")
