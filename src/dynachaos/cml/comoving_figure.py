@@ -20,9 +20,10 @@ OUTPUTS: figures/sec08_sti/comoving_lyapunov.npz,
 USAGE:   python src/dynachaos/cml/comoving_figure.py
 """
 
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.primitives import logistic, logistic_derivative
-import numpy as np
 
 FIG_DIR = section_dir("sec08_sti")
 OUTPUT_NPZ = FIG_DIR / "comoving_lyapunov.npz"
@@ -32,6 +33,7 @@ OUTPUT_PNG = FIG_DIR / "comoving_lyapunov.png"
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
+
 
 def compute():
     """Compute co-moving Lyapunov exponent for three values of a."""
@@ -46,27 +48,30 @@ def compute():
     n_transient = 20_000
 
     a_values = [1.70, 1.85, 1.95]
-    a_labels = ["pattern selection", "defect turbulence",
-                "fully developed turbulence"]
+    a_labels = ["pattern selection", "defect turbulence", "fully developed turbulence"]
 
     all_lambda = {}
     for ia, (a, label) in enumerate(zip(a_values, a_labels)):
         print(f"a={a} ({label})...")
-        f = lambda x, _a=a: logistic(x, _a)
-        df = lambda x, _a=a: logistic_derivative(x, _a)
+
+        def f(x, _a=a):
+            return logistic(x, _a)
+
+        def df(x, _a=a):
+            return logistic_derivative(x, _a)
+
         # Coupling function g = f, dg = df
         g = f
         dg = df
 
-        lam_v = comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values,
-                                           n_iter, n_transient)
+        lam_v = comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transient)
         all_lambda[f"lambda_a{a:.2f}"] = lam_v
 
         # Save iteratively after each a value
         np.savez_compressed(
             OUTPUT_NPZ,
             v_values=v_values,
-            a_values=np.array(a_values[:ia + 1]),
+            a_values=np.array(a_values[: ia + 1]),
             eps=np.array([eps]),
             N=np.array([N]),
             **{k: v for k, v in all_lambda.items()},
@@ -80,9 +85,11 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Plot lambda(v) vs v for each nonlinearity parameter."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -91,6 +98,7 @@ def plot(data):
         series_style,
         setup,
     )
+
     setup()
 
     v_values = data["v_values"]
@@ -119,8 +127,7 @@ def plot(data):
         sty.pop("markerfacecolor", None)
         sty.pop("markeredgewidth", None)
         label_str = a_labels.get(float(a), "")
-        ax.plot(v_values, lam_plot,
-                label=rf"$a = {a:.2f}$ ({label_str})", **sty)
+        ax.plot(v_values, lam_plot, label=rf"$a = {a:.2f}$ ({label_str})", **sty)
         if np.any(valid):
             y_min = min(y_min, np.nanmin(lam_plot[valid]))
             y_max = max(y_max, np.nanmax(lam_plot[valid]))
@@ -129,19 +136,17 @@ def plot(data):
             if not (valid[j] and valid[j + 1]):
                 continue
             if lam_v[j] * lam_v[j + 1] < 0:
-                v_cross = (v_values[j] * abs(lam_v[j + 1])
-                           + v_values[j + 1] * abs(lam_v[j])) / (
-                    abs(lam_v[j]) + abs(lam_v[j + 1]))
-                ax.axvline(v_cross, color=sty["color"], lw=0.6, ls="--",
-                           alpha=0.5)
+                v_cross = (v_values[j] * abs(lam_v[j + 1]) + v_values[j + 1] * abs(lam_v[j])) / (
+                    abs(lam_v[j]) + abs(lam_v[j + 1])
+                )
+                ax.axvline(v_cross, color=sty["color"], lw=0.6, ls="--", alpha=0.5)
 
     ax.axhline(0, color=COLORS["grey"], lw=0.5, ls="-", alpha=0.5)
     ax.set_xlabel(r"Velocity $v$ (sites/iteration)")
     ax.set_ylabel(r"$\lambda(v)$")
     if np.isfinite(y_min) and np.isfinite(y_max):
         ax.set_ylim(y_min - 0.15, y_max + 0.08)
-    ax.set_title(r"Co-moving Lyapunov exponent, logistic CML",
-                 loc="left")
+    ax.set_title(r"Co-moving Lyapunov exponent, logistic CML", loc="left")
 
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="double", loc="upper right")
@@ -154,6 +159,7 @@ def plot(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

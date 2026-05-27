@@ -22,11 +22,11 @@ Figures:
 OUTPUTS: figures/sec08_sti/spacetime_diagrams.npz, .png
 """
 
-from dynachaos.io.paths import safe_load, section_dir
-from dynachaos.maps.primitives import logistic
 import numpy as np
 
 from dynachaos.cml.primitives import cml_step
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic
 
 FIG_DIR = section_dir("sec08_sti")
 
@@ -37,6 +37,7 @@ STI_PNG = FIG_DIR / "spacetime_diagrams.png"
 # ---------------------------------------------------------------------------
 # Model definitions
 # ---------------------------------------------------------------------------
+
 
 def model_A_f(x, a=0.02):
     """Piecewise map for model (A).
@@ -65,8 +66,7 @@ def model_C_f(x, A=1.752):
     return logistic(x, A)
 
 
-def simulate_cml(f, g, eps, N=200, n_transient=2000, n_record=500,
-                 x0=None):
+def simulate_cml(f, g, eps, N=200, n_transient=2000, n_record=500, x0=None):
     """Run CML and record spacetime diagram."""
     if x0 is None:
         rng = np.random.default_rng(42)
@@ -87,6 +87,7 @@ def simulate_cml(f, g, eps, N=200, n_transient=2000, n_record=500,
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
+
 
 def compute():
     """Generate spacetime diagrams for all three models."""
@@ -119,15 +120,18 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Plot spacetime diagrams for all three models."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_SPACETIME,
         apply_axes_polish,
         figure_spec,
         setup,
     )
+
     setup()
 
     configs = [
@@ -140,7 +144,9 @@ def plot(data):
     fig, axes = plt.subplots(3, 3, figsize=(spec.figsize[0], spec.figsize[1] * 1.42))
 
     for row, (model, eps_vals, title) in enumerate(configs):
-        row_arrays = [data[f"{model}_eps_{eps}"] for eps in eps_vals if f"{model}_eps_{eps}" in data]
+        row_arrays = [
+            data[f"{model}_eps_{eps}"] for eps in eps_vals if f"{model}_eps_{eps}" in data
+        ]
         row_stack = np.concatenate([arr.ravel() for arr in row_arrays])
         vmin, vmax = np.percentile(row_stack, [1.0, 99.0])
         if vmax - vmin < 1e-12:
@@ -151,9 +157,15 @@ def plot(data):
             key = f"{model}_eps_{eps}"
             if key in data:
                 st = data[key]
-                ax.imshow(st, aspect="auto", cmap=CMAP_SPACETIME,
-                          origin="lower", interpolation="nearest",
-                          vmin=vmin, vmax=vmax)
+                ax.imshow(
+                    st,
+                    aspect="auto",
+                    cmap=CMAP_SPACETIME,
+                    origin="lower",
+                    interpolation="nearest",
+                    vmin=vmin,
+                    vmax=vmax,
+                )
             ax.set_title(rf"$\varepsilon = {eps}$", loc="left")
             if col == 0:
                 ax.set_ylabel(f"{title}\nTime $n$")
@@ -173,6 +185,7 @@ def plot(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

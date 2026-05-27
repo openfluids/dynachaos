@@ -70,6 +70,7 @@ ATTRACTOR_CASES = (
 # Map definition
 # ---------------------------------------------------------------------------
 
+
 def coupled_logistic(state, A, D):
     """One iteration of the coupled logistic map."""
     x, y = state
@@ -81,15 +82,13 @@ def coupled_logistic(state, A, D):
 def coupled_logistic_jac(state, A, D):
     """Jacobian of the coupled logistic map."""
     x, y = state
-    return np.array([
-        [logistic_derivative(x, A) - D, D],
-        [D, logistic_derivative(y, A) - D]
-    ])
+    return np.array([[logistic_derivative(x, A) - D, D], [D, logistic_derivative(y, A) - D]])
 
 
 # ---------------------------------------------------------------------------
 # Phase diagram computation
 # ---------------------------------------------------------------------------
+
 
 def compute_phase_diagram():
     """Compute phase diagram in (A, D) space.
@@ -142,12 +141,7 @@ def compute_phase_diagram():
             tx = j11 * vx + D * vy
             ty = D * vx + j22 * vy
             tnorm = np.sqrt(tx * tx + ty * ty)
-            valid_tan = (
-                np.isfinite(x)
-                & np.isfinite(y)
-                & np.isfinite(tnorm)
-                & (tnorm > 0.0)
-            )
+            valid_tan = np.isfinite(x) & np.isfinite(y) & np.isfinite(tnorm) & (tnorm > 0.0)
             lyap_sum += np.where(valid_tan, np.log(tnorm), 0.0)
             lyap_count += valid_tan.astype(float)
             vx = np.where(valid_tan, tx / tnorm, vx)
@@ -196,6 +190,7 @@ def compute_phase_diagram():
 # Attractor portraits at D=0.1
 # ---------------------------------------------------------------------------
 
+
 def compute_attractors():
     """Compute representative attractor portraits at D=0.1.
 
@@ -235,6 +230,7 @@ def compute_attractors():
 # ---------------------------------------------------------------------------
 # Basin of attraction (self-similar stripe structure)
 # ---------------------------------------------------------------------------
+
 
 def _find_reference_orbit(A, D, x0, y0, n_transient=500_000, period=32):
     """Find a reference periodic orbit by iterating from (x0, y0)."""
@@ -300,20 +296,21 @@ def compute_basins():
         dist_A = np.full(n_grid, np.inf)
         dist_B = np.full(n_grid, np.inf)
         for k in range(32):
-            d_a = (x - ref_A[k, 0])**2 + (y - ref_A[k, 1])**2
-            d_b = (x - ref_B[k, 0])**2 + (y - ref_B[k, 1])**2
+            d_a = (x - ref_A[k, 0]) ** 2 + (y - ref_A[k, 1]) ** 2
+            d_b = (x - ref_B[k, 0]) ** 2 + (y - ref_B[k, 1]) ** 2
             dist_A = np.minimum(dist_A, d_a)
             dist_B = np.minimum(dist_B, d_b)
 
-        basin[j] = np.where(np.isnan(x), -1,
-                   np.where(dist_A < dist_B, 1,
-                   np.where(dist_B < dist_A, 2, 0))).astype(np.int8)
+        basin[j] = np.where(
+            np.isnan(x), -1, np.where(dist_A < dist_B, 1, np.where(dist_B < dist_A, 2, 0))
+        ).astype(np.int8)
 
         if (j + 1) % 200 == 0:
             print(f"  Basins: row {j + 1}/{n_grid}")
 
-    np.savez_compressed(BASIN_NPZ, x=x_range, y=y_range, basin=basin,
-                        A=np.array([A]), D=np.array([D]))
+    np.savez_compressed(
+        BASIN_NPZ, x=x_range, y=y_range, basin=basin, A=np.array([A]), D=np.array([D])
+    )
     print(f"Saved {BASIN_NPZ}")
 
 
@@ -321,9 +318,11 @@ def compute_basins():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_phase_diagram(data):
     """Plot a coarse parameter survey in (A, D) space."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_DIVERGING,
         CMAP_SEQUENTIAL,
@@ -332,6 +331,7 @@ def plot_phase_diagram(data):
         figure_spec,
         setup,
     )
+
     setup()
 
     A = data["A"]
@@ -418,7 +418,9 @@ def plot_phase_diagram(data):
 def plot_attractors(data):
     """Plot representative attractor portraits."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     A_values = data["A_values"]
@@ -488,7 +490,9 @@ def plot_basins(data):
     import matplotlib.pyplot as plt
     from matplotlib.colors import BoundaryNorm, ListedColormap
     from matplotlib.patches import Patch
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     x = data["x"]
@@ -496,12 +500,14 @@ def plot_basins(data):
     basin = data["basin"]
     A_val = data["A"][0]
 
-    cmap = ListedColormap([
-        COLORS["offwhite"],
-        COLORS["grey"],
-        COLORS["blue"],
-        COLORS["red"],
-    ])
+    cmap = ListedColormap(
+        [
+            COLORS["offwhite"],
+            COLORS["grey"],
+            COLORS["blue"],
+            COLORS["red"],
+        ]
+    )
     norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
 
     spec = figure_spec("double")
@@ -587,6 +593,7 @@ def plot_basins(data):
 # Animation
 # ---------------------------------------------------------------------------
 
+
 def compute_animation_data():
     """Sweep A from 0.9 to 1.45 at D=0.1 for animation."""
     D = 0.1
@@ -608,15 +615,20 @@ def make_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        ANIM_GIF,
         title_template=r"Coupled logistic map, $\varepsilon = 0.1$, $a = {param_value}$",
-        param_name="a", param_fmt=".3f",
+        param_name="a",
+        param_fmt=".3f",
     )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -689,6 +701,7 @@ def main():
         compute_animation_data()
         anim_data = safe_load(ANIM_NPZ)
     make_animation_gif(anim_data)
+
 
 if __name__ == "__main__":
     main()

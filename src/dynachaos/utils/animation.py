@@ -76,9 +76,7 @@ def compute_animation_sweep(
                 all_y=all_y[: i + 1],
             )
 
-    np.savez_compressed(
-        output_path, param_values=param_values, all_x=all_x, all_y=all_y
-    )
+    np.savez_compressed(output_path, param_values=param_values, all_x=all_x, all_y=all_y)
     print(f"Saved {output_path}")
     return {"param_values": param_values, "all_x": all_x, "all_y": all_y}
 
@@ -156,9 +154,7 @@ def make_attractor_gif(
     def update(frame):
         scatter.set_offsets(np.column_stack([all_x[frame], all_y[frame]]))
         pv = format(param_values[frame], param_fmt)
-        title_obj.set_text(
-            title_template.format(param_name=param_name, param_value=pv)
-        )
+        title_obj.set_text(title_template.format(param_name=param_name, param_value=pv))
         return scatter, title_obj
 
     anim = FuncAnimation(fig, update, frames=len(param_values), blit=True)

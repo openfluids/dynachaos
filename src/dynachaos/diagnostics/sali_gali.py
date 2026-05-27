@@ -100,8 +100,7 @@ def sali(f, jac, x0, n_iter=10_000, n_transient=1000, rng=None):
 
         # SALI = min(||v1_hat + v2_hat||, ||v1_hat - v2_hat||)
         # When vectors align: one of these → 0
-        sali_values[i] = min(np.linalg.norm(v1 + v2),
-                             np.linalg.norm(v1 - v2))
+        sali_values[i] = min(np.linalg.norm(v1 + v2), np.linalg.norm(v1 - v2))
 
     return sali_values
 

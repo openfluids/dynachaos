@@ -157,9 +157,9 @@ def sample_entropy(x, m=2, r=None, verbose=False):
         _print_timing(backend, len(x), n_pairs, elapsed)
 
     if b_count == 0:
-        return np.nan   # no m-length matches: undefined
+        return np.nan  # no m-length matches: undefined
     if a_count == 0:
-        return np.inf   # no (m+1)-length matches: -ln(0/B) = inf
+        return np.inf  # no (m+1)-length matches: -ln(0/B) = inf
     return float(-np.log(a_count / b_count))
 
 
@@ -209,7 +209,7 @@ def approximate_entropy(x, m=2, r=None, verbose=False):
             count = 0
             for j in range(n_templates):
                 d_max = np.max(np.abs(traj[i] - traj[j]))
-                if d_max <= r:   # ApEn uses <= per Pincus (1991)
+                if d_max <= r:  # ApEn uses <= per Pincus (1991)
                     count += 1
             c[i] = count / n_templates
         return float(np.mean(np.log(c)))

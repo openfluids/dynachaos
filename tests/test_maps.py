@@ -1,11 +1,12 @@
 import numpy as np
 
+from dynachaos.cml.gcm_clusters import broad_positive_mask
 from dynachaos.cml.primitives import (
     cluster_labels_by_tolerance,
+    cml_jacobian_subblock_logistic,
     cml_step,
     cml_step_logistic,
     cml_step_logistic_batch,
-    cml_jacobian_subblock_logistic,
     gcm_step,
     sustained_positive_mask,
 )
@@ -14,14 +15,13 @@ from dynachaos.diagnostics.compare_all_helpers import (
     sweep_pair_metric,
     sweep_scalar_metric,
 )
-from dynachaos.maps.circle_map import circle_map, circle_map_derivative
-from dynachaos.cml.gcm_clusters import broad_positive_mask
 from dynachaos.maps._iter import (
     iterate_unwrapped,
     run_transient,
     sample_trajectory,
     trajectory_after_transient,
 )
+from dynachaos.maps.circle_map import circle_map, circle_map_derivative
 from dynachaos.maps.coupled_logistic import coupled_logistic, coupled_logistic_jac
 from dynachaos.maps.henon import henon, henon_jac
 from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
@@ -76,6 +76,7 @@ def test_coupled_logistic_respects_exchange_symmetry():
 # Logistic map primitives
 # ---------------------------------------------------------------------------
 
+
 def test_logistic_known_values():
     """f(0, a) = 1 for all a; f(1, 2) = 1 - 2 = -1."""
     assert logistic(0.0, 1.5) == 1.0
@@ -106,6 +107,7 @@ def test_logistic_derivative_vectorized():
 # Delayed logistic map
 # ---------------------------------------------------------------------------
 
+
 def test_delayed_logistic_shape_and_finite():
     state = np.array([0.5, 0.3])
     out = delayed_logistic(state, A=0.3, D=1.8)
@@ -129,14 +131,16 @@ def test_delayed_logistic_jac_finite_difference():
         state_plus[j] += eps
         state_minus = state.copy()
         state_minus[j] -= eps
-        fd_col = (delayed_logistic(state_plus, A, D)
-                  - delayed_logistic(state_minus, A, D)) / (2.0 * eps)
+        fd_col = (delayed_logistic(state_plus, A, D) - delayed_logistic(state_minus, A, D)) / (
+            2.0 * eps
+        )
         np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------
 # Torus doubling maps
 # ---------------------------------------------------------------------------
+
 
 def test_map_I_shape():
     state = np.array([0.5, 0.3, 0.4])
@@ -163,6 +167,7 @@ def test_map_IV_shape():
 # ---------------------------------------------------------------------------
 # Modulated circle map
 # ---------------------------------------------------------------------------
+
 
 def test_modulated_circle_range():
     state = np.array([0.3, 0.7])
@@ -222,7 +227,9 @@ def test_iterate_unwrapped_scalar_matches_manual_accumulation():
 
 def test_run_transient_and_sample_helpers_record_post_step_states():
     state = np.array([0.0, 1.0])
-    step_fn = lambda s: s + 1.0
+
+    def step_fn(s):
+        return s + 1.0
 
     after = run_transient(state, step_fn, 2)
     np.testing.assert_allclose(after, np.array([2.0, 3.0]))
@@ -240,8 +247,12 @@ def test_run_transient_and_sample_helpers_record_post_step_states():
 def test_cml_step_matches_manual_generic_update():
     x = np.array([0.1, -0.2, 0.3, -0.4])
     eps = 0.2
-    f = lambda arr: 2.0 * arr
-    g = lambda arr: arr + 1.0
+
+    def f(arr):
+        return 2.0 * arr
+
+    def g(arr):
+        return arr + 1.0
 
     out = cml_step(x, f, g, eps)
     manual = f(x) + eps / 2.0 * (np.roll(g(x), -1) + np.roll(g(x), 1) - 2.0 * g(x))
@@ -252,8 +263,12 @@ def test_cml_step_matches_manual_generic_update():
 def test_cml_step_default_preserves_flattened_roll_behavior_for_2d_input():
     x = np.array([[0.1, -0.2], [0.3, -0.4]])
     eps = 0.2
-    f = lambda arr: 2.0 * arr
-    g = lambda arr: arr + 1.0
+
+    def f(arr):
+        return 2.0 * arr
+
+    def g(arr):
+        return arr + 1.0
 
     out = cml_step(x, f, g, eps)
     gx = g(x)
@@ -278,10 +293,9 @@ def test_cml_step_logistic_batch_matches_rowwise_update():
     eps = 0.2
 
     batch = cml_step_logistic_batch(x, a_col, eps)
-    rowwise = np.vstack([
-        cml_step_logistic(x[idx], float(a_col[idx, 0]), eps)
-        for idx in range(len(x))
-    ])
+    rowwise = np.vstack(
+        [cml_step_logistic(x[idx], float(a_col[idx, 0]), eps) for idx in range(len(x))]
+    )
 
     np.testing.assert_allclose(batch, rowwise)
 
@@ -294,11 +308,13 @@ def test_cml_jacobian_subblock_logistic_matches_manual_matrix():
 
     J = cml_jacobian_subblock_logistic(x, a, eps, L)
     dfx = logistic_derivative(x, a)
-    expected = np.array([
-        [(1.0 - eps) * dfx[0], (eps / 2.0) * dfx[1], 0.0],
-        [(eps / 2.0) * dfx[0], (1.0 - eps) * dfx[1], (eps / 2.0) * dfx[2]],
-        [0.0, (eps / 2.0) * dfx[1], (1.0 - eps) * dfx[2]],
-    ])
+    expected = np.array(
+        [
+            [(1.0 - eps) * dfx[0], (eps / 2.0) * dfx[1], 0.0],
+            [(eps / 2.0) * dfx[0], (1.0 - eps) * dfx[1], (eps / 2.0) * dfx[2]],
+            [0.0, (eps / 2.0) * dfx[1], (1.0 - eps) * dfx[2]],
+        ]
+    )
 
     np.testing.assert_allclose(J, expected)
 
@@ -317,19 +333,31 @@ def test_gcm_step_matches_manual_formula():
 
 def test_run_transient_returns_none_when_diverged():
     state = np.array([0.0, 1.0])
-    step_fn = lambda s: s + 1.0
-    out = run_transient(state, step_fn, 5, diverged_fn=lambda s: s[0] > 2.5)
+
+    def step_fn(s):
+        return s + 1.0
+
+    def diverged_fn(s):
+        return s[0] > 2.5
+
+    out = run_transient(state, step_fn, 5, diverged_fn=diverged_fn)
     assert out is None
 
 
 def test_sample_trajectory_allow_partial_returns_prefix():
     state = np.array([0.0, 1.0])
-    step_fn = lambda s: s + 1.0
+
+    def step_fn(s):
+        return s + 1.0
+
+    def diverged_fn(s):
+        return s[0] > 2.5
+
     samples = sample_trajectory(
         state,
         step_fn,
         5,
-        diverged_fn=lambda s: s[0] > 2.5,
+        diverged_fn=diverged_fn,
         allow_partial=True,
     )
 
@@ -344,14 +372,18 @@ def test_iterate_unwrapped_vectorized_updates_elementwise():
 
 def test_sweep_metric_helpers_return_expected_arrays():
     values = np.array([1.0, 2.0, 3.0])
-    series_fn = lambda v: np.array([v, 2.0 * v])
 
-    scalar = sweep_scalar_metric(values, series_fn, lambda s: float(np.sum(s)))
-    first, second = sweep_pair_metric(
-        values,
-        series_fn,
-        lambda s: (float(np.min(s)), float(np.max(s))),
-    )
+    def series_fn(v):
+        return np.array([v, 2.0 * v])
+
+    def scalar_metric(s):
+        return float(np.sum(s))
+
+    def pair_metric(s):
+        return float(np.min(s)), float(np.max(s))
+
+    scalar = sweep_scalar_metric(values, series_fn, scalar_metric)
+    first, second = sweep_pair_metric(values, series_fn, pair_metric)
 
     np.testing.assert_allclose(scalar, np.array([3.0, 6.0, 9.0]))
     np.testing.assert_allclose(first, np.array([1.0, 2.0, 3.0]))
@@ -372,6 +404,7 @@ def test_load_or_compute_npz_computes_when_missing(tmp_path):
 # ---------------------------------------------------------------------------
 # Henon map
 # ---------------------------------------------------------------------------
+
 
 def test_henon_shape_and_finite():
     """Output shapes and finiteness."""
@@ -403,6 +436,5 @@ def test_henon_jac_finite_difference():
         state_plus[j] += eps
         state_minus = state.copy()
         state_minus[j] -= eps
-        fd_col = (henon(state_plus, a, b)
-                  - henon(state_minus, a, b)) / (2.0 * eps)
+        fd_col = (henon(state_plus, a, b) - henon(state_minus, a, b)) / (2.0 * eps)
         np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)

@@ -69,8 +69,7 @@ def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
     return log_sum / n_iter
 
 
-def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000,
-                      reorth_interval=1):
+def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_interval=1):
     """Compute the full Lyapunov spectrum of an N-dimensional map.
 
     Uses QR decomposition (Benettin et al. 1980) to track all N Lyapunov
@@ -184,8 +183,7 @@ def lyapunov_max(f, jac, x0, n_iter=100_000, n_transient=10_000, rng=None):
     return log_sum / n_iter
 
 
-def lyapunov_sweep_1d(f, df, x0_func, params, n_iter=50_000,
-                      n_transient=10_000):
+def lyapunov_sweep_1d(f, df, x0_func, params, n_iter=50_000, n_transient=10_000):
     """Sweep a parameter and compute the Lyapunov exponent at each value.
 
     Parameters
@@ -212,16 +210,22 @@ def lyapunov_sweep_1d(f, df, x0_func, params, n_iter=50_000,
     lams = np.empty(len(params))
 
     for i, p in enumerate(params):
-        fp = lambda x, _p=p: f(x, _p)
-        dfp = lambda x, _p=p: df(x, _p)
+
+        def fp(x, _p=p):
+            return f(x, _p)
+
+        def dfp(x, _p=p):
+            return df(x, _p)
+
         x0 = x0_func(p)
         lams[i] = lyapunov_exponent_1d(fp, dfp, x0, n_iter, n_transient)
 
     return lams
 
 
-def lyapunov_sweep_nd(f, jac, x0_func, params, n_iter=50_000,
-                      n_transient=10_000, full_spectrum=False):
+def lyapunov_sweep_nd(
+    f, jac, x0_func, params, n_iter=50_000, n_transient=10_000, full_spectrum=False
+):
     """Sweep a parameter and compute Lyapunov exponent(s) for an ND map.
 
     Parameters
@@ -251,8 +255,13 @@ def lyapunov_sweep_nd(f, jac, x0_func, params, n_iter=50_000,
 
     results = []
     for p in params:
-        fp = lambda x, _p=p: f(x, _p)
-        jacp = lambda x, _p=p: jac(x, _p)
+
+        def fp(x, _p=p):
+            return f(x, _p)
+
+        def jacp(x, _p=p):
+            return jac(x, _p)
+
         x0 = x0_func(p)
 
         if full_spectrum:
@@ -265,8 +274,7 @@ def lyapunov_sweep_nd(f, jac, x0_func, params, n_iter=50_000,
     return np.array(results)
 
 
-def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01,
-                           t_transient=50.0, reorth_dt=1.0):
+def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01, t_transient=50.0, reorth_dt=1.0):
     """Lyapunov spectrum of a continuous-time flow.
 
     Integrates the variational equations dPhi/dt = J(x(t)) Phi alongside
@@ -310,8 +318,13 @@ def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01,
     # ── Transient: integrate flow only, discard ──
     if t_transient > 0:
         sol_trans = solve_ivp(
-            lambda t, x: rhs(t, x), (0, t_transient), x0,
-            method="RK45", rtol=1e-9, atol=1e-11, max_step=dt,
+            lambda t, x: rhs(t, x),
+            (0, t_transient),
+            x0,
+            method="RK45",
+            rtol=1e-9,
+            atol=1e-11,
+            max_step=dt,
         )
         x0 = sol_trans.y[:, -1]
 
@@ -335,8 +348,13 @@ def flow_lyapunov_spectrum(rhs, jac, x0, t_total=200.0, dt=0.01,
         t_end = t_current + reorth_dt
 
         sol = solve_ivp(
-            augmented_rhs, (t_current, t_end), y0,
-            method="RK45", rtol=1e-9, atol=1e-11, max_step=dt,
+            augmented_rhs,
+            (t_current, t_end),
+            y0,
+            method="RK45",
+            rtol=1e-9,
+            atol=1e-11,
+            max_step=dt,
         )
 
         # Extract final state

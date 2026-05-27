@@ -1,6 +1,6 @@
 # dynachaos
 
-[![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
+[![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -185,7 +185,7 @@ dynachaos run all                 # full pipeline
 git clone https://github.com/ricardofrantz/dynachaos.git
 cd dynachaos
 uv sync
-uv run pytest tests/ -q           # pure-Python tests
+uv run --extra viz pytest tests/ -q
 
 # With Rust extension:
 uv run maturin develop --release
@@ -202,7 +202,7 @@ if applicable, the companion paper:
   author  = {Frantz, Ricardo},
   title   = {dynachaos: High-performance chaos analysis in Python},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.2.0},
   url     = {https://github.com/ricardofrantz/dynachaos},
   license = {MIT}
 }

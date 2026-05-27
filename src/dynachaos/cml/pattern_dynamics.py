@@ -15,13 +15,15 @@ Phase diagram: a in [1.5, 2.0], eps in [0, 0.4]
 OUTPUTS: figures/sec09_pattern/*.npz, *.png
 """
 
-from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 from dynachaos.cml.primitives import (
     cml_step_logistic as cml_step,
+)
+from dynachaos.cml.primitives import (
     cml_step_logistic_batch as _cml_step_batch,
 )
+from dynachaos.io.paths import safe_load, section_dir
 
 FIG_DIR = section_dir("sec09_pattern")
 
@@ -83,17 +85,16 @@ def compute_phase_diagram():
 
         if (j + 1) % 40 == 0:
             print(f"  Phase diagram: {j + 1}/{n_eps}")
-            np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values,
-                                lam=lam_grid)
+            np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values, lam=lam_grid)
 
-    np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values,
-                        lam=lam_grid)
+    np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values, lam=lam_grid)
     print(f"Saved {PHASE_NPZ}")
 
 
 # ---------------------------------------------------------------------------
 # Space-amplitude plots
 # ---------------------------------------------------------------------------
+
 
 def compute_space_amplitude():
     """Compute space-amplitude snapshots for representative phases."""
@@ -130,9 +131,11 @@ def compute_space_amplitude():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_phase_diagram(data):
     """Plot the global phase diagram."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         COLORS,
@@ -140,6 +143,7 @@ def plot_phase_diagram(data):
         figure_spec,
         setup,
     )
+
     setup()
 
     a = data["a"]
@@ -148,8 +152,7 @@ def plot_phase_diagram(data):
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    im = ax.pcolormesh(a, eps, np.log10(lam + 1e-10), cmap=CMAP_SEQUENTIAL,
-                       rasterized=True)
+    im = ax.pcolormesh(a, eps, np.log10(lam + 1e-10), cmap=CMAP_SEQUENTIAL, rasterized=True)
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"Coupling $\varepsilon$")
     ax.set_title("Variance-based activity map", loc="left")
@@ -187,7 +190,9 @@ def plot_phase_diagram(data):
 def plot_space_amplitude(data):
     """Plot space-amplitude snapshots."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+
     setup()
 
     params = data["params"]
@@ -237,6 +242,7 @@ def plot_space_amplitude(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

@@ -28,4 +28,4 @@ def section_dir(section_name: str) -> Path:
 
 def safe_load(path):
     """Load .npz without deserializing arbitrary objects."""
-    return np.load(path, allow_pickle = False)
+    return np.load(path, allow_pickle=False)

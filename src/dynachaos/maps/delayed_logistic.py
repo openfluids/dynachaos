@@ -25,9 +25,10 @@ OUTPUTS: figures/sec05_oscillation/attractors.npz,
 USAGE:   python src/dynachaos/maps/delayed_logistic.py
 """
 
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
-import numpy as np
 
 FIG_DIR = section_dir("sec05_oscillation")
 ATTR_NPZ = FIG_DIR / "attractors.npz"
@@ -44,6 +45,7 @@ LOCK_PNG = FIG_DIR / "locking_sequence.png"
 # Map definition
 # ---------------------------------------------------------------------------
 
+
 def delayed_logistic(state, A, D):
     """One iteration: state = (x, y) -> (x', y')."""
     x, y = state
@@ -55,15 +57,13 @@ def delayed_logistic(state, A, D):
 def delayed_logistic_jac(state, A, D):
     """Jacobian of the delayed logistic map."""
     x, y = state
-    return np.array([
-        [A, -2.0 * (1.0 - A) * D * y],
-        [1.0, 0.0]
-    ])
+    return np.array([[A, -2.0 * (1.0 - A) * D * y], [1.0, 0.0]])
 
 
 # ---------------------------------------------------------------------------
 # Attractor computation
 # ---------------------------------------------------------------------------
+
 
 def compute_attractor(A, D, n_transient=10_000, n_plot=50_000, x0=None):
     """Iterate the map and return the attractor points (None if diverged)."""
@@ -86,12 +86,21 @@ def compute_attractors():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     A = 0.3
-    D_values = [1.55, 1.65, 1.75, 1.82, 1.86, 1.90,
-                1.92, 1.94, 1.95, 2.00, 2.09, 2.16]
-    labels = ["(a) torus", "(b) torus", "(c) torus", "(d) torus",
-              "(e) torus", "(f) locking",
-              "(g) near-locking", "(h) chaos", "(i) chaos",
-              "(j) chaos", "(k) chaos", "(l) chaos"]
+    D_values = [1.55, 1.65, 1.75, 1.82, 1.86, 1.90, 1.92, 1.94, 1.95, 2.00, 2.09, 2.16]
+    labels = [
+        "(a) torus",
+        "(b) torus",
+        "(c) torus",
+        "(d) torus",
+        "(e) torus",
+        "(f) locking",
+        "(g) near-locking",
+        "(h) chaos",
+        "(i) chaos",
+        "(j) chaos",
+        "(k) chaos",
+        "(l) chaos",
+    ]
 
     results = {}
     for D, label in zip(D_values, labels):
@@ -110,6 +119,7 @@ def compute_attractors():
 # Lyapunov spectrum computation
 # ---------------------------------------------------------------------------
 
+
 def compute_lyapunov_spectrum():
     """Sweep D and compute Lyapunov spectrum."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -123,14 +133,17 @@ def compute_lyapunov_spectrum():
     for i, D in enumerate(D_values):
         fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
         x0 = np.array([fp + 0.01, fp - 0.01])
-        f = lambda state, _D=D: delayed_logistic(state, A, _D)
-        jac = lambda state, _D=D: delayed_logistic_jac(state, A, _D)
-        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000,
-                                       n_transient=10_000)
+
+        def f(state, _D=D):
+            return delayed_logistic(state, A, _D)
+
+        def jac(state, _D=D):
+            return delayed_logistic_jac(state, A, _D)
+
+        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000, n_transient=10_000)
         if (i + 1) % 500 == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            np.savez_compressed(LYAP_NPZ, D=D_values[:i+1],
-                                spectra=spectra[:i+1])
+            np.savez_compressed(LYAP_NPZ, D=D_values[: i + 1], spectra=spectra[: i + 1])
 
     np.savez_compressed(LYAP_NPZ, D=D_values, spectra=spectra)
     print(f"Saved {LYAP_NPZ}")
@@ -140,17 +153,30 @@ def compute_lyapunov_spectrum():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_attractors(data):
     """Plot the twelve attractor portraits in a 3x4 grid."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D_values = data["D_values"]
-    labels_short = ["torus", "torus", "torus", "torus",
-                    "torus", "locking",
-                    "near-locking", "chaos", "chaos",
-                    "chaos", "chaos", "chaos"]
+    labels_short = [
+        "torus",
+        "torus",
+        "torus",
+        "torus",
+        "torus",
+        "locking",
+        "near-locking",
+        "chaos",
+        "chaos",
+        "chaos",
+        "chaos",
+        "chaos",
+    ]
     panel_labels = list("abcdefghijkl")
 
     n_panels = len(D_values)
@@ -206,6 +232,7 @@ def plot_attractors(data):
 def plot_lyapunov(data):
     """Plot Lyapunov spectrum vs D."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -213,6 +240,7 @@ def plot_lyapunov(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     D = data["D"]
@@ -233,9 +261,13 @@ def plot_lyapunov(data):
     alpha = 0.3
     D_hopf = (3.0 - 2.0 * alpha) / (4.0 * (1.0 - alpha) ** 2)  # approx 1.2245
     ax.axvline(D_hopf, color=COLORS["grey"], lw=0.5, ls=":", alpha=0.7)
-    ax.text(D_hopf + 0.02, ax.get_ylim()[1] * 0.8,
-            r"$D_c = \frac{3-2\alpha}{4(1-\alpha)^2}$", fontsize=spec.tick_size,
-            color=COLORS["grey"])
+    ax.text(
+        D_hopf + 0.02,
+        ax.get_ylim()[1] * 0.8,
+        r"$D_c = \frac{3-2\alpha}{4(1-\alpha)^2}$",
+        fontsize=spec.tick_size,
+        color=COLORS["grey"],
+    )
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -246,6 +278,7 @@ def plot_lyapunov(data):
 # Locking sequence: zoom into the locking-to-chaos transition
 # ---------------------------------------------------------------------------
 
+
 def compute_locking_sequence():
     """Compute attractors for 8 D values in [1.86, 1.95]."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -253,9 +286,14 @@ def compute_locking_sequence():
     A = 0.3
     D_values = [1.860, 1.880, 1.895, 1.905, 1.915, 1.930, 1.940, 1.950]
     labels = [
-        "oscillating torus", "near-locking", "locking",
-        "locking", "near-locking", "fractalization onset",
-        "early chaos", "chaos",
+        "oscillating torus",
+        "near-locking",
+        "locking",
+        "locking",
+        "near-locking",
+        "fractalization onset",
+        "early chaos",
+        "chaos",
     ]
 
     results = {}
@@ -274,14 +312,21 @@ def compute_locking_sequence():
 def plot_locking_sequence(data):
     """Plot 2x4 grid of locking-to-chaos transition."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D_values = data["D_values"]
     labels = [
-        "oscillating torus", "near-locking", "locking",
-        "locking", "near-locking", "fract. onset",
-        "early chaos", "chaos",
+        "oscillating torus",
+        "near-locking",
+        "locking",
+        "locking",
+        "near-locking",
+        "fract. onset",
+        "early chaos",
+        "chaos",
     ]
     panel_labels = list("abcdefgh")
 
@@ -319,7 +364,9 @@ def plot_locking_sequence(data):
 
     fig.suptitle(
         r"Locking$\to$chaos transition, $\alpha = 0.3$",
-        x=0.01, ha="left", y=1.02,
+        x=0.01,
+        ha="left",
+        y=1.02,
         fontsize=spec.title_size,
     )
     fig.savefig(LOCK_PNG, dpi=600, bbox_inches="tight")
@@ -330,6 +377,7 @@ def plot_locking_sequence(data):
 # ---------------------------------------------------------------------------
 # Animation
 # ---------------------------------------------------------------------------
+
 
 def compute_animation_data():
     """Sweep D from 1.4 to 3.5 and store attractor trajectories for animation."""
@@ -347,15 +395,20 @@ def make_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        ANIM_GIF,
         title_template=r"Delayed logistic map, $\alpha = 0.3$, $D = {param_value}$",
-        param_name="D", param_fmt=".3f",
+        param_name="D",
+        param_fmt=".3f",
     )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

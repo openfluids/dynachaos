@@ -52,7 +52,11 @@ def run_section(
 ) -> list[Path]:
     """Run one section pipeline and return expected output paths."""
     spec = get_section(section_id)
-    root = Path(output_root).resolve() if output_root is not None else (Path.cwd() / "figures").resolve()
+    root = (
+        Path(output_root).resolve()
+        if output_root is not None
+        else (Path.cwd() / "figures").resolve()
+    )
 
     cache_paths = [root / section_id / name for name in spec.cache_files]
     output_paths = [root / section_id / name for name in spec.output_files]

@@ -14,13 +14,15 @@ OUTPUTS: figures/sec08_sti/correlation_decay.npz, correlation_decay.png
 USAGE:   python src/dynachaos/cml/correlation_figure.py
 """
 
-from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 from dynachaos.cml.primitives import (
     cml_jacobian_subblock_logistic as _cml_jacobian_subblock,
+)
+from dynachaos.cml.primitives import (
     cml_step_logistic as cml_step,
 )
+from dynachaos.io.paths import safe_load, section_dir
 
 FIG_DIR = section_dir("sec08_sti")
 CORR_NPZ = FIG_DIR / "correlation_decay.npz"
@@ -30,6 +32,7 @@ CORR_PNG = FIG_DIR / "correlation_decay.png"
 # ---------------------------------------------------------------------------
 # Panel 1: Spatial correlations
 # ---------------------------------------------------------------------------
+
 
 def compute_correlations():
     """Compute spatial autocorrelation C(r) for multiple a values.
@@ -74,7 +77,7 @@ def compute_correlations():
             fft_f = np.fft.rfft(fluct[s])
             power = np.real(fft_f * np.conj(fft_f))
             full_corr = np.fft.irfft(power, n=N) / N
-            corr_sum += full_corr[:r_max + 1]
+            corr_sum += full_corr[: r_max + 1]
 
         corr_sum /= n_sample
         # Normalize: C(r)/C(0) so C(0) = 1
@@ -146,6 +149,7 @@ def compute_lyapunov_density():
 # Exponential fit for correlation length
 # ---------------------------------------------------------------------------
 
+
 def _fit_correlation_length(r, corr_normalized):
     """Fit |C(r)| ~ exp(-r/xi) to estimate correlation length xi.
 
@@ -172,6 +176,7 @@ def _fit_correlation_length(r, corr_normalized):
 # Combined computation
 # ---------------------------------------------------------------------------
 
+
 def compute():
     """Run both computations and save to a single .npz."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -183,10 +188,9 @@ def compute():
     a_lyap, L_vals, density = compute_lyapunov_density()
 
     # Fit correlation lengths
-    xi_values = np.array([
-        _fit_correlation_length(r_vals, all_corr[ia])
-        for ia in range(len(a_corr))
-    ])
+    xi_values = np.array(
+        [_fit_correlation_length(r_vals, all_corr[ia]) for ia in range(len(a_corr))]
+    )
 
     np.savez_compressed(
         CORR_NPZ,
@@ -205,15 +209,18 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Two-panel figure: correlation decay + Lyapunov density."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         apply_axes_polish,
         figure_spec,
         series_style,
         setup,
     )
+
     setup()
 
     a_corr = data["a_corr"]
@@ -290,6 +297,7 @@ def plot(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

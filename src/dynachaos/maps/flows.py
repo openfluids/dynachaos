@@ -21,6 +21,7 @@ from scipy.integrate import solve_ivp
 
 # ── Lorenz system ──────────────────────────────────────────────────────────
 
+
 def lorenz_rhs(t, state, sigma=10.0, rho=28.0, beta=8.0 / 3.0):
     """Right-hand side of the Lorenz equations.
 
@@ -29,11 +30,13 @@ def lorenz_rhs(t, state, sigma=10.0, rho=28.0, beta=8.0 / 3.0):
     dz/dt = x * y - beta * z
     """
     x, y, z = state
-    return np.array([
-        sigma * (y - x),
-        x * (rho - z) - y,
-        x * y - beta * z,
-    ])
+    return np.array(
+        [
+            sigma * (y - x),
+            x * (rho - z) - y,
+            x * y - beta * z,
+        ]
+    )
 
 
 def lorenz_jac(t, state, sigma=10.0, rho=28.0, beta=8.0 / 3.0):
@@ -44,15 +47,16 @@ def lorenz_jac(t, state, sigma=10.0, rho=28.0, beta=8.0 / 3.0):
      [  y,       x,   -beta]]
     """
     x, y, z = state
-    return np.array([
-        [-sigma, sigma, 0.0],
-        [rho - z, -1.0, -x],
-        [y, x, -beta],
-    ])
+    return np.array(
+        [
+            [-sigma, sigma, 0.0],
+            [rho - z, -1.0, -x],
+            [y, x, -beta],
+        ]
+    )
 
 
-def lorenz_trajectory(x0=(1.0, 1.0, 1.0), t_span=(0, 100), dt=0.01,
-                      t_transient=20.0, **params):
+def lorenz_trajectory(x0=(1.0, 1.0, 1.0), t_span=(0, 100), dt=0.01, t_transient=20.0, **params):
     """Integrate the Lorenz system and return post-transient trajectory.
 
     Parameters
@@ -79,8 +83,9 @@ def lorenz_trajectory(x0=(1.0, 1.0, 1.0), t_span=(0, 100), dt=0.01,
     def rhs(t, y):
         return lorenz_rhs(t, y, **params)
 
-    sol = solve_ivp(rhs, t_span, x0, method="RK45", t_eval=t_eval,
-                    rtol=1e-10, atol=1e-12, max_step=dt)
+    sol = solve_ivp(
+        rhs, t_span, x0, method="RK45", t_eval=t_eval, rtol=1e-10, atol=1e-12, max_step=dt
+    )
     traj = sol.y.T  # (N, 3)
 
     # Discard transient
@@ -90,6 +95,7 @@ def lorenz_trajectory(x0=(1.0, 1.0, 1.0), t_span=(0, 100), dt=0.01,
 
 # ── Rossler system ─────────────────────────────────────────────────────────
 
+
 def rossler_rhs(t, state, a=0.2, b=0.2, c=5.7):
     """Right-hand side of the Rossler equations.
 
@@ -98,11 +104,13 @@ def rossler_rhs(t, state, a=0.2, b=0.2, c=5.7):
     dz/dt = b + z * (x - c)
     """
     x, y, z = state
-    return np.array([
-        -y - z,
-        x + a * y,
-        b + z * (x - c),
-    ])
+    return np.array(
+        [
+            -y - z,
+            x + a * y,
+            b + z * (x - c),
+        ]
+    )
 
 
 def rossler_jac(t, state, a=0.2, b=0.2, c=5.7):
@@ -113,15 +121,16 @@ def rossler_jac(t, state, a=0.2, b=0.2, c=5.7):
      [ z,   0, x-c ]]
     """
     x, _y, z = state
-    return np.array([
-        [0.0, -1.0, -1.0],
-        [1.0, a, 0.0],
-        [z, 0.0, x - c],
-    ])
+    return np.array(
+        [
+            [0.0, -1.0, -1.0],
+            [1.0, a, 0.0],
+            [z, 0.0, x - c],
+        ]
+    )
 
 
-def rossler_trajectory(x0=(1.0, 1.0, 0.0), t_span=(0, 500), dt=0.05,
-                       t_transient=100.0, **params):
+def rossler_trajectory(x0=(1.0, 1.0, 0.0), t_span=(0, 500), dt=0.05, t_transient=100.0, **params):
     """Integrate the Rossler system and return post-transient trajectory.
 
     Parameters
@@ -143,8 +152,9 @@ def rossler_trajectory(x0=(1.0, 1.0, 0.0), t_span=(0, 500), dt=0.05,
     def rhs(t, y):
         return rossler_rhs(t, y, **params)
 
-    sol = solve_ivp(rhs, t_span, x0, method="RK45", t_eval=t_eval,
-                    rtol=1e-10, atol=1e-12, max_step=dt)
+    sol = solve_ivp(
+        rhs, t_span, x0, method="RK45", t_eval=t_eval, rtol=1e-10, atol=1e-12, max_step=dt
+    )
     traj = sol.y.T
 
     mask = sol.t >= t_transient
@@ -153,9 +163,10 @@ def rossler_trajectory(x0=(1.0, 1.0, 0.0), t_span=(0, 500), dt=0.05,
 
 # ── Mackey-Glass DDE ───────────────────────────────────────────────────────
 
-def mackey_glass_series(n_points=10_000, dt=1.0, tau=17,
-                        beta_mg=0.2, gamma=0.1, n=10,
-                        t_transient=500):
+
+def mackey_glass_series(
+    n_points=10_000, dt=1.0, tau=17, beta_mg=0.2, gamma=0.1, n=10, t_transient=500
+):
     """Generate a Mackey-Glass time series via Euler integration.
 
     dx/dt = beta * x(t-tau) / (1 + x(t-tau)^n) - gamma * x(t)
@@ -208,7 +219,7 @@ def mackey_glass_series(n_points=10_000, dt=1.0, tau=17,
         x_delayed = x_hist[idx]
 
         # Mackey-Glass RHS
-        dxdt = beta_mg * x_delayed / (1.0 + x_delayed ** n) - gamma * x
+        dxdt = beta_mg * x_delayed / (1.0 + x_delayed**n) - gamma * x
 
         x_new = x + dt_internal * dxdt
         x_hist[idx] = x_new  # overwrite oldest with newest

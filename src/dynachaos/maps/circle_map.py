@@ -9,15 +9,20 @@ Map:  θ_{n+1} = θ_n + D + A sin(2πθ_n)  (mod 1)
 
 With D = 0.25 fixed and A as the bifurcation parameter.
 
-OUTPUTS: figures/sec02_circle_map/devils_staircase.npz,
-         figures/sec02_circle_map/devils_staircase.png
-USAGE:   python src/dynachaos/maps/circle_map.py                        # .npz exists → plot only
-         rm figures/sec02_circle_map/devils_staircase.npz && python src/dynachaos/maps/circle_map.py  # recompute
+OUTPUTS:
+  figures/sec02_circle_map/devils_staircase.npz
+  figures/sec02_circle_map/devils_staircase.png
+
+USAGE:
+  python src/dynachaos/maps/circle_map.py
+  rm figures/sec02_circle_map/devils_staircase.npz
+  python src/dynachaos/maps/circle_map.py
 """
+
+import numpy as np
 
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import iterate_unwrapped, run_transient
-import numpy as np
 
 FIG_DIR = section_dir("sec02_circle_map")
 OUTPUT_NPZ = FIG_DIR / "devils_staircase.npz"
@@ -29,6 +34,7 @@ ZOOM_PNG = FIG_DIR / "staircase_zoom.png"
 # ---------------------------------------------------------------------------
 # Map definition
 # ---------------------------------------------------------------------------
+
 
 def circle_map(theta, A, D=0.25):
     """One iteration of the Kaneko circle map."""
@@ -43,6 +49,7 @@ def circle_map_derivative(theta, A, D=0.25):
 # ---------------------------------------------------------------------------
 # Rotation number computation
 # ---------------------------------------------------------------------------
+
 
 def rotation_number(A, D=0.25, n_transient=5000, n_iter=50_000, theta0=0.1):
     """Compute the rotation number for given parameters.
@@ -84,6 +91,7 @@ def lyapunov_exponent(A, D=0.25, n_transient=5000, n_iter=50_000, theta0=0.1):
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
+
 
 def compute():
     """Sweep A and compute rotation numbers + Lyapunov exponents.
@@ -135,15 +143,18 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Create the devil's staircase with Lyapunov overlay."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
         figure_spec,
         setup,
     )
+
     setup()
 
     A = data["A"]
@@ -210,6 +221,7 @@ def plot(data):
 # Staircase zoom: self-similar nesting in the Farey region
 # ---------------------------------------------------------------------------
 
+
 def compute_zoom():
     """Recompute the staircase at high resolution over K ∈ [0.10, 0.17]."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -245,12 +257,15 @@ def plot_zoom(zoom_data, full_data):
     """Two-panel figure: full staircase with zoom box + zoomed Farey region."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     spec = figure_spec("double")
     fig, (ax_full, ax_zoom) = plt.subplots(
-        1, 2,
+        1,
+        2,
         figsize=(spec.figsize[0], spec.figsize[1]),
         width_ratios=[1, 1.2],
     )
@@ -273,7 +288,10 @@ def plot_zoom(zoom_data, full_data):
         (zoom_K[0], zoom_rho[0]),
         zoom_K[1] - zoom_K[0],
         zoom_rho[1] - zoom_rho[0],
-        linewidth=0.8, edgecolor=COLORS["red"], fill=False, ls="--",
+        linewidth=0.8,
+        edgecolor=COLORS["red"],
+        fill=False,
+        ls="--",
     )
     ax_full.add_patch(rect)
 
@@ -299,7 +317,9 @@ def plot_zoom(zoom_data, full_data):
         ax_zoom.text(
             zoom_K[1] - 0.0008,
             val + 0.0006,
-            label, fontsize=spec.tick_size - 1, color=COLORS["grey"],
+            label,
+            fontsize=spec.tick_size - 1,
+            color=COLORS["grey"],
             ha="right",
         )
 
@@ -314,6 +334,7 @@ def plot_zoom(zoom_data, full_data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

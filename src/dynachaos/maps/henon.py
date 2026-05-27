@@ -52,5 +52,4 @@ def henon_jac(state, a=1.4, b=0.3):
     ndarray, shape (2, 2)
     """
     x, _y = state
-    return np.array([[-2.0 * a * x, 1.0],
-                     [b, 0.0]])
+    return np.array([[-2.0 * a * x, 1.0], [b, 0.0]])

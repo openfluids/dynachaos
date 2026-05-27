@@ -24,11 +24,12 @@ OUTPUTS: figures/sec07_fractalization/*.npz, *.png
 USAGE:   python src/dynachaos/maps/fractalization.py
 """
 
-from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
+import numpy as np
+
+from dynachaos.diagnostics.correlation import correlation_dimension
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.delayed_logistic import delayed_logistic
-import numpy as np
 
 FIG_DIR = section_dir("sec07_fractalization")
 
@@ -43,6 +44,7 @@ ANIM_GIF = FIG_DIR / "fractalization_animation.gif"
 # ---------------------------------------------------------------------------
 # Iteration helper
 # ---------------------------------------------------------------------------
+
 
 def iterate(A, D, n_transient=20_000, n_record=100_000, x0=None):
     """Iterate and return trajectory points."""
@@ -62,6 +64,7 @@ def iterate(A, D, n_transient=20_000, n_record=100_000, x0=None):
 # Computation
 # ---------------------------------------------------------------------------
 
+
 def compute_attractors():
     """Compute attractors at D values showing fractalization."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -69,9 +72,7 @@ def compute_attractors():
     A = 0.3
     # D values: smooth torus -> wrinkled -> fractal -> chaos
     D_values = [1.75, 1.86, 1.90, 1.92, 1.94, 1.945]
-    labels = ["smooth torus", "torus",
-              "wrinkled torus", "fractal torus",
-              "onset of chaos", "chaos"]
+    labels = ["smooth torus", "torus", "wrinkled torus", "fractal torus", "onset of chaos", "chaos"]
 
     results = {}
     for D, label in zip(D_values, labels):
@@ -101,8 +102,9 @@ def compute_dimensions():
 
         if (i + 1) % 20 == 0:
             print(f"  Dimension: {i + 1}/{n_params}")
-            np.savez_compressed(DIM_NPZ, D=D_values[:i+1],
-                                D2=D2_values[:i+1], A=np.array([A]))
+            np.savez_compressed(
+                DIM_NPZ, D=D_values[: i + 1], D2=D2_values[: i + 1], A=np.array([A])
+            )
 
     np.savez_compressed(DIM_NPZ, D=D_values, D2=D2_values, A=np.array([A]))
     print(f"Saved {DIM_NPZ}")
@@ -112,16 +114,24 @@ def compute_dimensions():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_attractors(data):
     """Plot attractor portraits showing fractalization."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D_values = data["D_values"]
-    labels = ["smooth torus", "weakly wrinkled",
-              "wrinkled torus", "fractalizing torus",
-              "onset of chaos", "chaos"]
+    labels = [
+        "smooth torus",
+        "weakly wrinkled",
+        "wrinkled torus",
+        "fractalizing torus",
+        "onset of chaos",
+        "chaos",
+    ]
 
     all_x = np.concatenate([data[f"D_{D}_traj"][:, 0] for D in D_values])
     all_y = np.concatenate([data[f"D_{D}_traj"][:, 1] for D in D_values])
@@ -139,8 +149,7 @@ def plot_attractors(data):
     for idx, D in enumerate(D_values):
         ax = axes_flat[idx]
         traj = data[f"D_{D}_traj"]
-        ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"],
-                   alpha=0.16, rasterized=True)
+        ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"], alpha=0.16, rasterized=True)
         ax.set_title(f"$D = {D}$\n{labels[idx]}", loc="left")
         if idx // 3 == 1:
             ax.set_xlabel("$x$")
@@ -148,6 +157,7 @@ def plot_attractors(data):
             ax.set_ylabel("$y$")
         apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
         from matplotlib.ticker import MaxNLocator
+
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.set_xlim(xlim)
@@ -166,6 +176,7 @@ def plot_attractors(data):
 def plot_dimension(data):
     """Plot correlation dimension D_2 vs D."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -173,6 +184,7 @@ def plot_dimension(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     D = data["D"]
@@ -181,8 +193,9 @@ def plot_dimension(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, D2, color=COLORS["black"], linestyle="-", lw=0.8)
-    ax.axhline(1.0, color=COLORS["blue"], lw=0.6, ls="--", alpha=0.7,
-               label="$D_2 = 1$ (smooth torus)")
+    ax.axhline(
+        1.0, color=COLORS["blue"], lw=0.6, ls="--", alpha=0.7, label="$D_2 = 1$ (smooth torus)"
+    )
     ax.axvspan(1.92, 1.95, color=COLORS["grey"], alpha=0.10, zorder=0)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Correlation dimension $D_2$")
@@ -200,6 +213,7 @@ def plot_dimension(data):
 # Animation
 # ---------------------------------------------------------------------------
 
+
 def compute_animation_data():
     """Sweep D from 1.75 to 1.96 for fractalization animation."""
     A = 0.3
@@ -216,15 +230,20 @@ def make_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        ANIM_GIF,
         title_template=r"Fractalization of torus, $\alpha = 0.3$, $D = {param_value}$",
-        param_name="D", param_fmt=".4f",
+        param_name="D",
+        param_fmt=".4f",
     )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

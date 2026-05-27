@@ -17,10 +17,11 @@ Figures:
 OUTPUTS: figures/sec04_doubling/*.npz, *.png
 """
 
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
-import numpy as np
 
 FIG_DIR = section_dir("sec04_doubling")
 
@@ -40,6 +41,7 @@ MAP4_ANIM_GIF = FIG_DIR / "map_IV_animation.gif"
 # Map definitions
 # ---------------------------------------------------------------------------
 
+
 def map_I(state, A, D):
     """Map (I): 3D delayed logistic. State = (X, Y, Z)."""
     X, Y, Z = state
@@ -52,11 +54,9 @@ def map_I(state, A, D):
 def map_I_jac(state, A, D):
     """Jacobian of Map (I)."""
     X, Y, Z = state
-    return np.array([
-        [A, (1.0 - A) * logistic_derivative(Y, D), 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0]
-    ])
+    return np.array(
+        [[A, (1.0 - A) * logistic_derivative(Y, D), 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]
+    )
 
 
 def map_IV(state, A, D):
@@ -72,17 +72,20 @@ def map_IV(state, A, D):
 def map_IV_jac(state, A, D):
     """Jacobian of Map (IV)."""
     X, Y, Z, W = state
-    return np.array([
-        [A, (1.0 - A) * logistic_derivative(Y, D), 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, A, (1.0 - A) * logistic_derivative(W, D)],
-        [1.0, 0.0, 0.0, 0.0]
-    ])
+    return np.array(
+        [
+            [A, (1.0 - A) * logistic_derivative(Y, D), 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, A, (1.0 - A) * logistic_derivative(W, D)],
+            [1.0, 0.0, 0.0, 0.0],
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Attractor computation
 # ---------------------------------------------------------------------------
+
 
 def iterate_map(f, x0, A, D, n_transient=20_000, n_plot=100_000):
     """Iterate a map and return trajectory after transient."""
@@ -147,14 +150,17 @@ def compute_map_IV_lyapunov():
     x0 = np.array([0.5, 0.5, 0.5, 0.5])
 
     for i, D in enumerate(D_values):
-        f = lambda state, _D=D: map_IV(state, A, _D)
-        jac = lambda state, _D=D: map_IV_jac(state, A, _D)
-        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000,
-                                       n_transient=20_000)
+
+        def f(state, _D=D):
+            return map_IV(state, A, _D)
+
+        def jac(state, _D=D):
+            return map_IV_jac(state, A, _D)
+
+        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000, n_transient=20_000)
         if (i + 1) % 200 == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            np.savez_compressed(LYAP_NPZ, D=D_values[:i+1],
-                                spectra=spectra[:i+1])
+            np.savez_compressed(LYAP_NPZ, D=D_values[: i + 1], spectra=spectra[: i + 1])
 
     np.savez_compressed(LYAP_NPZ, D=D_values, spectra=spectra)
     print(f"Saved {LYAP_NPZ}")
@@ -164,10 +170,13 @@ def compute_map_IV_lyapunov():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_map_I(data):
     """Plot Map (I) attractor projections onto (X, Y) plane."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D_values = data["D_values"]
@@ -181,8 +190,9 @@ def plot_map_I(data):
         key = f"D_{D}_traj"
         if key in data:
             traj = data[key]
-            ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"],
-                       alpha=0.22, rasterized=True)
+            ax.scatter(
+                traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"], alpha=0.22, rasterized=True
+            )
         ax.set_title(f"$D={D}$ ({labels[idx]})", loc="left")
         ax.set_xlabel("$X$")
         if idx == 0:
@@ -205,7 +215,9 @@ def plot_map_IV(data):
     """Plot Map (IV) attractor projections onto (X, Y) plane with zoom insets."""
     import matplotlib.pyplot as plt
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D_values = data["D_values"]
@@ -219,14 +231,15 @@ def plot_map_IV(data):
         key = f"D_{D}_traj"
         if key in data:
             traj = data[key]
-            ax.scatter(traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"],
-                       alpha=0.3, rasterized=True)
+            ax.scatter(
+                traj[:, 0], traj[:, 1], s=0.01, c=COLORS["black"], alpha=0.3, rasterized=True
+            )
 
             # Add zoom inset to reveal strand structure
-            axins = inset_axes(ax, width="40%", height="40%", loc="upper left",
-                               borderpad=0.5)
-            axins.scatter(traj[:, 0], traj[:, 1], s=0.02, c=COLORS["black"],
-                          alpha=0.5, rasterized=True)
+            axins = inset_axes(ax, width="40%", height="40%", loc="upper left", borderpad=0.5)
+            axins.scatter(
+                traj[:, 0], traj[:, 1], s=0.02, c=COLORS["black"], alpha=0.5, rasterized=True
+            )
             # Zoom into a region showing strand separation
             xmid = np.median(traj[:, 0])
             ymid = np.median(traj[:, 1])
@@ -262,6 +275,7 @@ def plot_lyapunov(data):
     """Plot Lyapunov exponents for Map (IV) vs D."""
     import matplotlib.pyplot as plt
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -269,6 +283,7 @@ def plot_lyapunov(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     D = data["D"]
@@ -281,8 +296,9 @@ def plot_lyapunov(data):
     linewidths = [0.6, 1.0]
     # Only plot first two (3rd and 4th are large negative, as Kaneko notes)
     for k in range(2):
-        ax.plot(D, spectra[:, k], color=colors[k], lw=linewidths[k],
-                label=labels_le[k], zorder=3 - k)
+        ax.plot(
+            D, spectra[:, k], color=colors[k], lw=linewidths[k], label=labels_le[k], zorder=3 - k
+        )
     ax.axhline(0, color=COLORS["red"], lw=0.4, ls="--", zorder=1)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel("Lyapunov exponent")
@@ -308,6 +324,7 @@ def plot_lyapunov(data):
 # Animations
 # ---------------------------------------------------------------------------
 
+
 def compute_map_I_animation():
     """Sweep D from 1.9 to 2.25 for Map (I) animation at A=0.4."""
     A = 0.4
@@ -328,10 +345,15 @@ def make_map_I_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], MAP1_ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        MAP1_ANIM_GIF,
         title_template=r"Map (I), $\alpha = 0.4$, $D = {param_value}$",
-        param_name="D", param_fmt=".3f",
-        xlabel="$X$", ylabel="$Y$",
+        param_name="D",
+        param_fmt=".3f",
+        xlabel="$X$",
+        ylabel="$Y$",
     )
 
 
@@ -355,16 +377,22 @@ def make_map_IV_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], MAP4_ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        MAP4_ANIM_GIF,
         title_template=r"Map (IV), $\alpha = 0.3$, $D = {param_value}$",
-        param_name="D", param_fmt=".4f",
-        xlabel="$X$", ylabel="$Y$",
+        param_name="D",
+        param_fmt=".4f",
+        xlabel="$X$",
+        ylabel="$Y$",
     )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

@@ -15,8 +15,7 @@ class TestLogisticBenchmark:
         from dynachaos.maps.base import LogisticMap
 
         lm = LogisticMap(a=2.0)
-        lam = lyapunov_exponent_1d(lm.f, lm.df, x0=0.1,
-                                   n_iter=50_000, n_transient=5_000)
+        lam = lyapunov_exponent_1d(lm.f, lm.df, x0=0.1, n_iter=50_000, n_transient=5_000)
         assert abs(lam - np.log(2)) < 0.01
 
     def test_d2(self):
@@ -53,8 +52,7 @@ class TestHenonBenchmark:
         def jac(state):
             return henon_jac(state, a, b)
 
-        spectrum = lyapunov_spectrum(f, jac, np.array([0.1, 0.1]),
-                                    n_iter=50_000, n_transient=5_000)
+        spectrum = lyapunov_spectrum(f, jac, np.array([0.1, 0.1]), n_iter=50_000, n_transient=5_000)
         assert 0.35 < spectrum[0] < 0.50
 
     def test_d2(self):
@@ -84,9 +82,13 @@ class TestLorenzBenchmark:
         from dynachaos.maps.flows import lorenz_jac, lorenz_rhs
 
         spectrum = flow_lyapunov_spectrum(
-            lorenz_rhs, lorenz_jac,
+            lorenz_rhs,
+            lorenz_jac,
             x0=np.array([1.0, 1.0, 1.0]),
-            t_total=100.0, dt=0.01, t_transient=20.0, reorth_dt=1.0,
+            t_total=100.0,
+            dt=0.01,
+            t_transient=20.0,
+            reorth_dt=1.0,
         )
         assert 0.7 < spectrum[0] < 1.1
         assert abs(spectrum[1]) < 0.1
@@ -117,9 +119,13 @@ class TestRosslerBenchmark:
         from dynachaos.maps.flows import rossler_jac, rossler_rhs
 
         spectrum = flow_lyapunov_spectrum(
-            rossler_rhs, rossler_jac,
+            rossler_rhs,
+            rossler_jac,
             x0=np.array([1.0, 1.0, 0.0]),
-            t_total=200.0, dt=0.01, t_transient=50.0, reorth_dt=1.0,
+            t_total=200.0,
+            dt=0.01,
+            t_transient=50.0,
+            reorth_dt=1.0,
         )
         assert 0.03 < spectrum[0] < 0.12
 

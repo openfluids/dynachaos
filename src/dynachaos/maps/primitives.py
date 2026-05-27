@@ -1,7 +1,5 @@
 """Primitive map functions shared across dynachaos modules."""
 
-import numpy as np
-
 from dynachaos.maps.delayed_logistic import delayed_logistic, delayed_logistic_jac
 
 

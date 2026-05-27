@@ -1,5 +1,6 @@
-import dynachaos
 import pytest
+
+import dynachaos
 from dynachaos.io.paths import output_root, section_dir
 
 
@@ -8,8 +9,8 @@ def test_package_imports():
 
 
 def test_submodule_imports():
-    from dynachaos.maps.circle_map import circle_map
     from dynachaos.diagnostics.permutation import permutation_entropy
+    from dynachaos.maps.circle_map import circle_map
 
     assert callable(circle_map)
     assert callable(permutation_entropy)
@@ -25,28 +26,34 @@ def test_output_path_helpers(tmp_path, monkeypatch):
 # Re-export smoke tests
 # ---------------------------------------------------------------------------
 
+
 def test_maps_reexports():
-    from dynachaos.maps import logistic, delayed_logistic, circle_map
+    from dynachaos.maps import circle_map, delayed_logistic, logistic
+
     assert all(callable(f) for f in [logistic, delayed_logistic, circle_map])
 
 
 def test_diagnostics_reexports():
     from dynachaos.diagnostics import correlation_integral, lyapunov_exponent_1d
+
     assert all(callable(f) for f in [correlation_integral, lyapunov_exponent_1d])
 
 
 def test_cml_reexports():
     from dynachaos.cml import cml_step, gcm_step
+
     assert all(callable(f) for f in [cml_step, gcm_step])
 
 
 def test_safe_load_reexport():
     from dynachaos.io import safe_load
+
     assert callable(safe_load)
 
 
 def test_viz_reexports():
     pytest.importorskip("matplotlib")
     from dynachaos.viz import poincare_section_plot, return_map_plot
+
     assert callable(poincare_section_plot)
     assert callable(return_map_plot)

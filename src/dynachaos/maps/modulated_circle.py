@@ -13,9 +13,10 @@ where phi undergoes pure rigid rotation at irrational frequency C = (sqrt(5)-1)/
 OUTPUTS: figures/sec06_three_torus/double_staircase.npz, .png
 """
 
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import iterate_unwrapped
-import numpy as np
 
 FIG_DIR = section_dir("sec06_three_torus")
 OUTPUT_NPZ = FIG_DIR / "double_staircase.npz"
@@ -30,11 +31,11 @@ C_GOLDEN = (np.sqrt(5) - 1) / 2
 # Map definition
 # ---------------------------------------------------------------------------
 
+
 def modulated_circle(state, A, C, D, eps):
     """One iteration of the modulated circle map (Kaneko Eq. 3.1)."""
     theta, phi = state
-    theta_new = (theta + A * np.sin(2 * np.pi * theta) + D
-                 + eps * np.sin(2 * np.pi * phi)) % 1.0
+    theta_new = (theta + A * np.sin(2 * np.pi * theta) + D + eps * np.sin(2 * np.pi * phi)) % 1.0
     phi_new = (phi + C) % 1.0
     return np.array([theta_new, phi_new])
 
@@ -43,8 +44,8 @@ def modulated_circle(state, A, C, D, eps):
 # Rotation numbers
 # ---------------------------------------------------------------------------
 
-def rotation_numbers(A, C, D, eps,
-                     n_transient=5000, n_iter=30_000, state0=None):
+
+def rotation_numbers(A, C, D, eps, n_transient=5000, n_iter=30_000, state0=None):
     """Compute both rotation numbers (rho_theta, rho_phi)."""
     if state0 is None:
         state0 = np.array([0.1, 0.1])
@@ -90,14 +91,15 @@ def longest_plateau_window(D, rho, target, tol):
 # Computation
 # ---------------------------------------------------------------------------
 
+
 def compute():
     """Sweep D (bare frequency) and compute the double devil's staircase."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Parameters following Kaneko Eq. 3.1
-    A = 0.10          # subcritical (A < 1/2pi ~ 0.159)
-    eps = 0.05        # moderate forcing amplitude
-    C = C_GOLDEN      # golden-mean inverse
+    A = 0.10  # subcritical (A < 1/2pi ~ 0.159)
+    eps = 0.05  # moderate forcing amplitude
+    C = C_GOLDEN  # golden-mean inverse
 
     n_params = 10_000
     D_values = np.linspace(0.0, 1.0, n_params)
@@ -106,23 +108,31 @@ def compute():
     rho_phi = np.empty(n_params)
 
     for i, D in enumerate(D_values):
-        rt, rp = rotation_numbers(A, C, D, eps,
-                                  n_transient=3000, n_iter=20_000)
+        rt, rp = rotation_numbers(A, C, D, eps, n_transient=3000, n_iter=20_000)
         rho_theta[i] = rt
         rho_phi[i] = rp
 
         if (i + 1) % 2000 == 0:
             print(f"  {i + 1}/{n_params}")
-            np.savez_compressed(OUTPUT_NPZ, D=D_values[:i+1],
-                                rho_theta=rho_theta[:i+1],
-                                rho_phi=rho_phi[:i+1],
-                                A=np.array([A]), C=np.array([C]),
-                                eps=np.array([eps]))
+            np.savez_compressed(
+                OUTPUT_NPZ,
+                D=D_values[: i + 1],
+                rho_theta=rho_theta[: i + 1],
+                rho_phi=rho_phi[: i + 1],
+                A=np.array([A]),
+                C=np.array([C]),
+                eps=np.array([eps]),
+            )
 
-    np.savez_compressed(OUTPUT_NPZ, D=D_values,
-                        rho_theta=rho_theta, rho_phi=rho_phi,
-                        A=np.array([A]), C=np.array([C]),
-                        eps=np.array([eps]))
+    np.savez_compressed(
+        OUTPUT_NPZ,
+        D=D_values,
+        rho_theta=rho_theta,
+        rho_phi=rho_phi,
+        A=np.array([A]),
+        C=np.array([C]),
+        eps=np.array([eps]),
+    )
     print(f"Saved {OUTPUT_NPZ}")
 
 
@@ -130,10 +140,13 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Plot the double devil's staircase."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D = data["D"]
@@ -196,10 +209,13 @@ def plot(data):
 # Zoomed double staircase: partial locking windows
 # ---------------------------------------------------------------------------
 
+
 def plot_zoom(data):
     """Two-panel zoom into different D windows showing rho_theta staircase detail."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D = data["D"]
@@ -207,7 +223,8 @@ def plot_zoom(data):
 
     spec = figure_spec("double")
     fig, (ax1, ax2) = plt.subplots(
-        1, 2,
+        1,
+        2,
         figsize=(spec.figsize[0], spec.figsize[1]),
     )
     fig.subplots_adjust(wspace=0.30)
@@ -255,6 +272,7 @@ def plot_zoom(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

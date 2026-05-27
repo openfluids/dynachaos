@@ -38,6 +38,7 @@ try:
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
     from dynachaos._rust import diagonal_lines as _diagonal_lines_rs
     from dynachaos._rust import vertical_lines as _vertical_lines_rs
+
     _RUST_AVAILABLE = True
 except ImportError:
     _RUST_AVAILABLE = False

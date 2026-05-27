@@ -77,9 +77,11 @@ def _correlation_counts_python(traj, r_values, theiler_window, use_chebyshev):
 def _print_timing(backend, N, n_valid, n_r, elapsed):
     """Print verbose timing and memory info for correlation counting."""
     throughput = n_valid * n_r / elapsed / 1e6 if elapsed > 0 else 0.0
-    print(f"  correlation_integral ({backend}): N={N:,}, pairs={n_valid:,}, "
-          f"n_r={n_r}, time={elapsed:.3f}s, "
-          f"{throughput:.1f}M pair-tests/s, RSS={get_rss_mb():.0f} MB")
+    print(
+        f"  correlation_integral ({backend}): N={N:,}, pairs={n_valid:,}, "
+        f"n_r={n_r}, time={elapsed:.3f}s, "
+        f"{throughput:.1f}M pair-tests/s, RSS={get_rss_mb():.0f} MB"
+    )
 
 
 def _valid_pair_count(n, theiler_window):
@@ -88,8 +90,9 @@ def _valid_pair_count(n, theiler_window):
     return n_eff * (n_eff + 1) // 2
 
 
-def correlation_integral(traj, r_values, max_pairs=500_000,
-                         theiler_window=0, norm="chebyshev", verbose=False):
+def correlation_integral(
+    traj, r_values, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
+):
     """Compute the correlation integral C(r) for an array of r values.
 
     C(r) = (2 / N(N-1)) * #{pairs (i,j) with |i-j| > w and dist < r}
@@ -131,17 +134,14 @@ def correlation_integral(traj, r_values, max_pairs=500_000,
 
     if _RUST_AVAILABLE:
         t0 = time.perf_counter()
-        counts = np.asarray(_correlation_counts_rs(
-            traj, r_values, theiler_window, use_chebyshev
-        ))
+        counts = np.asarray(_correlation_counts_rs(traj, r_values, theiler_window, use_chebyshev))
         elapsed = time.perf_counter() - t0
         if verbose:
             _print_timing("Rust", N, n_valid, len(r_values), elapsed)
         return counts.astype(np.float64) / n_valid
 
     t0 = time.perf_counter()
-    counts, _ = _correlation_counts_python(traj, r_values, theiler_window,
-                                           use_chebyshev)
+    counts, _ = _correlation_counts_python(traj, r_values, theiler_window, use_chebyshev)
     elapsed = time.perf_counter() - t0
     if verbose:
         _print_timing("Python", N, n_valid, len(r_values), elapsed)
@@ -203,7 +203,7 @@ def _find_scaling_region(log_r, log_C, min_points=5):
     best_std = np.inf
     best_start = 0
     for start in range(n_u - win + 1):
-        s = u_slopes[start:start + win]
+        s = u_slopes[start : start + win]
         std = np.std(s)
         if std < best_std:
             best_std = std
@@ -212,7 +212,7 @@ def _find_scaling_region(log_r, log_C, min_points=5):
     # Expand outward from best window while slope stays consistent.
     # Adaptive threshold: allow +/-3sigma of the best window's std, with a
     # floor at the log-spacing resolution (organic replacement for magic 0.05).
-    center_median = np.median(u_slopes[best_start:best_start + win])
+    center_median = np.median(u_slopes[best_start : best_start + win])
     threshold = max(3.0 * best_std, log_spacing)
 
     lo = best_start
@@ -227,8 +227,9 @@ def _find_scaling_region(log_r, log_C, min_points=5):
     return mask, slopes
 
 
-def correlation_dimension(traj, n_r=50, r_range=None, max_pairs=500_000,
-                          theiler_window=0, norm="chebyshev", verbose=False):
+def correlation_dimension(
+    traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
+):
     """Estimate the correlation dimension D_2 from trajectory points.
 
     Uses local slope plateau detection to identify the scaling region
@@ -273,13 +274,14 @@ def correlation_dimension(traj, n_r=50, r_range=None, max_pairs=500_000,
     if r_range is None:
         # Organic: attractor bounding-box diameter sets the scale
         diameter = np.max(np.ptp(traj, axis=0))
-        r_min = diameter / N      # below this, pair count -> 0
-        r_max = diameter           # beyond this, C(r) -> 1
+        r_min = diameter / N  # below this, pair count -> 0
+        r_max = diameter  # beyond this, C(r) -> 1
         r_range = (r_min, r_max)
 
     r_values = np.logspace(np.log10(r_range[0]), np.log10(r_range[1]), n_r)
-    C_values = correlation_integral(traj, r_values, max_pairs,
-                                    theiler_window, norm, verbose=verbose)
+    C_values = correlation_integral(
+        traj, r_values, max_pairs, theiler_window, norm, verbose=verbose
+    )
 
     # Filter: keep points with positive C, exclude noise floor
     # Organic: Poisson noise floor — at C = 1/sqrt(n_valid), the count is

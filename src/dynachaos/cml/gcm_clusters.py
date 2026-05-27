@@ -23,7 +23,6 @@ OUTPUTS: figures/sec10_gcm/gcm_clusters.npz,
 USAGE:   python src/dynachaos/cml/gcm_clusters.py
 """
 
-from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
 
 from dynachaos.cml.primitives import (
@@ -31,6 +30,7 @@ from dynachaos.cml.primitives import (
     gcm_step,
     sustained_positive_mask,
 )
+from dynachaos.io.paths import safe_load, section_dir
 
 FIG_DIR = section_dir("sec10_gcm")
 
@@ -44,6 +44,7 @@ COLL_PNG = FIG_DIR / "collective_lyapunov.png"
 # Cluster computation
 # ---------------------------------------------------------------------------
 
+
 def detect_clusters(x, tol=1e-6):
     """Backward-compatible alias for shared cluster labelling."""
     return cluster_labels_by_tolerance(x, tol=tol)
@@ -52,6 +53,7 @@ def detect_clusters(x, tol=1e-6):
 def broad_positive_mask(values, threshold=0.02, min_run=4):
     """Backward-compatible alias for sustained positive-run masking."""
     return sustained_positive_mask(values, threshold=threshold, min_run=min_run)
+
 
 def compute_clusters():
     """Compute GCM cluster spacetime diagram."""
@@ -97,6 +99,7 @@ def compute_clusters():
 # ---------------------------------------------------------------------------
 # Collective Lyapunov computation
 # ---------------------------------------------------------------------------
+
 
 def compute_collective():
     """Compute collective Lyapunov exponent vs a.
@@ -172,8 +175,8 @@ def compute_collective():
             print(f"  Collective Lyapunov: {ia + 1}/{len(a_values)}")
             np.savez_compressed(
                 COLL_NPZ,
-                a_values=a_values[:ia + 1],
-                lyap_c=lyap_c[:ia + 1],
+                a_values=a_values[: ia + 1],
+                lyap_c=lyap_c[: ia + 1],
                 eps=np.array([eps]),
                 N=np.array([N]),
             )
@@ -192,22 +195,24 @@ def compute_collective():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_clusters(data):
     """Plot sorted site states to expose the emergent cluster partition."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         apply_axes_polish,
         figure_spec,
         setup,
     )
+
     setup()
 
     cluster_labels = data["cluster_labels"]
     x_record = data["x_record"]
     a = data["a"][0]
     eps = data["eps"][0]
-    N = data["N"][0]
 
     order = np.argsort(x_record, axis=1)
     sorted_x = np.take_along_axis(x_record, order, axis=1)
@@ -253,6 +258,7 @@ def plot_clusters(data):
 def plot_collective(data):
     """Plot collective Lyapunov exponent vs a."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -261,6 +267,7 @@ def plot_collective(data):
         series_style,
         setup,
     )
+
     setup()
 
     a_values = data["a_values"]
@@ -311,6 +318,7 @@ def plot_collective(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

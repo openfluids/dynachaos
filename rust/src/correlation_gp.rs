@@ -88,8 +88,7 @@ pub fn correlation_counts<'py>(
                             let mut d_max = 0.0f64;
                             let mut skip = false;
                             for k in 0..dim {
-                                let diff =
-                                    (traj_owned[row_i + k] - traj_owned[row_j + k]).abs();
+                                let diff = (traj_owned[row_i + k] - traj_owned[row_j + k]).abs();
                                 if diff > r_max {
                                     skip = true;
                                     break;
@@ -133,8 +132,7 @@ pub fn correlation_counts<'py>(
                             let mut sq = 0.0f64;
                             let mut skip = false;
                             for k in 0..dim {
-                                let diff =
-                                    traj_owned[row_i + k] - traj_owned[row_j + k];
+                                let diff = traj_owned[row_i + k] - traj_owned[row_j + k];
                                 sq += diff * diff;
                                 if sq > r_max_sq {
                                     skip = true;

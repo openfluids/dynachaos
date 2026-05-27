@@ -22,6 +22,7 @@ def white_noise(n=2000, seed=2026):
 
 # ── SampEn ────────────────────────────────────────────────────────────────────
 
+
 def test_sample_entropy_chaotic_vs_regular():
     """Chaotic signal has higher SampEn than a periodic one."""
     chaos = logistic_series(n=2000, a=1.99, burn=500)
@@ -84,6 +85,7 @@ def test_sample_entropy_invalid_m():
 
 # ── ApEn ──────────────────────────────────────────────────────────────────────
 
+
 def test_approximate_entropy_positive():
     """ApEn is non-negative for any signal."""
     x = logistic_series(n=500, a=1.99, burn=100)
@@ -98,6 +100,7 @@ def test_approximate_entropy_chaotic_vs_regular():
 
 
 # ── FuzzyEn ───────────────────────────────────────────────────────────────────
+
 
 def test_fuzzy_entropy_finite_always():
     """FuzzyEn is always finite (no hard threshold, no zero membership)."""
@@ -126,6 +129,7 @@ def test_fuzzy_entropy_invalid_n():
 
 
 # ── MSE ───────────────────────────────────────────────────────────────────────
+
 
 def test_mse_shape():
     """MSE returns one value per scale."""
@@ -168,9 +172,11 @@ def test_mse_invalid_scale():
 
 # ── Rust / Python parity ──────────────────────────────────────────────────────
 
+
 def test_sample_entropy_rust_python_parity(monkeypatch):
     """Rust and pure-Python backends produce identical SampEn values."""
     import dynachaos.diagnostics.entropy as _ent
+
     x = logistic_series(n=300, a=1.99, burn=100)
     se_rust = sample_entropy(x, m=2, r=0.2 * np.std(x, ddof=1))
 
@@ -183,6 +189,7 @@ def test_sample_entropy_rust_python_parity(monkeypatch):
 def test_fuzzy_entropy_rust_python_parity(monkeypatch):
     """Rust and pure-Python backends produce identical FuzzyEn values."""
     import dynachaos.diagnostics.entropy as _ent
+
     x = logistic_series(n=200, a=1.99, burn=100)
     r = 0.2 * np.std(x, ddof=1)
     fe_rust = fuzzy_entropy(x, m=2, r=r, n=2)

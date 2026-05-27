@@ -8,14 +8,19 @@ tongues overlap and chaos appears.
 
 Map:  θ_{n+1} = θ_n + Ω + K sin(2πθ_n)  (mod 1)
 
-OUTPUTS: figures/sec02_circle_map/arnold_tongues.npz,
-         figures/sec02_circle_map/arnold_tongues.png
-USAGE:   python src/dynachaos/maps/arnold_tongues.py                        # .npz exists → plot only
-         rm figures/sec02_circle_map/arnold_tongues.npz && python src/dynachaos/maps/arnold_tongues.py  # recompute
+OUTPUTS:
+  figures/sec02_circle_map/arnold_tongues.npz
+  figures/sec02_circle_map/arnold_tongues.png
+
+USAGE:
+  python src/dynachaos/maps/arnold_tongues.py
+  rm figures/sec02_circle_map/arnold_tongues.npz
+  python src/dynachaos/maps/arnold_tongues.py
 """
 
-from dynachaos.io.paths import safe_load, section_dir
 import numpy as np
+
+from dynachaos.io.paths import safe_load, section_dir
 
 FIG_DIR = section_dir("sec02_circle_map")
 OUTPUT_NPZ = FIG_DIR / "arnold_tongues.npz"
@@ -25,6 +30,7 @@ OUTPUT_PNG = FIG_DIR / "arnold_tongues.png"
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
+
 
 def compute():
     """Sweep (Ω, K) and compute rotation numbers — fully vectorized."""
@@ -77,9 +83,11 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot(data):
     """Plot the Arnold tongue structure as a 2D color map."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         COLORS,
@@ -87,6 +95,7 @@ def plot(data):
         figure_spec,
         setup,
     )
+
     setup()
 
     Omega = data["Omega"]
@@ -97,7 +106,9 @@ def plot(data):
     fig, ax = plt.subplots(figsize=spec.figsize)
 
     pcm = ax.pcolormesh(
-        Omega, K, rho,
+        Omega,
+        K,
+        rho,
         cmap=CMAP_SEQUENTIAL,
         shading="auto",
         rasterized=True,
@@ -108,7 +119,8 @@ def plot(data):
     K_c = 1.0 / (2.0 * np.pi)
     ax.axhline(K_c, color=COLORS["red"], lw=0.8, ls="--", alpha=0.85)
     ax.text(
-        0.985, K_c + 0.005,
+        0.985,
+        K_c + 0.005,
         r"$K_c = 1/(2\pi)$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
@@ -155,6 +167,7 @@ def plot(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

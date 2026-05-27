@@ -64,10 +64,7 @@ def _embed(x, d, tau):
     N = len(x)
     M = N - (d - 1) * tau
     if M <= 0:
-        raise ValueError(
-            f"Series too short (N={N}) for d={d}, tau={tau}: "
-            f"need N > {(d - 1) * tau}"
-        )
+        raise ValueError(f"Series too short (N={N}) for d={d}, tau={tau}: need N > {(d - 1) * tau}")
     X = np.empty((M, d))
     for j in range(d):
         X[:, j] = x[j * tau : j * tau + M]
@@ -185,8 +182,8 @@ def _cao_python(x, tau, d_max, theiler_window):
             E_star[d - 1] = np.nan
             continue
 
-        y1 = _embed(x[:M + (d - 1) * tau], d, tau)  # shape (M, d)
-        y2 = _embed(x, d + 1, tau)                    # shape (M, d+1)
+        y1 = _embed(x[: M + (d - 1) * tau], d, tau)  # shape (M, d)
+        y2 = _embed(x, d + 1, tau)  # shape (M, d+1)
 
         # Find nearest neighbor in d-dimensional embedding (Chebyshev)
         tree = cKDTree(y1)
@@ -290,7 +287,7 @@ def _fnn_python(x, tau, d_max, R_tol, A_tol, theiler_window):
             f3[d - 1] = np.nan
             continue
 
-        y1 = _embed(x[:M + (d - 1) * tau], d, tau)
+        y1 = _embed(x[: M + (d - 1) * tau], d, tau)
         y2 = _embed(x, d + 1, tau)
 
         # Find NN using Euclidean norm (standard for FNN)
@@ -329,8 +326,7 @@ def _fnn_python(x, tau, d_max, R_tol, A_tol, theiler_window):
     return f1, f2, f3
 
 
-def false_nearest_neighbors(x, tau, d_max=15, R_tol=15.0, A_tol=2.0,
-                            theiler_window=0):
+def false_nearest_neighbors(x, tau, d_max=15, R_tol=15.0, A_tol=2.0, theiler_window=0):
     """False nearest neighbors fraction per embedding dimension.
 
     Three test statistics are returned:

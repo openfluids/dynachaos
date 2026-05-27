@@ -14,11 +14,11 @@ Key result: MSD of mean field h_n stops decreasing with N.
 OUTPUTS: figures/sec10_gcm/*.npz, *.png
 """
 
-from dynachaos.io.paths import safe_load, section_dir
-from dynachaos.maps.primitives import logistic
 import numpy as np
 
 from dynachaos.cml.primitives import gcm_step
+from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.maps.primitives import logistic
 
 FIG_DIR = section_dir("sec10_gcm")
 
@@ -30,6 +30,7 @@ DIST_PNG = FIG_DIR / "gcm_distribution.png"
 # ---------------------------------------------------------------------------
 # Computation
 # ---------------------------------------------------------------------------
+
 
 def compute():
     """Compute MSD of mean field for various N."""
@@ -95,9 +96,11 @@ def compute():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_msd(data):
     """Plot MSD vs N (main result of the paper)."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -106,6 +109,7 @@ def plot_msd(data):
         series_style,
         setup,
     )
+
     setup()
 
     N_grid = data["N_grid"]
@@ -155,6 +159,7 @@ def plot_distribution(data):
     """Plot distribution P(h) for different N."""
     import matplotlib.pyplot as plt
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
     from dynachaos.utils.style import (
         COLOR_CYCLE,
         apply_axes_polish,
@@ -162,6 +167,7 @@ def plot_distribution(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     N_values = data["N_values"]
@@ -170,9 +176,16 @@ def plot_distribution(data):
     fig, ax = plt.subplots(figsize=spec.figsize)
     for idx, N in enumerate(N_values):
         h = data[f"N_{N}_h"]
-        ax.hist(h, bins=100, density=True, alpha=0.9,
-                color=COLOR_CYCLE[idx], label=f"$N = {N}$",
-                histtype="step", lw=1.0)
+        ax.hist(
+            h,
+            bins=100,
+            density=True,
+            alpha=0.9,
+            color=COLOR_CYCLE[idx],
+            label=f"$N = {N}$",
+            histtype="step",
+            lw=1.0,
+        )
 
     ax.set_xlabel(r"Mean field $h$")
     ax.set_ylabel(r"$P(h)$")
@@ -195,6 +208,7 @@ def plot_distribution(data):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import TypeVar
-
-
-T = TypeVar("T")
 
 
 def current_profile() -> str:
@@ -22,6 +18,6 @@ def is_smoke() -> bool:
     return current_profile() == "smoke"
 
 
-def choose(paper: T, smoke: T) -> T:
+def choose[T](paper: T, smoke: T) -> T:
     """Pick a value according to the active runtime profile."""
     return smoke if is_smoke() else paper

@@ -1,7 +1,8 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import pytest
@@ -14,8 +15,8 @@ from dynachaos.utils.style import (
     COLOR_CYCLE,
     COLORS,
     MARKER_CYCLE,
-    available_themes,
     apply_axes_polish,
+    available_themes,
     color_for,
     figure_spec,
     finalize_legend,
@@ -52,7 +53,6 @@ def test_style_cycles_repeat_consistently():
         assert marker_for(i) == MARKER_CYCLE[i % n]
 
 
-
 def test_style_preview_render(tmp_path):
     setup()
 
@@ -61,7 +61,7 @@ def test_style_preview_render(tmp_path):
     for idx in range(4):
         y = [v + idx for v in x]
         sty = series_style(idx)
-        ax.plot(x, y, label=f"series {idx+1}", **sty)
+        ax.plot(x, y, label=f"series {idx + 1}", **sty)
 
     ax.set_title("Swiss Style Preview")
     ax.set_xlabel("x")
@@ -174,7 +174,9 @@ def test_plot_modules_avoid_hardcoded_fontsize_numbers():
         if pattern.search(stripped):
             offenders.append(str(path))
 
-    assert not offenders, "Hardcoded numeric fontsize found in plotting modules:\n" + "\n".join(offenders)
+    assert not offenders, "Hardcoded numeric fontsize found in plotting modules:\n" + "\n".join(
+        offenders
+    )
 
 
 def test_no_hardcoded_color_literals_outside_style_module():
@@ -183,7 +185,9 @@ def test_no_hardcoded_color_literals_outside_style_module():
     py_files = [p for p in py_files if p.name != "style.py"]
 
     patterns = [
-        re.compile(r"\b(?:color|facecolor|edgecolor|markerfacecolor|markeredgecolor|cmap)\s*=\s*['\"][^'\"]+['\"]"),
+        re.compile(
+            r"\b(?:color|facecolor|edgecolor|markerfacecolor|markeredgecolor|cmap)\s*=\s*['\"][^'\"]+['\"]"
+        ),
         re.compile(r"[,(\s]c\s*=\s*['\"][^'\"]+['\"]"),
         re.compile(r"['\"](?:k|b|r|w)[-.:]"),
         re.compile(r"#[0-9A-Fa-f]{3,8}"),
@@ -195,4 +199,6 @@ def test_no_hardcoded_color_literals_outside_style_module():
         if any(p.search(text) for p in patterns):
             offenders.append(str(path))
 
-    assert not offenders, "Hardcoded color literals detected outside style.py:\n" + "\n".join(offenders)
+    assert not offenders, "Hardcoded color literals detected outside style.py:\n" + "\n".join(
+        offenders
+    )

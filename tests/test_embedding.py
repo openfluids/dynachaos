@@ -7,9 +7,10 @@ Correctness tests use known-dimension systems:
 """
 
 import importlib
-from conftest import logistic_series
+
 import numpy as np
 import pytest
+from conftest import logistic_series
 
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
@@ -193,6 +194,7 @@ class TestCorrelationIntegralImproved:
     def test_backward_compat(self):
         """Old-style call (no theiler_window, no norm) should still work."""
         from dynachaos.diagnostics.correlation import correlation_integral
+
         t = np.linspace(0, 2 * np.pi, 500, endpoint=False)
         traj = np.column_stack([np.cos(t), np.sin(t)])
         r_values = np.logspace(-2, 0, 10)
@@ -204,6 +206,7 @@ class TestCorrelationIntegralImproved:
     def test_theiler_window_reduces_counts(self):
         """With Theiler window, counts should be <= without."""
         from dynachaos.diagnostics.correlation import correlation_integral
+
         t = np.linspace(0, 2 * np.pi, 500, endpoint=False)
         traj = np.column_stack([np.cos(t), np.sin(t)])
         r_values = np.logspace(-2, 0, 10)
@@ -215,6 +218,7 @@ class TestCorrelationIntegralImproved:
     def test_correlation_dimension_circle(self):
         """Circle (D=1) should give D2 ~ 1 with improved G-P."""
         from dynachaos.diagnostics.correlation import correlation_dimension
+
         t = np.linspace(0, 2 * np.pi, 5000, endpoint=False)
         traj = np.column_stack([np.cos(t), np.sin(t)])
         D2, _, _, _, _ = correlation_dimension(traj)

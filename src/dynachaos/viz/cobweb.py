@@ -52,8 +52,9 @@ def cobweb_diagram(
     except (TypeError, IndexError):
         ys = np.array([f(xi) for xi in xs])
     ax.plot(xs, ys, color=map_color, lw=1.5, label="$f(x)$")
-    ax.plot(xs, xs, ls="--", color=ax.spines["bottom"].get_edgecolor(), lw=0.8, alpha=0.5,
-            label="$y=x$")
+    ax.plot(
+        xs, xs, ls="--", color=ax.spines["bottom"].get_edgecolor(), lw=0.8, alpha=0.5, label="$y=x$"
+    )
 
     # Cobweb
     x = x0

@@ -1,12 +1,6 @@
 """Modern diagnostic tools for dynamical systems."""
 
 from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
-from dynachaos.diagnostics.entropy import (
-    approximate_entropy,
-    fuzzy_entropy,
-    multiscale_entropy,
-    sample_entropy,
-)
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -14,6 +8,12 @@ from dynachaos.diagnostics.embedding import (
     optimal_delay,
     optimal_dimension,
     select_dimension_cao,
+)
+from dynachaos.diagnostics.entropy import (
+    approximate_entropy,
+    fuzzy_entropy,
+    multiscale_entropy,
+    sample_entropy,
 )
 from dynachaos.diagnostics.lyapunov import (
     flow_lyapunov_spectrum,

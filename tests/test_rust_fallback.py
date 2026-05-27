@@ -4,13 +4,13 @@ These tests force both paths and compare outputs to ensure the Rust
 acceleration is a transparent drop-in.
 """
 
-
 import numpy as np
 import pytest
 from conftest import logistic_series
 
 try:
     from dynachaos._rust import diagonal_lines  # noqa: F401
+
     _HAS_RUST = True
 except ImportError:
     _HAS_RUST = False
@@ -26,6 +26,7 @@ class TestRecurrenceParity:
         t = np.linspace(0.0, 40.0, 400)
         traj = np.column_stack([np.sin(t), np.cos(t)])
         from dynachaos.diagnostics.recurrence import recurrence_matrix
+
         R, _ = recurrence_matrix(traj, percentile=8)
         return R
 
@@ -35,6 +36,7 @@ class TestRecurrenceParity:
 
         # Python path (bypass Rust)
         from dynachaos.diagnostics import recurrence as rec_mod
+
         old_flag = rec_mod._RUST_AVAILABLE
         rec_mod._RUST_AVAILABLE = False
         py_result = rec_mod._diagonal_lines(R, l_min=2)
@@ -49,6 +51,7 @@ class TestRecurrenceParity:
         R = self._recurrence_matrix()
         from dynachaos._rust import vertical_lines as rust_vert
         from dynachaos.diagnostics import recurrence as rec_mod
+
         old_flag = rec_mod._RUST_AVAILABLE
         rec_mod._RUST_AVAILABLE = False
         py_result = rec_mod._vertical_lines(R, v_min=2)
@@ -88,6 +91,7 @@ class TestPermutationParity:
 
         # Python path
         from dynachaos.diagnostics import permutation as perm_mod
+
         old_flag = perm_mod._RUST_AVAILABLE
         perm_mod._RUST_AVAILABLE = False
         py_probs, py_total = perm_mod.ordinal_distribution(series, d=5, tau=1)
@@ -101,6 +105,7 @@ class TestPermutationParity:
 
         # Compare: reconstruct probabilities from Rust counts
         from dynachaos.diagnostics.permutation import _lehmer_to_permutation
+
         rs_probs = {}
         for idx in np.nonzero(rs_counts)[0]:
             perm = _lehmer_to_permutation(int(idx), 5)
@@ -164,8 +169,9 @@ class TestAMIParity:
         # Python path
         I_python = emb_mod._ami_python(series, tau_max=30, n_bins=32)
 
-        np.testing.assert_allclose(I_rust, I_python, atol=1e-10,
-                                   err_msg="AMI Rust vs Python mismatch")
+        np.testing.assert_allclose(
+            I_rust, I_python, atol=1e-10, err_msg="AMI Rust vs Python mismatch"
+        )
 
 
 # TestCaoParity removed: Rust cao_statistic disabled (scipy cKDTree is 70x faster).
@@ -281,18 +287,17 @@ class TestCorrelationCountsParity:
         # Rust path
         old_flag = corr_mod._RUST_AVAILABLE
         corr_mod._RUST_AVAILABLE = True
-        C_rust = corr_mod.correlation_integral(traj, r_values,
-                                               theiler_window=5, norm="chebyshev")
+        C_rust = corr_mod.correlation_integral(traj, r_values, theiler_window=5, norm="chebyshev")
         corr_mod._RUST_AVAILABLE = old_flag
 
         # Python path
         corr_mod._RUST_AVAILABLE = False
-        C_py = corr_mod.correlation_integral(traj, r_values,
-                                             theiler_window=5, norm="chebyshev")
+        C_py = corr_mod.correlation_integral(traj, r_values, theiler_window=5, norm="chebyshev")
         corr_mod._RUST_AVAILABLE = old_flag
 
-        np.testing.assert_allclose(C_rust, C_py, atol=1e-10,
-                                   err_msg="Correlation integral Rust vs Python mismatch")
+        np.testing.assert_allclose(
+            C_rust, C_py, atol=1e-10, err_msg="Correlation integral Rust vs Python mismatch"
+        )
 
 
 class TestDiscreteMap:
@@ -300,6 +305,7 @@ class TestDiscreteMap:
 
     def test_logistic_trajectory(self):
         from dynachaos.maps.base import LogisticMap
+
         lm = LogisticMap(a=1.99)
         traj = lm.trajectory(x0=0.1, n_iter=100, n_transient=50)
         assert traj.shape == (100,)
@@ -307,18 +313,21 @@ class TestDiscreteMap:
 
     def test_logistic_lyapunov(self):
         from dynachaos.maps.base import LogisticMap
+
         lm = LogisticMap(a=1.99)
         lam = lm.lyapunov(x0=0.1, n_iter=50_000, n_transient=5_000)
         assert lam > 0.5  # chaotic
 
     def test_no_jacobian_raises(self):
         from dynachaos.maps.base import DiscreteMap
+
         m = DiscreteMap(f=lambda x: 1 - 1.99 * x * x, name="bare")
         with pytest.raises(ValueError, match="No derivative"):
             m.lyapunov(x0=0.1)
 
     def test_repr(self):
         from dynachaos.maps.base import LogisticMap
+
         lm = LogisticMap(a=1.5)
         assert "Logistic" in repr(lm)
 
@@ -328,18 +337,22 @@ class TestViz:
 
     def test_bifurcation_import(self):
         from dynachaos.viz import bifurcation_diagram
+
         assert callable(bifurcation_diagram)
 
     def test_cobweb_import(self):
         from dynachaos.viz import cobweb_diagram
+
         assert callable(cobweb_diagram)
 
     def test_return_map_import(self):
         from dynachaos.viz import return_map_plot
+
         assert callable(return_map_plot)
 
 
 class TestVersion:
     def test_version_string(self):
         import dynachaos
+
         assert dynachaos.__version__ == "0.2.0"

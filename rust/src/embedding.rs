@@ -17,6 +17,7 @@ use pyo3::prelude::*;
 ///
 /// Returns a flat Vec of length M*d (row-major), where M = N - (d-1)*tau.
 #[inline]
+#[allow(dead_code)]
 fn embed(x: &[f64], d: usize, tau: usize) -> Option<(Vec<f64>, usize)> {
     if d == 0 {
         return None;
@@ -41,6 +42,7 @@ fn embed(x: &[f64], d: usize, tau: usize) -> Option<(Vec<f64>, usize)> {
 ///
 /// Returns (nn_indices, nn_distances) each of length n.
 /// Respects a Theiler window: |i - j| > theiler_window required.
+#[allow(dead_code)]
 fn nearest_neighbor_chebyshev(
     points: &[f64],
     n: usize,
@@ -94,6 +96,7 @@ fn nearest_neighbor_chebyshev(
 }
 
 /// Find nearest neighbor using Euclidean distance (brute-force).
+#[allow(dead_code)]
 fn nearest_neighbor_euclidean(
     points: &[f64],
     n: usize,
@@ -154,9 +157,9 @@ fn smooth_series(values: &[f64], window: usize) -> Vec<f64> {
     let left = window / 2;
     let right = window - 1 - left;
     let mut padded = Vec::with_capacity(n + left + right);
-    padded.extend(std::iter::repeat(values[0]).take(left));
+    padded.extend(std::iter::repeat_n(values[0], left));
     padded.extend(values.iter().copied());
-    padded.extend(std::iter::repeat(values[n - 1]).take(right));
+    padded.extend(std::iter::repeat_n(values[n - 1], right));
 
     let mut out = vec![0.0f64; n];
     let inv = 1.0f64 / window as f64;
@@ -189,6 +192,8 @@ fn smooth_series(values: &[f64], window: usize) -> Vec<f64> {
 ///     Raw E(d) and E*(d) values.  Python computes E1 = E(d+1)/E(d).
 #[pyfunction]
 #[pyo3(signature = (x, tau, d_max, theiler_window = 0))]
+#[allow(dead_code)]
+#[allow(clippy::type_complexity)]
 pub fn cao_statistic<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -196,7 +201,6 @@ pub fn cao_statistic<'py>(
     d_max: usize,
     theiler_window: usize,
 ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
-    #![allow(clippy::type_complexity)]
     if tau == 0 {
         return Err(PyValueError::new_err("tau must be >= 1"));
     }
@@ -297,7 +301,11 @@ pub fn cao_statistic<'py>(
             count += 1;
         }
 
-        e_values[d - 1] = if count > 0 { sum_a / count as f64 } else { f64::NAN };
+        e_values[d - 1] = if count > 0 {
+            sum_a / count as f64
+        } else {
+            f64::NAN
+        };
         e_star_values[d - 1] = if count > 0 {
             sum_a_star / count as f64
         } else {
@@ -334,6 +342,8 @@ pub fn cao_statistic<'py>(
 ///     FNN fractions for Test I, Test II, and union.
 #[pyfunction]
 #[pyo3(signature = (x, tau, d_max, r_tol = 15.0, a_tol = 2.0, theiler_window = 0))]
+#[allow(dead_code)]
+#[allow(clippy::type_complexity)]
 pub fn fnn_statistic<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -347,7 +357,6 @@ pub fn fnn_statistic<'py>(
     Bound<'py, PyArray1<f64>>,
     Bound<'py, PyArray1<f64>>,
 )> {
-    #![allow(clippy::type_complexity)]
     if tau == 0 {
         return Err(PyValueError::new_err("tau must be >= 1"));
     }
@@ -480,9 +489,21 @@ pub fn fnn_statistic<'py>(
         }
 
         let tf = total as f64;
-        f1_values[d - 1] = if total > 0 { count1 as f64 / tf } else { f64::NAN };
-        f2_values[d - 1] = if total > 0 { count2 as f64 / tf } else { f64::NAN };
-        f3_values[d - 1] = if total > 0 { count3 as f64 / tf } else { f64::NAN };
+        f1_values[d - 1] = if total > 0 {
+            count1 as f64 / tf
+        } else {
+            f64::NAN
+        };
+        f2_values[d - 1] = if total > 0 {
+            count2 as f64 / tf
+        } else {
+            f64::NAN
+        };
+        f3_values[d - 1] = if total > 0 {
+            count3 as f64 / tf
+        } else {
+            f64::NAN
+        };
     }
 
     Ok((
@@ -509,6 +530,7 @@ pub fn fnn_statistic<'py>(
     min_dim = 2,
     max_dim = None
 ))]
+#[allow(clippy::too_many_arguments)]
 pub fn select_dimension_cao(
     e1: PyReadonlyArray1<'_, f64>,
     near_one_lower: f64,

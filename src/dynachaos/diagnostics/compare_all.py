@@ -16,11 +16,8 @@ OUTPUTS: figures/sec11_diagnostics/*.npz, *.png
 USAGE:   python src/dynachaos/diagnostics/compare_all.py
 """
 
-from dynachaos.io.paths import section_dir
-from dynachaos.maps.coupled_delayed import (
-    coupled_delayed as _coupled_delayed_map,
-    coupled_delayed_jac as _coupled_delayed_jac,
-)
+import numpy as np
+
 from dynachaos.diagnostics.compare_all_helpers import (
     delayed_logistic_series,
     delayed_logistic_trajectory,
@@ -29,7 +26,13 @@ from dynachaos.diagnostics.compare_all_helpers import (
     sweep_pair_metric,
     sweep_scalar_metric,
 )
-import numpy as np
+from dynachaos.io.paths import section_dir
+from dynachaos.maps.coupled_delayed import (
+    coupled_delayed as _coupled_delayed_map,
+)
+from dynachaos.maps.coupled_delayed import (
+    coupled_delayed_jac as _coupled_delayed_jac,
+)
 
 FIG_DIR = section_dir("sec11_diagnostics")
 
@@ -49,6 +52,7 @@ RQA_PNG = FIG_DIR / "rqa_measures.png"
 # 0-1 test sweep
 # ---------------------------------------------------------------------------
 
+
 def compute_01_test():
     """0-1 test for chaos across the logistic map parameter range."""
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -63,7 +67,7 @@ def compute_01_test():
         K_values[i] = zero_one_statistic(series, n_c=50)
         if (i + 1) % 100 == 0:
             print(f"  0-1 test: {i + 1}/{n_a}")
-            np.savez_compressed(TEST01_NPZ, a=a_values[:i+1], K=K_values[:i+1])
+            np.savez_compressed(TEST01_NPZ, a=a_values[: i + 1], K=K_values[: i + 1])
 
     np.savez_compressed(TEST01_NPZ, a=a_values, K=K_values)
     print(f"Saved {TEST01_NPZ}")
@@ -72,6 +76,7 @@ def compute_01_test():
 # ---------------------------------------------------------------------------
 # SALI comparison
 # ---------------------------------------------------------------------------
+
 
 def compute_sali():
     """SALI time series for coupled delayed logistic (4D) at various regimes.
@@ -97,8 +102,13 @@ def compute_sali():
         DA = DB + 0.1
         print(f"  SALI: DB={DB} ({label})")
         x0 = np.array([0.5, 0.5, 0.3, 0.3])
-        f = lambda s, _DA=DA, _DB=DB: _coupled_delayed_map(s, A, _DA, _DB, eps)
-        jac = lambda s, _DA=DA, _DB=DB: _coupled_delayed_jac(s, A, _DA, _DB, eps)
+
+        def f(s, _DA=DA, _DB=DB):
+            return _coupled_delayed_map(s, A, _DA, _DB, eps)
+
+        def jac(s, _DA=DA, _DB=DB):
+            return _coupled_delayed_jac(s, A, _DA, _DB, eps)
+
         s = sali(f, jac, x0, n_iter=10_000, n_transient=5000)
         results[f"DB_{DB}_sali"] = s
 
@@ -110,6 +120,7 @@ def compute_sali():
 # ---------------------------------------------------------------------------
 # Permutation entropy sweep
 # ---------------------------------------------------------------------------
+
 
 def compute_permutation_entropy():
     """Permutation entropy across logistic map and delayed logistic."""
@@ -138,14 +149,14 @@ def compute_permutation_entropy():
         progress_label="PE delayed",
     )
 
-    np.savez_compressed(PE_NPZ, a=a_values, H_logistic=H_logistic,
-                        D=D_values, H_delayed=H_delayed)
+    np.savez_compressed(PE_NPZ, a=a_values, H_logistic=H_logistic, D=D_values, H_delayed=H_delayed)
     print(f"Saved {PE_NPZ}")
 
 
 # ---------------------------------------------------------------------------
 # Complexity-entropy plane
 # ---------------------------------------------------------------------------
+
 
 def compute_complexity_entropy():
     """Map different dynamical regimes onto the C-H plane."""
@@ -172,15 +183,22 @@ def compute_complexity_entropy():
         progress_label="C-H delayed",
     )
 
-    np.savez_compressed(CH_NPZ, a=a_values, H_logistic=H_vals,
-                        C_logistic=C_vals, D=D_values,
-                        H_delayed=H_del, C_delayed=C_del)
+    np.savez_compressed(
+        CH_NPZ,
+        a=a_values,
+        H_logistic=H_vals,
+        C_logistic=C_vals,
+        D=D_values,
+        H_delayed=H_del,
+        C_delayed=C_del,
+    )
     print(f"Saved {CH_NPZ}")
 
 
 # ---------------------------------------------------------------------------
 # RQA measures vs parameter
 # ---------------------------------------------------------------------------
+
 
 def compute_rqa():
     """RQA measures along the delayed logistic transition."""
@@ -197,8 +215,7 @@ def compute_rqa():
     ENTR = np.empty(n_D)
 
     for i, D in enumerate(D_values):
-        traj = delayed_logistic_trajectory(
-            D, A=A, n_transient=10_000, n_record=2000)
+        traj = delayed_logistic_trajectory(D, A=A, n_transient=10_000, n_record=2000)
 
         R, _ = recurrence_matrix(traj, percentile=5)
         stats = rqa(R, l_min=2, v_min=2)
@@ -209,12 +226,16 @@ def compute_rqa():
 
         if (i + 1) % 20 == 0:
             print(f"  RQA: {i + 1}/{n_D}")
-            np.savez_compressed(RQA_NPZ, D=D_values[:i+1],
-                                RR=RR[:i+1], DET=DET[:i+1],
-                                LAM=LAM[:i+1], ENTR=ENTR[:i+1])
+            np.savez_compressed(
+                RQA_NPZ,
+                D=D_values[: i + 1],
+                RR=RR[: i + 1],
+                DET=DET[: i + 1],
+                LAM=LAM[: i + 1],
+                ENTR=ENTR[: i + 1],
+            )
 
-    np.savez_compressed(RQA_NPZ, D=D_values, RR=RR, DET=DET,
-                        LAM=LAM, ENTR=ENTR)
+    np.savez_compressed(RQA_NPZ, D=D_values, RR=RR, DET=DET, LAM=LAM, ENTR=ENTR)
     print(f"Saved {RQA_NPZ}")
 
 
@@ -222,10 +243,13 @@ def compute_rqa():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_01_test(data):
     """Plot 0-1 test K vs a for the logistic map."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     spec = figure_spec("double")
@@ -260,20 +284,21 @@ def plot_01_test(data):
 def plot_sali(data):
     """Plot SALI time series for different dynamical regimes."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
-        apply_axes_polish,
         COLORS,
+        apply_axes_polish,
         color_for,
         figure_spec,
         finalize_legend,
         marker_for,
         setup,
     )
+
     setup()
 
     DB_values = data["DB_values"]
-    labels = ["3-torus", "locking",
-              "onset of chaos", "developed chaos"]
+    labels = ["3-torus", "locking", "onset of chaos", "developed chaos"]
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
@@ -298,7 +323,9 @@ def plot_sali(data):
     ax.set_ylabel("SALI")
     ax.set_title(
         r"SALI: coupled delayed logistic map, $\alpha = 0.4$, "
-        r"$\varepsilon = 5 \times 10^{-3}$", loc="left")
+        r"$\varepsilon = 5 \times 10^{-3}$",
+        loc="left",
+    )
     apply_axes_polish(ax, kind="double", title_loc="left")
     ax.set_ylim(1e-16, 10)
     finalize_legend(ax, kind="double", loc="lower left")
@@ -311,7 +338,9 @@ def plot_sali(data):
 def plot_permutation_entropy(data):
     """Plot permutation entropy sweeps."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     spec = figure_spec("double")
@@ -341,6 +370,7 @@ def plot_permutation_entropy(data):
 def plot_complexity_entropy(data):
     """Plot the complexity-entropy plane."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -348,15 +378,30 @@ def plot_complexity_entropy(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     spec = figure_spec("single")
     fig, ax = plt.subplots(figsize=(spec.figsize[0] * 1.25, spec.figsize[1] + 0.35))
 
-    ax.scatter(data["H_logistic"], data["C_logistic"], s=8, alpha=0.55,
-               c=COLORS["blue"], label="Logistic map", rasterized=True)
-    ax.scatter(data["H_delayed"], data["C_delayed"], s=8, alpha=0.55,
-               c=COLORS["red"], label="Delayed logistic", rasterized=True)
+    ax.scatter(
+        data["H_logistic"],
+        data["C_logistic"],
+        s=8,
+        alpha=0.55,
+        c=COLORS["blue"],
+        label="Logistic map",
+        rasterized=True,
+    )
+    ax.scatter(
+        data["H_delayed"],
+        data["C_delayed"],
+        s=8,
+        alpha=0.55,
+        c=COLORS["red"],
+        label="Delayed logistic",
+        rasterized=True,
+    )
 
     h_all = np.concatenate([data["H_logistic"], data["H_delayed"]])
     c_all = np.concatenate([data["C_logistic"], data["C_delayed"]])
@@ -379,7 +424,9 @@ def plot_complexity_entropy(data):
 def plot_rqa(data):
     """Plot RQA measures vs D for the delayed logistic."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+
     setup()
 
     D = data["D"]
@@ -426,16 +473,15 @@ def plot_rqa(data):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     sections = [
         ("0-1 test", TEST01_NPZ, compute_01_test, plot_01_test),
         ("SALI", SALI_NPZ, compute_sali, plot_sali),
-        ("Permutation entropy", PE_NPZ, compute_permutation_entropy,
-         plot_permutation_entropy),
-        ("C-H plane", CH_NPZ, compute_complexity_entropy,
-         plot_complexity_entropy),
+        ("Permutation entropy", PE_NPZ, compute_permutation_entropy, plot_permutation_entropy),
+        ("C-H plane", CH_NPZ, compute_complexity_entropy, plot_complexity_entropy),
         ("RQA", RQA_NPZ, compute_rqa, plot_rqa),
     ]
 

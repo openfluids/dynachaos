@@ -87,7 +87,10 @@ def _spectral_peak_ratio(signal: np.ndarray) -> float:
     return primary_amp / secondary_amp
 
 
-def _quality_metrics(crossing_times: np.ndarray, signal: np.ndarray) -> dict[str, float | str | int]:
+def _quality_metrics(
+    crossing_times: np.ndarray,
+    signal: np.ndarray,
+) -> dict[str, float | str | int]:
     if crossing_times.size < 3:
         return {
             "coefficient_of_variation": np.nan,
@@ -189,8 +192,12 @@ def poincare_section(
     arr = _coerce_signal(signal)
     if arr.size < 3:
         return _empty_result(
-            arr, fs, dimension, interpolation,
-            float(np.mean(arr)) if arr.size else 0.0, 1,
+            arr,
+            fs,
+            dimension,
+            interpolation,
+            float(np.mean(arr)) if arr.size else 0.0,
+            1,
         )
 
     mean_signal = float(np.mean(arr)) if level is None else float(level)
@@ -200,7 +207,11 @@ def poincare_section(
     crossing_idx = _crossing_indices(shifted, direction=direction, eps=eps)
     if crossing_idx.size == 0:
         return _empty_result(
-            arr, fs, dimension, interpolation, mean_signal,
+            arr,
+            fs,
+            dimension,
+            interpolation,
+            mean_signal,
             int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
         )
 
@@ -211,7 +222,11 @@ def poincare_section(
         den = den[good]
         if crossing_idx.size == 0:
             return _empty_result(
-                arr, fs, dimension, True, mean_signal,
+                arr,
+                fs,
+                dimension,
+                True,
+                mean_signal,
                 int(delay) if delay and delay > 0 else _auto_delay_from_autocorr(arr),
             )
         alpha = -shifted[crossing_idx] / den

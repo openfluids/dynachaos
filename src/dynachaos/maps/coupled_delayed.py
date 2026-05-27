@@ -19,9 +19,10 @@ Figures:
 OUTPUTS: figures/sec06_three_torus/*.npz, *.png
 """
 
+import numpy as np
+
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
-import numpy as np
 
 FIG_DIR = section_dir("sec06_three_torus")
 
@@ -47,14 +48,15 @@ PROJECTION_CASES = (
 # Map definition
 # ---------------------------------------------------------------------------
 
+
 def coupled_delayed(state, A, DA, DB, eps):
     """One iteration of the 4D coupled delayed logistic map.
 
     State = (x, y, z, w) where y = x_{n-1}, w = z_{n-1}.
     """
     x, y, z, w = state
-    h1 = z - w     # z_n - z_{n-1}
-    h2 = y - x     # x_{n-1} - x_n
+    h1 = z - w  # z_n - z_{n-1}
+    h2 = y - x  # x_{n-1} - x_n
     x_new = A * x + DA * y * (1.0 - y) + eps * h1
     z_new = A * z + DB * w * (1.0 - w) + eps * h2
     y_new = x
@@ -65,17 +67,20 @@ def coupled_delayed(state, A, DA, DB, eps):
 def coupled_delayed_jac(state, A, DA, DB, eps):
     """Jacobian of the coupled delayed logistic map."""
     x, y, z, w = state
-    return np.array([
-        [A, DA * (1.0 - 2.0 * y), eps, -eps],
-        [1.0, 0.0, 0.0, 0.0],
-        [-eps, eps, A, DB * (1.0 - 2.0 * w)],
-        [0.0, 0.0, 1.0, 0.0]
-    ])
+    return np.array(
+        [
+            [A, DA * (1.0 - 2.0 * y), eps, -eps],
+            [1.0, 0.0, 0.0, 0.0],
+            [-eps, eps, A, DB * (1.0 - 2.0 * w)],
+            [0.0, 0.0, 1.0, 0.0],
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Lyapunov computation
 # ---------------------------------------------------------------------------
+
 
 def compute_lyapunov():
     """Compute Lyapunov exponents vs D_B for several epsilon values."""
@@ -94,22 +99,26 @@ def compute_lyapunov():
         for i, DB in enumerate(DB_values):
             DA = DB + 0.1
             x0 = np.array([0.5, 0.5, 0.3, 0.3])
-            f = lambda s, _DA=DA, _DB=DB, _e=eps: coupled_delayed(s, A, _DA, _DB, _e)
-            jac = lambda s, _DA=DA, _DB=DB, _e=eps: coupled_delayed_jac(s, A, _DA, _DB, _e)
-            spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=30_000,
-                                           n_transient=10_000)
+
+            def f(s, _DA=DA, _DB=DB, _e=eps):
+                return coupled_delayed(s, A, _DA, _DB, _e)
+
+            def jac(s, _DA=DA, _DB=DB, _e=eps):
+                return coupled_delayed_jac(s, A, _DA, _DB, _e)
+
+            spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=30_000, n_transient=10_000)
             if (i + 1) % 100 == 0:
                 print(f"    {i + 1}/{n_params}")
         all_spectra[f"eps_{eps}_spectra"] = spectra
 
-    np.savez_compressed(LYAP_NPZ, DB=DB_values,
-                        eps_values=np.array(eps_values), **all_spectra)
+    np.savez_compressed(LYAP_NPZ, DB=DB_values, eps_values=np.array(eps_values), **all_spectra)
     print(f"Saved {LYAP_NPZ}")
 
 
 # ---------------------------------------------------------------------------
 # (x, z) projections
 # ---------------------------------------------------------------------------
+
 
 def compute_projections():
     """Compute (x_n, z_n) projections at fixed eps, varying D_B."""
@@ -146,9 +155,11 @@ def compute_projections():
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_lyapunov(data):
     """Plot Lyapunov exponents vs D_B."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
@@ -156,6 +167,7 @@ def plot_lyapunov(data):
         finalize_legend,
         setup,
     )
+
     setup()
 
     DB = data["DB"]
@@ -173,8 +185,7 @@ def plot_lyapunov(data):
         ax = axes[idx]
         spectra = data[f"eps_{eps}_spectra"]
         for k in range(3):
-            ax.plot(DB, spectra[:, k], lw=0.9,
-                    label=rf"$\lambda_{k+1}$")
+            ax.plot(DB, spectra[:, k], lw=0.9, label=rf"$\lambda_{k + 1}$")
         ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
         if np.isclose(eps, 5e-3):
             for db in gallery_db:
@@ -202,6 +213,7 @@ def plot_lyapunov(data):
 def plot_projections(data):
     """Plot (x_n, z_n) projections."""
     import matplotlib.pyplot as plt
+
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         COLORS,
@@ -209,6 +221,7 @@ def plot_projections(data):
         figure_spec,
         setup,
     )
+
     setup()
 
     DB_values = data["DB_values"]
@@ -287,6 +300,7 @@ def plot_projections(data):
 # Animation
 # ---------------------------------------------------------------------------
 
+
 def compute_animation_data():
     """Sweep DB from 2.1 to 2.65 for the three-torus animation."""
     A = 0.4
@@ -305,7 +319,11 @@ def compute_animation_data():
         )
 
     run_animation_sweep(
-        iterate_fn, DB_sweep, ANIM_NPZ, n_plot=10_000, progress_interval=50,
+        iterate_fn,
+        DB_sweep,
+        ANIM_NPZ,
+        n_plot=10_000,
+        progress_interval=50,
     )
 
 
@@ -314,16 +332,22 @@ def make_animation_gif(data):
     from dynachaos.utils.animation import make_attractor_gif
 
     make_attractor_gif(
-        data["param_values"], data["all_x"], data["all_y"], ANIM_GIF,
+        data["param_values"],
+        data["all_x"],
+        data["all_y"],
+        ANIM_GIF,
         title_template=r"Three-torus dynamics, $\varepsilon = 0.005$, $D_B = {param_value}$",
-        param_name="D_B", param_fmt=".4f",
-        xlabel="$x$", ylabel="$z$",
+        param_name="D_B",
+        param_fmt=".4f",
+        xlabel="$x$",
+        ylabel="$z$",
     )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)

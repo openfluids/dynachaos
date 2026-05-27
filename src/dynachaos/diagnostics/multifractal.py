@@ -129,7 +129,7 @@ def _multifractal_moments_python(
             y0 = by * b
             for bx in range(n_bx):
                 x0 = bx * b
-                mass = float(np.sum(field[y0:y0 + b, x0:x0 + b]))
+                mass = float(np.sum(field[y0 : y0 + b, x0 : x0 + b]))
                 if mass > 0.0:
                     masses.append(mass)
         if not masses:
@@ -322,7 +322,7 @@ def local_multifractality(
         y0 = iy * ty
         for ix in range(n_tx):
             x0 = ix * tx
-            tile = arr[y0:y0 + ty, x0:x0 + tx]
+            tile = arr[y0 : y0 + ty, x0 : x0 + tx]
             delta[iy, ix] = float(np.max(tile) - np.min(tile))
             mean[iy, ix] = float(np.mean(tile))
             tile_mass = float(np.sum(tile))

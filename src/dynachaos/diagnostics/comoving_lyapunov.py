@@ -28,8 +28,7 @@ Usage
 import numpy as np
 
 
-def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values,
-                               n_iter, n_transient):
+def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transient):
     """Compute co-moving Lyapunov exponent lambda(v) for a CML.
 
     The co-moving Lyapunov exponent measures the growth rate of perturbations
@@ -134,9 +133,7 @@ def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values,
                 dg_x = dg(x_old)
                 dg_left = np.roll(dg_x * delta, -1)
                 dg_right = np.roll(dg_x * delta, 1)
-                delta = (df_x * delta
-                         + (eps / 2.0) * (dg_left + dg_right
-                                          - 2.0 * dg_x * delta))
+                delta = df_x * delta + (eps / 2.0) * (dg_left + dg_right - 2.0 * dg_x * delta)
 
                 # Renormalize periodically to prevent overflow
                 if (n + 1) % renorm_interval == 0:
@@ -159,7 +156,6 @@ def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values,
             lambda_v[iv] = -10.0
 
         if (iv + 1) % 50 == 0 or iv == 0:
-            print(f"  v={v:+.2f}: lambda={lambda_v[iv]:.4f}"
-                  f"  [{iv + 1}/{n_vel}]")
+            print(f"  v={v:+.2f}: lambda={lambda_v[iv]:.4f}  [{iv + 1}/{n_vel}]")
 
     return lambda_v

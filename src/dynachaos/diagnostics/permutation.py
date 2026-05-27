@@ -44,6 +44,7 @@ try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
     from dynachaos._rust import ordinal_distribution as _ordinal_distribution_rs
+
     _RUST_AVAILABLE = True
 except ImportError:
     _RUST_AVAILABLE = False
@@ -224,8 +225,11 @@ def complexity_entropy(x, d=5, tau=1):
     # Q_0 = -0.5 * [(N+1)/N * ln(N+1) - 2*ln(2N) + ln(N)]
     # where N = number of possible states = d!
     N_states = n_perm
-    Q_0 = (-0.5 * ((N_states + 1.0) / N_states * np.log(N_states + 1.0)
-                    - 2.0 * np.log(2.0 * N_states) + np.log(N_states)))
+    Q_0 = -0.5 * (
+        (N_states + 1.0) / N_states * np.log(N_states + 1.0)
+        - 2.0 * np.log(2.0 * N_states)
+        + np.log(N_states)
+    )
 
     # Statistical complexity
     Q_JS = JS / Q_0 if Q_0 > 0 else 0.0

@@ -113,9 +113,11 @@ class DiscreteMap:
 
         if self.dim == 1:
             from dynachaos.diagnostics.lyapunov import lyapunov_exponent_1d
+
             return lyapunov_exponent_1d(self.f, self.df, x0, n_iter, n_transient)
         else:
             from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+
             return lyapunov_spectrum(self.f, self.df, x0, n_iter, n_transient)
 
     def bifurcation(
@@ -166,9 +168,11 @@ class DiscreteMap:
 
 # ── Pre-built map instances ──────────────────────────────────────────────────
 
+
 def _make_logistic_map(a: float = 1.99) -> DiscreteMap:
     """Create a logistic map x → 1 - ax² with given parameter."""
     from dynachaos.maps.primitives import logistic, logistic_derivative
+
     return DiscreteMap(
         f=lambda x: logistic(x, a),
         df=lambda x: logistic_derivative(x, a),
@@ -180,6 +184,7 @@ def _make_logistic_map(a: float = 1.99) -> DiscreteMap:
 def _make_circle_map(omega: float = 0.0, K: float = 1.0) -> DiscreteMap:
     """Create a circle map θ → θ + ω - (K/2π)sin(2πθ)."""
     from dynachaos.maps.circle_map import circle_map, circle_map_derivative
+
     return DiscreteMap(
         f=lambda x: circle_map(x, omega, K),
         df=lambda x: circle_map_derivative(x, K),
@@ -191,6 +196,7 @@ def _make_circle_map(omega: float = 0.0, K: float = 1.0) -> DiscreteMap:
 def _make_henon_map(a: float = 1.4, b: float = 0.3) -> DiscreteMap:
     """Create a Henon map x' = 1 - ax^2 + y, y' = bx."""
     from dynachaos.maps.henon import henon, henon_jac
+
     return DiscreteMap(
         f=lambda state: henon(state, a, b),
         df=lambda state: henon_jac(state, a, b),

@@ -10,9 +10,9 @@ Design principles encoded from International Typographic / Swiss Style:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -59,7 +59,10 @@ class FigureSpec:
 _THEMES: dict[str, ThemeSpec] = {
     "editorial-grid": ThemeSpec(
         name="editorial-grid",
-        description="Classic Swiss editorial voice: neutral field, black-first hierarchy, red signal accent.",
+        description=(
+            "Classic Swiss editorial voice: neutral field, black-first hierarchy, "
+            "red signal accent."
+        ),
         colors={
             "black": "#111111",
             "offwhite": "#FFFFFF",
@@ -92,7 +95,10 @@ _THEMES: dict[str, ThemeSpec] = {
     ),
     "zurich-transit": ThemeSpec(
         name="zurich-transit",
-        description="Wayfinding-inspired Swiss transit look: high legibility, stronger chromatic coding, crisp geometry.",
+        description=(
+            "Wayfinding-inspired Swiss transit look: high legibility, stronger chromatic "
+            "coding, crisp geometry."
+        ),
         colors={
             "black": "#0F1419",
             "offwhite": "#FFFFFF",
@@ -125,7 +131,10 @@ _THEMES: dict[str, ThemeSpec] = {
     ),
     "alpine-modern": ThemeSpec(
         name="alpine-modern",
-        description="Swiss landscape abstraction: glacier blues + sunrise warm accents with generous negative space.",
+        description=(
+            "Swiss landscape abstraction: glacier blues + sunrise warm accents with generous "
+            "negative space."
+        ),
         colors={
             "black": "#1F2933",
             "offwhite": "#FFFFFF",
@@ -158,7 +167,9 @@ _THEMES: dict[str, ThemeSpec] = {
     ),
     "bauhaus-pop": ThemeSpec(
         name="bauhaus-pop",
-        description="Constructivist/Bauhaus echo with bold primary accents and punchy poster contrast.",
+        description=(
+            "Constructivist/Bauhaus echo with bold primary accents and punchy poster contrast."
+        ),
         colors={
             "black": "#101010",
             "offwhite": "#FFFFFF",
@@ -270,7 +281,9 @@ def apply_axes_polish(
     if equal:
         ax.set_aspect("equal", adjustable="box")
 
-    active_loc = mpl.rcParams.get("axes.titlelocation", "center") if title_loc is None else title_loc
+    active_loc = (
+        mpl.rcParams.get("axes.titlelocation", "center") if title_loc is None else title_loc
+    )
     title_text = ax.get_title(loc=active_loc)
     if not title_text:
         for loc in ("left", "center", "right"):
@@ -381,7 +394,6 @@ def setup(theme: str | None = None) -> None:
         "savefig.dpi": 600,
         "savefig.bbox": "tight",
         "savefig.pad_inches": 0.02,
-
         # Typography (sans-serif, left hierarchy)
         "font.family": "sans-serif",
         "font.sans-serif": [
@@ -393,7 +405,6 @@ def setup(theme: str | None = None) -> None:
         ],
         "font.size": 9.2,
         "mathtext.fontset": "dejavusans",
-
         # Axes / structure
         "axes.linewidth": 1.0,
         "axes.labelsize": 10,
@@ -407,12 +418,10 @@ def setup(theme: str | None = None) -> None:
         "axes.grid": False,
         "axes.axisbelow": True,
         "axes.prop_cycle": mpl.cycler(color=spec.color_cycle),
-
         # Grid lines (modular rhythm)
         "grid.color": spec.colors["grid"],
         "grid.linewidth": 0.45,
         "grid.alpha": 0.55,
-
         # Ticks
         "xtick.direction": "out",
         "ytick.direction": "out",
@@ -428,12 +437,10 @@ def setup(theme: str | None = None) -> None:
         "ytick.labelsize": 8.4,
         "xtick.color": spec.colors["black"],
         "ytick.color": spec.colors["black"],
-
         # Lines and markers
         "lines.linewidth": 1.2,
         "lines.markersize": 3.8,
         "lines.markeredgewidth": 0.9,
-
         # Text / legend
         "text.color": spec.colors["black"],
         "legend.fontsize": 9,
@@ -461,7 +468,7 @@ def render_theme_preview(theme: str, output_path: Path) -> Path:
     for i in range(5):
         y = np.sin(x * (0.45 + 0.12 * i)) * (1.0 - i * 0.08) + i * 0.45
         sty = series_style(i, theme=theme)
-        ax_left.plot(x, y, markevery=26, label=f"S{i+1}", **sty)
+        ax_left.plot(x, y, markevery=26, label=f"S{i + 1}", **sty)
     ax_left.set_title("Series Grammar", loc="left")
     ax_left.set_xlabel("x")
     ax_left.set_ylabel("y")
@@ -486,7 +493,14 @@ def render_theme_preview(theme: str, output_path: Path) -> Path:
     ax_bottom.set_xlabel("i")
     ax_bottom.set_ylabel("j")
 
-    fig.suptitle(f"dynachaos Swiss Theme: {theme}", x=0.01, ha="left", y=1.02, fontsize=11, fontweight="bold")
+    fig.suptitle(
+        f"dynachaos Swiss Theme: {theme}",
+        x=0.01,
+        ha="left",
+        y=1.02,
+        fontsize=11,
+        fontweight="bold",
+    )
     fig.savefig(output_path)
     plt.close(fig)
     return output_path

@@ -3,10 +3,10 @@ import pytest
 
 matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg", force=True)
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
-from dynachaos.diagnostics.poincare import poincare_section
-from dynachaos.viz import poincare_section_plot
+from dynachaos.diagnostics.poincare import poincare_section  # noqa: E402
+from dynachaos.viz import poincare_section_plot  # noqa: E402
 
 
 def _periodic_signal(n: int = 4096, dt: float = 0.01) -> tuple[np.ndarray, float]:
