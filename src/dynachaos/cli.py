@@ -161,7 +161,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"section\t{args.section_id}")
         print(f"modules\t{','.join(spec.modules)}")
         for item in inspect_section_artifacts(args.section_id, output_root=args.output_root):
-            print(f"{item.role}\t{item.status}\t{item.path}\t{item.detail}")
+            required = ",".join(item.required_keys) if item.required_keys else "-"
+            print(f"{item.role}\t{item.status}\t{item.path}\t{item.detail}\t{required}")
         return 0
 
     target = args.target

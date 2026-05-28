@@ -134,3 +134,4 @@ def test_cli_inspect_section_reports_expected_artifacts(tmp_path):
     assert "cache\tok\t" in proc.stdout
     assert "output\tmissing\t" in proc.stdout
     assert "devils_staircase.png" in proc.stdout
+    assert "A,rho,lam" in proc.stdout
