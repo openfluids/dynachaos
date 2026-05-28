@@ -22,10 +22,11 @@ Marwan, N. et al. (2007) "Recurrence plots for the analysis of complex
 
 Usage
 -----
-    from dynachaos.diagnostics.recurrence import recurrence_matrix, rqa
+    from dynachaos.diagnostics.recurrence import recurrence_matrix, rqa, rqa_from_trajectory
 
     R = recurrence_matrix(trajectory, eps=0.1)
     stats = rqa(R, l_min=2, v_min=2)
+    large_stats = rqa_from_trajectory(trajectory, eps=0.1)
 """
 
 import os
@@ -143,6 +144,93 @@ def _vertical_lines(R, v_min=2):
     return np.array(lengths, dtype=int)
 
 
+def _trajectory_array(X):
+    X = np.asarray(X, dtype=np.float64)
+    if X.ndim == 1:
+        X = X[:, np.newaxis]
+    if X.ndim != 2 or len(X) == 0:
+        raise ValueError("X must be a non-empty 1D or 2D trajectory")
+    if not np.all(np.isfinite(X)):
+        raise ValueError("X must contain only finite values")
+    return X
+
+
+def _validate_recurrence_threshold(eps, percentile):
+    if eps is not None:
+        eps = float(eps)
+        if not np.isfinite(eps) or eps < 0.0:
+            raise ValueError("eps must be a finite non-negative number")
+    percentile = float(percentile)
+    if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
+        raise ValueError("percentile must be in [0, 100]")
+    return eps, percentile
+
+
+def _paired_distances(A, B, metric):
+    if metric == "euclidean":
+        return np.linalg.norm(A - B, axis=1)
+    if metric == "sqeuclidean":
+        diff = A - B
+        return np.einsum("ij,ij->i", diff, diff)
+    if metric in {"cityblock", "manhattan"}:
+        return np.sum(np.abs(A - B), axis=1)
+    if metric == "chebyshev":
+        return np.max(np.abs(A - B), axis=1)
+    raise ValueError(
+        "rqa_from_trajectory currently supports metric values: "
+        "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
+    )
+
+
+def _line_lengths(mask, min_length):
+    lengths = []
+    current = 0
+    for value in mask:
+        if value:
+            current += 1
+        else:
+            if current >= min_length:
+                lengths.append(current)
+            current = 0
+    if current >= min_length:
+        lengths.append(current)
+    return lengths
+
+
+def _rqa_from_line_lengths(total_points, recurrent_all, recurrent_upper, diag_lens, vert_lens):
+    RR = recurrent_all / total_points
+
+    if diag_lens:
+        diag_lens_array = np.asarray(diag_lens, dtype=int)
+        diag_sum = np.sum(diag_lens_array)
+        DET = diag_sum / recurrent_upper if recurrent_upper > 0 else 0.0
+        L = np.mean(diag_lens_array)
+        Lmax = np.max(diag_lens_array)
+        unique, counts = np.unique(diag_lens_array, return_counts=True)
+        probs = counts / np.sum(counts)
+        ENTR = -np.sum(probs * np.log(probs))
+    else:
+        DET, L, Lmax, ENTR = 0.0, 0.0, 0, 0.0
+
+    if vert_lens:
+        vert_lens_array = np.asarray(vert_lens, dtype=int)
+        vert_sum = np.sum(vert_lens_array)
+        LAM = vert_sum / recurrent_all if recurrent_all > 0 else 0.0
+        TT = np.mean(vert_lens_array)
+    else:
+        LAM, TT = 0.0, 0.0
+
+    return {
+        "RR": float(RR),
+        "DET": float(DET),
+        "LAM": float(LAM),
+        "L": float(L),
+        "TT": float(TT),
+        "ENTR": float(ENTR),
+        "Lmax": int(Lmax),
+    }
+
+
 def _positive_int(value, name):
     if isinstance(value, bool):
         raise ValueError(f"{name} must be a positive integer")
@@ -180,50 +268,58 @@ def rqa(R, l_min=2, v_min=2):
     l_min = _positive_int(l_min, "l_min")
     v_min = _positive_int(v_min, "v_min")
 
-    N = R.shape[0]
-    total_points = N * N
-    n_recurrent_all = np.sum(R)
-
-    # Recurrence rate
-    RR = n_recurrent_all / total_points
-
-    # Diagonal lines
+    n_recurrent_all = int(np.sum(R))
     diag_lens = _diagonal_lines(R, l_min)
-    if len(diag_lens) > 0:
-        diag_sum = np.sum(diag_lens)
-        # DET = fraction of recurrent points forming diagonal structures
-        # (over all recurrent points in upper triangle, excluding main diagonal)
-        # Upper-triangle sum without O(N²) allocation (R is symmetric)
-        n_recurrent = (n_recurrent_all - np.trace(R)) // 2
-        DET = diag_sum / n_recurrent if n_recurrent > 0 else 0.0
-        L = np.mean(diag_lens)
-        Lmax = np.max(diag_lens)
-
-        # Entropy of diagonal line length distribution
-        unique, counts = np.unique(diag_lens, return_counts=True)
-        probs = counts / np.sum(counts)
-        ENTR = -np.sum(probs * np.log(probs))
-    else:
-        DET, L, Lmax, ENTR = 0.0, 0.0, 0, 0.0
-
-    # Vertical lines
     vert_lens = _vertical_lines(R, v_min)
-    if len(vert_lens) > 0:
-        vert_sum = np.sum(vert_lens)
-        LAM = vert_sum / n_recurrent_all if n_recurrent_all > 0 else 0.0
-        TT = np.mean(vert_lens)
-    else:
-        LAM, TT = 0.0, 0.0
+    n_recurrent_upper = (n_recurrent_all - int(np.trace(R))) // 2
+    return _rqa_from_line_lengths(
+        R.shape[0] * R.shape[0],
+        n_recurrent_all,
+        n_recurrent_upper,
+        list(diag_lens),
+        list(vert_lens),
+    )
 
-    return {
-        "RR": float(RR),
-        "DET": float(DET),
-        "LAM": float(LAM),
-        "L": float(L),
-        "TT": float(TT),
-        "ENTR": float(ENTR),
-        "Lmax": int(Lmax),
-    }
+
+def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, v_min=2):
+    """Compute RQA measures from a trajectory without materializing ``R``.
+
+    The dense :func:`recurrence_matrix` API remains the right interface when a
+    caller needs the recurrence matrix itself.  This function is for large-RQA
+    workflows that only need the scalar measures.
+    """
+    X = _trajectory_array(X)
+    eps, percentile = _validate_recurrence_threshold(eps, percentile)
+    l_min = _positive_int(l_min, "l_min")
+    v_min = _positive_int(v_min, "v_min")
+
+    if eps is None:
+        pdist_metric = "cityblock" if metric == "manhattan" else metric
+        condensed = pdist(X, metric=pdist_metric)
+        positive_dists = condensed[condensed > 0]
+        eps = 0.0 if positive_dists.size == 0 else float(np.percentile(positive_dists, percentile))
+
+    N = X.shape[0]
+    recurrent_upper = 0
+    diag_lens = []
+    for k in range(1, N):
+        recurrent = _paired_distances(X[:-k], X[k:], metric) <= eps
+        recurrent_upper += int(np.sum(recurrent))
+        diag_lens.extend(_line_lengths(recurrent, l_min))
+
+    vert_lens = []
+    for j in range(N):
+        recurrent = _paired_distances(X, X[j : j + 1], metric) <= eps
+        vert_lens.extend(_line_lengths(recurrent, v_min))
+
+    recurrent_all = N + 2 * recurrent_upper
+    return _rqa_from_line_lengths(
+        N * N,
+        recurrent_all,
+        recurrent_upper,
+        diag_lens,
+        vert_lens,
+    )
 
 
 def embed_time_delay(x, d, tau):

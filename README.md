@@ -175,6 +175,10 @@ templates, using the same Rayon parallel fold + reduce pattern.
 | Cao's method | `diagnostics.embedding` | dimension selector only | Cao 1997 |
 | False nearest neighbors | `diagnostics.embedding` | — | Kennel et al. 1992 |
 
+`diagnostics.recurrence` keeps `recurrence_matrix()` for callers that need the
+binary matrix. For large trajectories where only scalar RQA measures are needed,
+use `rqa_from_trajectory()` to avoid materializing the dense recurrence matrix.
+
 ## Showcase: Kaneko Atlas
 
 A companion manuscript and figure

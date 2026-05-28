@@ -23,7 +23,12 @@ from dynachaos.diagnostics.lyapunov import (
 from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
 from dynachaos.diagnostics.poincare import poincare_section
-from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
+from dynachaos.diagnostics.recurrence import (
+    embed_time_delay,
+    recurrence_matrix,
+    rqa,
+    rqa_from_trajectory,
+)
 from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
@@ -50,6 +55,7 @@ __all__ = [
     "poincare_section",
     "recurrence_matrix",
     "rqa",
+    "rqa_from_trajectory",
     "sali",
     "sample_entropy",
     "select_dimension_cao",

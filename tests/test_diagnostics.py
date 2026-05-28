@@ -8,7 +8,12 @@ from dynachaos.diagnostics.permutation import (
     ordinal_distribution,
     permutation_entropy,
 )
-from dynachaos.diagnostics.recurrence import embed_time_delay, recurrence_matrix, rqa
+from dynachaos.diagnostics.recurrence import (
+    embed_time_delay,
+    recurrence_matrix,
+    rqa,
+    rqa_from_trajectory,
+)
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
 
@@ -93,6 +98,52 @@ def test_recurrence_and_rqa_sanity():
     assert stats["TT"] >= 0.0
     assert stats["ENTR"] >= 0.0
     assert stats["Lmax"] >= 0
+
+
+@pytest.mark.parametrize(
+    "metric",
+    ["euclidean", "sqeuclidean", "cityblock", "manhattan", "chebyshev"],
+)
+def test_rqa_from_trajectory_matches_dense_recurrence_matrix(metric):
+    t = np.linspace(0.0, 30.0, 180)
+    traj = np.column_stack([np.sin(t), np.cos(1.7 * t)])
+
+    dense_metric = "cityblock" if metric == "manhattan" else metric
+    rmat, _ = recurrence_matrix(traj, percentile=8, metric=dense_metric)
+    dense_stats = rqa(rmat, l_min=2, v_min=2)
+    streaming_stats = rqa_from_trajectory(traj, percentile=8, metric=metric, l_min=2, v_min=2)
+
+    assert streaming_stats.keys() == dense_stats.keys()
+    for key, value in dense_stats.items():
+        assert streaming_stats[key] == pytest.approx(value)
+
+
+def test_rqa_from_trajectory_constant_signal_matches_dense():
+    traj = np.ones((12, 2))
+
+    rmat, eps = recurrence_matrix(traj)
+    dense_stats = rqa(rmat, l_min=2, v_min=2)
+    streaming_stats = rqa_from_trajectory(traj, l_min=2, v_min=2)
+
+    assert eps == 0.0
+    assert streaming_stats == dense_stats
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"X": []}, "non-empty"),
+        ({"X": [0.0, np.nan, 1.0]}, "finite values"),
+        ({"X": np.arange(5.0), "eps": -1.0}, "eps must be"),
+        ({"X": np.arange(5.0), "percentile": 101.0}, "percentile must be"),
+        ({"X": np.arange(5.0), "l_min": 0}, "l_min"),
+        ({"X": np.arange(5.0), "v_min": False}, "v_min"),
+        ({"X": np.arange(5.0), "metric": "cosine"}, "currently supports metric"),
+    ],
+)
+def test_rqa_from_trajectory_rejects_invalid_inputs(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        rqa_from_trajectory(**kwargs)
 
 
 @pytest.mark.parametrize(
