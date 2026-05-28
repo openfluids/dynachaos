@@ -123,7 +123,8 @@ fallbacks: they keep the public APIs usable without a compiled extension, and
 the test suite checks parity on representative small workloads. Some fallback
 implementations remain exact and quadratic by design, so large pure-Python runs
 should be treated as diagnostic or development runs unless a future release
-explicitly makes large fallback performance a target.
+explicitly makes large fallback performance a target. Use `DYNACHAOS_NO_RUST=1`
+when you need to exercise this fallback policy explicitly.
 
 ### Correlation integral (Grassberger-Procaccia)
 
