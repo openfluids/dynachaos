@@ -231,6 +231,15 @@ class TestAMIParity:
 
 
 @needs_rust
+def test_disabled_embedding_statistics_are_not_exported():
+    import dynachaos._rust as rust_mod
+
+    assert not hasattr(rust_mod, "cao_statistic")
+    assert not hasattr(rust_mod, "fnn_statistic")
+    assert hasattr(rust_mod, "select_dimension_cao")
+
+
+@needs_rust
 class TestCaoSelectorParity:
     """Verify Rust and Python Cao selector agree."""
 
