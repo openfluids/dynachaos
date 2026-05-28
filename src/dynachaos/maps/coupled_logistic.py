@@ -673,12 +673,10 @@ def main():
         ):
             phase_data.close()
             print("Phase cache missing updated diagnostics; recomputing...")
-            compute_phase_diagram()
-            phase_data = safe_load(PHASE_NPZ)
+            phase_data = compute_phase_diagram()
     except FileNotFoundError:
         print("Computing phase diagram...")
-        compute_phase_diagram()
-        phase_data = safe_load(PHASE_NPZ)
+        phase_data = compute_phase_diagram()
     plot_phase_diagram(phase_data)
 
     # Attractors
@@ -702,12 +700,10 @@ def main():
         if attr_needs_recompute:
             attr_data.close()
             print("Attractor cache schema mismatch; recomputing...")
-            compute_attractors()
-            attr_data = safe_load(ATTR_NPZ)
+            attr_data = compute_attractors()
     except FileNotFoundError:
         print("Computing attractors...")
-        compute_attractors()
-        attr_data = safe_load(ATTR_NPZ)
+        attr_data = compute_attractors()
     plot_attractors(attr_data)
 
     basin_data = load_or_compute_npz(
