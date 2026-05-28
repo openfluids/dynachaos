@@ -3,6 +3,8 @@
 //! These are the hot inner loops of RQA: scanning an N×N boolean recurrence
 //! matrix for consecutive runs of `true` along diagonals (determinism) and
 //! columns (laminarity).
+//! They validate non-empty square shape only; public RQA semantics such as
+//! recurrence-matrix symmetry are enforced by `dynachaos.diagnostics.recurrence.rqa`.
 
 use numpy::{PyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
