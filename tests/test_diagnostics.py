@@ -298,6 +298,17 @@ def test_recurrence_matrix_translation_invariance():
     np.testing.assert_array_equal(shifted_rmat, rmat)
 
 
+def test_recurrence_matrix_positive_scaling_invariance_with_percentile_threshold():
+    t = np.linspace(0.0, 10.0, 120)
+    traj = np.column_stack([np.sin(t), np.cos(2.0 * t)])
+
+    rmat, eps = recurrence_matrix(traj, percentile=7)
+    scaled_rmat, scaled_eps = recurrence_matrix(3.25 * traj, percentile=7)
+
+    assert scaled_eps == pytest.approx(3.25 * eps)
+    np.testing.assert_array_equal(scaled_rmat, rmat)
+
+
 @pytest.mark.parametrize(
     ("d", "tau"),
     [
