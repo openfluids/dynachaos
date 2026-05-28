@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
 from dynachaos.maps._iter import (
     run_animation_sweep,
     run_transient,
@@ -682,14 +682,12 @@ def main():
         attr_data = safe_load(ATTR_NPZ)
     plot_attractors(attr_data)
 
-    # Basins
-    try:
-        basin_data = safe_load(BASIN_NPZ)
-        print(f"Loaded {BASIN_NPZ}")
-    except FileNotFoundError:
-        print("Computing basins...")
-        compute_basins()
-        basin_data = safe_load(BASIN_NPZ)
+    basin_data = load_or_compute_npz(
+        BASIN_NPZ,
+        "basins",
+        compute_basins,
+        required_keys=("x", "y", "basin", "A", "D"),
+    )
     plot_basins(basin_data)
 
     # Animation

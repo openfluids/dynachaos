@@ -19,7 +19,7 @@ OUTPUTS: figures/sec04_doubling/*.npz, *.png
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
 
@@ -397,34 +397,28 @@ def make_map_IV_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Map (I) attractors
-    try:
-        m1_data = safe_load(MAP1_NPZ)
-        print(f"Loaded {MAP1_NPZ}")
-    except FileNotFoundError:
-        print("Computing Map (I) attractors...")
-        compute_map_I()
-        m1_data = safe_load(MAP1_NPZ)
+    m1_data = load_or_compute_npz(
+        MAP1_NPZ,
+        "Map (I) attractors",
+        compute_map_I,
+        required_keys=("D_values",),
+    )
     plot_map_I(m1_data)
 
-    # Map (IV) attractors
-    try:
-        m4_data = safe_load(MAP4_NPZ)
-        print(f"Loaded {MAP4_NPZ}")
-    except FileNotFoundError:
-        print("Computing Map (IV) attractors...")
-        compute_map_IV()
-        m4_data = safe_load(MAP4_NPZ)
+    m4_data = load_or_compute_npz(
+        MAP4_NPZ,
+        "Map (IV) attractors",
+        compute_map_IV,
+        required_keys=("D_values",),
+    )
     plot_map_IV(m4_data)
 
-    # Map (IV) Lyapunov
-    try:
-        lyap_data = safe_load(LYAP_NPZ)
-        print(f"Loaded {LYAP_NPZ}")
-    except FileNotFoundError:
-        print("Computing Map (IV) Lyapunov exponents...")
-        compute_map_IV_lyapunov()
-        lyap_data = safe_load(LYAP_NPZ)
+    lyap_data = load_or_compute_npz(
+        LYAP_NPZ,
+        "Map (IV) Lyapunov exponents",
+        compute_map_IV_lyapunov,
+        required_keys=("D", "spectra"),
+    )
     plot_lyapunov(lyap_data)
 
     # Map (I) animation

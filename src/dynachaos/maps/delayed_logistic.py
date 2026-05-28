@@ -27,7 +27,7 @@ USAGE:   python src/dynachaos/maps/delayed_logistic.py
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -413,34 +413,28 @@ def make_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Attractors
-    try:
-        attr_data = safe_load(ATTR_NPZ)
-        print(f"Loaded {ATTR_NPZ}")
-    except FileNotFoundError:
-        print("Computing attractors...")
-        compute_attractors()
-        attr_data = safe_load(ATTR_NPZ)
+    attr_data = load_or_compute_npz(
+        ATTR_NPZ,
+        "attractors",
+        compute_attractors,
+        required_keys=("D_values", "A"),
+    )
     plot_attractors(attr_data)
 
-    # Lyapunov
-    try:
-        lyap_data = safe_load(LYAP_NPZ)
-        print(f"Loaded {LYAP_NPZ}")
-    except FileNotFoundError:
-        print("Computing Lyapunov spectrum...")
-        compute_lyapunov_spectrum()
-        lyap_data = safe_load(LYAP_NPZ)
+    lyap_data = load_or_compute_npz(
+        LYAP_NPZ,
+        "Lyapunov spectrum",
+        compute_lyapunov_spectrum,
+        required_keys=("D", "spectra"),
+    )
     plot_lyapunov(lyap_data)
 
-    # Locking sequence
-    try:
-        lock_data = safe_load(LOCK_NPZ)
-        print(f"Loaded {LOCK_NPZ}")
-    except FileNotFoundError:
-        print("Computing locking sequence...")
-        compute_locking_sequence()
-        lock_data = safe_load(LOCK_NPZ)
+    lock_data = load_or_compute_npz(
+        LOCK_NPZ,
+        "locking sequence",
+        compute_locking_sequence,
+        required_keys=("D_values", "A"),
+    )
     plot_locking_sequence(lock_data)
 
     # Animation
