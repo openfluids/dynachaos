@@ -27,7 +27,7 @@ USAGE:   python src/dynachaos/maps/delayed_logistic.py
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
+from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -56,6 +56,28 @@ def _validate_unique_d_keys(d_values, fmt):
     keys = [format(float(value), fmt) for value in d_values]
     if len(set(keys)) != len(keys):
         raise ValueError(f"D_values must be unique after {fmt} formatting")
+
+
+def _load_or_compute_payload(npz_path, section_name, compute_fn, *, required_keys=()):
+    keys = tuple(required_keys)
+    try:
+        data = safe_load(npz_path)
+        missing = tuple(key for key in keys if key not in data.files)
+        if not missing:
+            print(f"Loaded {npz_path}")
+            return data
+        data.close()
+        missing_text = ", ".join(missing)
+        print(f"Cache {npz_path} missing keys ({missing_text}); recomputing {section_name}...")
+    except FileNotFoundError:
+        print(f"Computing {section_name}...")
+
+    payload = compute_fn()
+    missing = tuple(key for key in keys if key not in payload)
+    if missing:
+        missing_text = ", ".join(missing)
+        raise KeyError(f"Cache {npz_path} is missing required keys after compute: {missing_text}")
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +476,7 @@ def make_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    attr_data = load_or_compute_npz(
+    attr_data = _load_or_compute_payload(
         ATTR_NPZ,
         "attractors",
         compute_attractors,
@@ -462,7 +484,7 @@ def main():
     )
     plot_attractors(attr_data)
 
-    lyap_data = load_or_compute_npz(
+    lyap_data = _load_or_compute_payload(
         LYAP_NPZ,
         "Lyapunov spectrum",
         compute_lyapunov_spectrum,
@@ -470,7 +492,7 @@ def main():
     )
     plot_lyapunov(lyap_data)
 
-    lock_data = load_or_compute_npz(
+    lock_data = _load_or_compute_payload(
         LOCK_NPZ,
         "locking sequence",
         compute_locking_sequence,
