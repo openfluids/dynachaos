@@ -185,7 +185,7 @@ def run_section(
 
     ledger_path = _timing_ledger_path(timing_ledger)
     for module_name in spec.modules:
-        started = time.perf_counter()
+        started = time.perf_counter() if ledger_path is not None else 0.0
         _run_module(module_name, root, profile)
         if ledger_path is not None:
             _append_timing_event(

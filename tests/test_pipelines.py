@@ -168,6 +168,25 @@ def test_run_section_timing_ledger_can_come_from_env(tmp_path, monkeypatch):
     assert [event["wall_time_s"] for event in events] == [0.25, 0.75]
 
 
+def test_run_section_without_timing_ledger_does_not_touch_timer(tmp_path, monkeypatch):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    for png_name in ("devils_staircase.png", "arnold_tongues.png", "staircase_zoom.png"):
+        (section_dir / png_name).write_bytes(b"png")
+
+    def fail_timer():
+        raise AssertionError("default runs should not collect timing")
+
+    monkeypatch.delenv("DYNACHAOS_TIMING_LEDGER", raising=False)
+    monkeypatch.setattr(runner.time, "perf_counter", fail_timer)
+    monkeypatch.setattr(runner, "_run_module", lambda module_name, output_root, profile: None)
+
+    run_section("sec02_circle_map", output_root=tmp_path, profile="paper")
+
+
 def test_section_validators_can_check_cache_and_outputs_without_running_modules(tmp_path):
     section_dir = tmp_path / "sec02_circle_map"
     section_dir.mkdir()
