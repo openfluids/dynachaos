@@ -80,6 +80,50 @@ def _validate_artifact(path: Path, *, required_keys: tuple[str, ...], section_id
         raise RuntimeError(f"Section {section_id} artifact {path} is empty")
 
 
+def _section_root(output_root: str | Path | None) -> Path:
+    return (
+        Path(output_root).resolve()
+        if output_root is not None
+        else (Path.cwd() / "figures").resolve()
+    )
+
+
+def validate_section_cache(
+    section_id: str,
+    *,
+    output_root: str | Path | None = None,
+) -> list[Path]:
+    """Validate precomputed cache artifacts for one section without running modules."""
+    spec = get_section(section_id)
+    root = _section_root(output_root)
+    cache_paths = [root / section_id / name for name in spec.cache_files]
+    for path in cache_paths:
+        _validate_artifact(
+            path,
+            required_keys=spec.required_npz_keys(path.name),
+            section_id=section_id,
+        )
+    return cache_paths
+
+
+def validate_section_outputs(
+    section_id: str,
+    *,
+    output_root: str | Path | None = None,
+) -> list[Path]:
+    """Validate expected output artifacts for one section without running modules."""
+    spec = get_section(section_id)
+    root = _section_root(output_root)
+    output_paths = [root / section_id / name for name in spec.output_files]
+    for path in output_paths:
+        _validate_artifact(
+            path,
+            required_keys=spec.required_npz_keys(path.name),
+            section_id=section_id,
+        )
+    return output_paths
+
+
 def run_section(
     section_id: str,
     *,
@@ -89,42 +133,24 @@ def run_section(
 ) -> list[Path]:
     """Run one section pipeline and return expected output paths."""
     spec = get_section(section_id)
-    root = (
-        Path(output_root).resolve()
-        if output_root is not None
-        else (Path.cwd() / "figures").resolve()
-    )
-
-    cache_paths = [root / section_id / name for name in spec.cache_files]
-    output_paths = [root / section_id / name for name in spec.output_files]
+    root = _section_root(output_root)
 
     if profile not in {"paper", "smoke"}:
         raise ValueError("profile must be one of: paper, smoke")
 
     if recompute:
-        for path in output_paths:
+        for name in spec.output_files:
+            path = root / section_id / name
             if path.exists():
                 path.unlink()
 
     if profile == "smoke":
-        for path in cache_paths:
-            _validate_artifact(
-                path,
-                required_keys=spec.required_npz_keys(path.name),
-                section_id=section_id,
-            )
+        validate_section_cache(section_id, output_root=root)
 
     for module_name in spec.modules:
         _run_module(module_name, root, profile)
 
-    for path in output_paths:
-        _validate_artifact(
-            path,
-            required_keys=spec.required_npz_keys(path.name),
-            section_id=section_id,
-        )
-
-    return output_paths
+    return validate_section_outputs(section_id, output_root=root)
 
 
 def run_all(

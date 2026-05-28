@@ -6,7 +6,7 @@ import pytest
 
 from dynachaos.pipelines import runner
 from dynachaos.pipelines.registry import get_section, list_sections
-from dynachaos.pipelines.runner import run_section
+from dynachaos.pipelines.runner import run_section, validate_section_cache, validate_section_outputs
 
 
 def test_section_registry_contains_all_expected_sections():
@@ -99,3 +99,35 @@ def test_smoke_profile_accepts_valid_cached_outputs_without_recomputation(tmp_pa
         ("dynachaos.maps.circle_map", tmp_path.resolve(), "smoke"),
         ("dynachaos.maps.arnold_tongues", tmp_path.resolve(), "smoke"),
     ]
+
+
+def test_section_validators_can_check_cache_and_outputs_without_running_modules(tmp_path):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    for png_name in ("devils_staircase.png", "arnold_tongues.png", "staircase_zoom.png"):
+        (section_dir / png_name).write_bytes(b"png")
+
+    cache_paths = validate_section_cache("sec02_circle_map", output_root=tmp_path)
+    output_paths = validate_section_outputs("sec02_circle_map", output_root=tmp_path)
+
+    assert [path.name for path in cache_paths] == list(get_section("sec02_circle_map").cache_files)
+    assert [path.name for path in output_paths] == list(
+        get_section("sec02_circle_map").output_files
+    )
+
+
+def test_section_output_validator_rejects_empty_figure(tmp_path):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    (section_dir / "devils_staircase.png").write_bytes(b"")
+    (section_dir / "arnold_tongues.png").write_bytes(b"png")
+    (section_dir / "staircase_zoom.png").write_bytes(b"png")
+
+    with pytest.raises(RuntimeError, match="devils_staircase.png.*empty"):
+        validate_section_outputs("sec02_circle_map", output_root=tmp_path)
