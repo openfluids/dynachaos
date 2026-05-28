@@ -54,7 +54,15 @@ from dynachaos.maps.primitives import (
     logistic,
     logistic_derivative,
 )
-from dynachaos.maps.torus_doubling import map_I, map_I_jac, map_IV, map_IV_jac
+from dynachaos.maps.torus_doubling import (
+    compute_map_I,
+    compute_map_IV,
+    compute_map_IV_lyapunov,
+    map_I,
+    map_I_jac,
+    map_IV,
+    map_IV_jac,
+)
 
 
 def test_circle_map_range_and_derivative():
@@ -345,6 +353,64 @@ def test_map_IV_shape():
     assert jac.shape == (4, 4)
     assert np.all(np.isfinite(out))
     assert np.all(np.isfinite(jac))
+
+
+def test_compute_torus_map_I_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "map_I_attractors.npz"
+
+    payload = compute_map_I(
+        D_values=np.array([2.11, 2.16]),
+        n_transient=2,
+        n_plot=4,
+        output_path=output_path,
+    )
+
+    assert payload["D_values"].shape == (2,)
+    assert payload["D_2.11_traj"].shape[1] == 3
+    assert payload["D_2.16_traj"].shape[1] == 3
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D_values"], payload["D_values"])
+        np.testing.assert_allclose(saved["D_2.11_traj"], payload["D_2.11_traj"])
+
+
+def test_compute_torus_map_IV_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "map_IV_attractors.npz"
+
+    payload = compute_map_IV(
+        D_values=np.array([1.515, 1.5206]),
+        n_transient=2,
+        n_plot=4,
+        output_path=output_path,
+    )
+
+    assert payload["D_values"].shape == (2,)
+    assert payload["D_1.515_traj"].shape[1] == 4
+    assert payload["D_1.5206_traj"].shape[1] == 4
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D_values"], payload["D_values"])
+        np.testing.assert_allclose(saved["D_1.515_traj"], payload["D_1.515_traj"])
+
+
+def test_compute_torus_map_IV_lyapunov_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "map_IV_lyapunov.npz"
+
+    payload = compute_map_IV_lyapunov(
+        D_values=np.array([1.5, 1.51]),
+        n_iter=4,
+        n_transient=2,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    assert payload["D"].shape == (2,)
+    assert payload["spectra"].shape == (2, 4)
+    assert np.all(np.isfinite(payload["spectra"]))
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D"], payload["D"])
+        np.testing.assert_allclose(saved["spectra"], payload["spectra"])
 
 
 # ---------------------------------------------------------------------------

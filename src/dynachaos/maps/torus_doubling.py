@@ -37,6 +37,17 @@ MAP4_ANIM_NPZ = FIG_DIR / "map_IV_animation.npz"
 MAP4_ANIM_GIF = FIG_DIR / "map_IV_animation.gif"
 
 
+def _write_payload(output_path, payload):
+    """Write a compute payload when requested and return it unchanged."""
+    if output_path is None:
+        return payload
+    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(output_path, **payload)
+    print(f"Saved {output_path}")
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # Map definitions
 # ---------------------------------------------------------------------------
@@ -99,52 +110,77 @@ def iterate_map(f, x0, A, D, n_transient=20_000, n_plot=100_000):
     )
 
 
-def compute_map_I():
+def compute_map_I(
+    *,
+    A=0.4,
+    D_values=None,
+    n_transient=20_000,
+    n_plot=100_000,
+    output_path=MAP1_NPZ,
+):
     """Compute Map (I) attractors at A=0.4."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-    A = 0.4
-    D_values = [2.11, 2.16, 2.19]
+    if D_values is None:
+        D_values = [2.11, 2.16, 2.19]
+    else:
+        D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
     labels = ["torus", "2x torus", "chaos"]
 
     results = {}
     x0 = np.array([0.5, 0.5, 0.5])
-    for D, label in zip(D_values, labels):
+    for idx, D in enumerate(D_values):
+        label = labels[idx] if idx < len(labels) else ""
         print(f"  Map (I): D={D} ({label})")
-        traj = iterate_map(map_I, x0, A, D)
+        traj = iterate_map(map_I, x0, A, D, n_transient=n_transient, n_plot=n_plot)
         if traj is not None:
             results[f"D_{D}_traj"] = traj
     results["D_values"] = np.array(D_values)
-    np.savez_compressed(MAP1_NPZ, **results)
-    print(f"Saved {MAP1_NPZ}")
+    return _write_payload(output_path, results)
 
 
-def compute_map_IV():
+def compute_map_IV(
+    *,
+    A=0.3,
+    D_values=None,
+    n_transient=20_000,
+    n_plot=100_000,
+    output_path=MAP4_NPZ,
+):
     """Compute Map (IV) attractors at A=0.3."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-    A = 0.3
-    D_values = [1.515, 1.5206, 1.5212]
+    if D_values is None:
+        D_values = [1.515, 1.5206, 1.5212]
+    else:
+        D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
     labels = ["4x torus", "8x torus", "chaos"]
 
     results = {}
     x0 = np.array([0.5, 0.5, 0.5, 0.5])
-    for D, label in zip(D_values, labels):
+    for idx, D in enumerate(D_values):
+        label = labels[idx] if idx < len(labels) else ""
         print(f"  Map (IV): D={D} ({label})")
-        traj = iterate_map(map_IV, x0, A, D)
+        traj = iterate_map(map_IV, x0, A, D, n_transient=n_transient, n_plot=n_plot)
         if traj is not None:
             results[f"D_{D}_traj"] = traj
     results["D_values"] = np.array(D_values)
-    np.savez_compressed(MAP4_NPZ, **results)
-    print(f"Saved {MAP4_NPZ}")
+    return _write_payload(output_path, results)
 
 
-def compute_map_IV_lyapunov():
+def compute_map_IV_lyapunov(
+    *,
+    A=0.3,
+    D_values=None,
+    n_iter=50_000,
+    n_transient=20_000,
+    output_path=LYAP_NPZ,
+    progress_interval=200,
+):
     """Compute Lyapunov exponents for Map (IV) vs D."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
     from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
 
-    A = 0.3
-    n_params = 1000
-    D_values = np.linspace(1.48, 1.53, n_params)
+    if D_values is None:
+        D_values = np.linspace(1.48, 1.53, 1000)
+    else:
+        D_values = np.atleast_1d(np.asarray(D_values, dtype=np.float64))
+    n_params = len(D_values)
 
     spectra = np.empty((n_params, 4))
     x0 = np.array([0.5, 0.5, 0.5, 0.5])
@@ -157,13 +193,12 @@ def compute_map_IV_lyapunov():
         def jac(state, _D=D):
             return map_IV_jac(state, A, _D)
 
-        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000, n_transient=20_000)
-        if (i + 1) % 200 == 0:
+        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
+        if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            np.savez_compressed(LYAP_NPZ, D=D_values[: i + 1], spectra=spectra[: i + 1])
+            _write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]})
 
-    np.savez_compressed(LYAP_NPZ, D=D_values, spectra=spectra)
-    print(f"Saved {LYAP_NPZ}")
+    return _write_payload(output_path, {"D": D_values, "spectra": spectra})
 
 
 # ---------------------------------------------------------------------------
