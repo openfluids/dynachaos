@@ -26,6 +26,8 @@ from dynachaos.maps._iter import (
 from dynachaos.maps.circle_map import circle_map, circle_map_derivative
 from dynachaos.maps.coupled_logistic import (
     ATTRACTOR_CASES,
+    PHASE_REQUIRED_KEYS,
+    PhaseDiagramPayload,
     coupled_logistic,
     coupled_logistic_jac,
 )
@@ -125,6 +127,59 @@ def test_compute_coupled_phase_diagram_returns_and_writes_explicit_payload(tmp_p
         np.testing.assert_allclose(saved["D"], payload["D"])
         np.testing.assert_allclose(saved["asym"], payload["asym"])
         np.testing.assert_allclose(saved["lyap"], payload["lyap"])
+
+
+def test_coupled_phase_payload_round_trip(tmp_path):
+    path = tmp_path / "phase_diagram.npz"
+    payload = PhaseDiagramPayload(
+        A=np.array([0.8, 1.0], dtype=np.float64),
+        D=np.array([0.0, 0.1], dtype=np.float64),
+        asym=np.zeros((2, 2), dtype=np.float64),
+        lyap=np.ones((2, 2), dtype=np.float64),
+    )
+    np.savez_compressed(path, **payload.to_npz())
+
+    with np.load(path, allow_pickle=False) as saved:
+        loaded = PhaseDiagramPayload.from_npz(saved)
+
+    assert set(PHASE_REQUIRED_KEYS) == set(payload.to_npz())
+    np.testing.assert_allclose(loaded.A, payload.A)
+    np.testing.assert_allclose(loaded.D, payload.D)
+    np.testing.assert_allclose(loaded.asym, payload.asym)
+    np.testing.assert_allclose(loaded.lyap, payload.lyap)
+    assert loaded.schema_version == payload.schema_version
+
+
+def test_coupled_phase_payload_rejects_stale_schema(tmp_path):
+    path = tmp_path / "phase_diagram.npz"
+    np.savez_compressed(
+        path,
+        A=np.array([0.8], dtype=np.float64),
+        D=np.array([0.0], dtype=np.float64),
+        asym=np.zeros((1, 1), dtype=np.float64),
+        lyap=np.zeros((1, 1), dtype=np.float64),
+        schema_version=np.array([1], dtype=np.int16),
+    )
+
+    with np.load(path, allow_pickle=False) as saved:
+        with pytest.raises(KeyError, match="stale phase diagram cache"):
+            PhaseDiagramPayload.from_npz(saved)
+
+
+def test_coupled_phase_payload_rejects_grid_shape_mismatch(tmp_path):
+    path = tmp_path / "phase_diagram.npz"
+    np.savez_compressed(
+        path,
+        A=np.array([0.8, 1.0], dtype=np.float64),
+        D=np.array([0.0, 0.1], dtype=np.float64),
+        asym=np.zeros((2, 1), dtype=np.float64),
+        lyap=np.zeros((2, 2), dtype=np.float64),
+        schema_version=np.array([2], dtype=np.int16),
+    )
+
+    with np.load(path, allow_pickle=False) as saved:
+        with pytest.raises(KeyError, match="grid shape mismatch"):
+            PhaseDiagramPayload.from_npz(saved)
 
 
 def test_compute_coupled_phase_diagram_accepts_scalar_sweeps():

@@ -44,6 +44,8 @@ BASIN_NPZ = FIG_DIR / "basins.npz"
 BASIN_PNG = FIG_DIR / "basins.png"
 ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
+PHASE_SCHEMA_VERSION = 2
+PHASE_REQUIRED_KEYS = ("A", "D", "asym", "lyap", "schema_version")
 
 
 def _write_payload(output_path, payload):
@@ -55,6 +57,54 @@ def _write_payload(output_path, payload):
     np.savez_compressed(output_path, **payload)
     print(f"Saved {output_path}")
     return payload
+
+
+@dataclass(frozen=True)
+class PhaseDiagramPayload:
+    """Typed NPZ payload for the schema-versioned phase diagram cache."""
+
+    A: np.ndarray
+    D: np.ndarray
+    asym: np.ndarray
+    lyap: np.ndarray
+    schema_version: int = PHASE_SCHEMA_VERSION
+
+    def to_npz(self) -> dict[str, np.ndarray]:
+        return {
+            "A": self.A,
+            "D": self.D,
+            "asym": self.asym,
+            "lyap": self.lyap,
+            "schema_version": np.array([self.schema_version], dtype=np.int16),
+        }
+
+    @classmethod
+    def from_npz(cls, data) -> PhaseDiagramPayload:
+        missing = tuple(key for key in PHASE_REQUIRED_KEYS if key not in data.files)
+        if missing:
+            raise KeyError("phase diagram cache missing keys: " + ", ".join(missing))
+
+        version = int(np.atleast_1d(data["schema_version"])[0])
+        if version < PHASE_SCHEMA_VERSION:
+            raise KeyError("stale phase diagram cache")
+
+        A = np.asarray(data["A"], dtype=np.float64)
+        D = np.asarray(data["D"], dtype=np.float64)
+        asym = np.asarray(data["asym"], dtype=np.float64)
+        lyap = np.asarray(data["lyap"], dtype=np.float64)
+        expected_shape = (len(D), len(A))
+        if A.ndim != 1 or D.ndim != 1:
+            raise KeyError("phase diagram cache axes must be one-dimensional")
+        if asym.shape != expected_shape or lyap.shape != expected_shape:
+            raise KeyError("phase diagram cache grid shape mismatch")
+
+        return cls(
+            A=A,
+            D=D,
+            asym=asym,
+            lyap=lyap,
+            schema_version=version,
+        )
 
 
 @dataclass(frozen=True)
@@ -189,24 +239,12 @@ def compute_phase_diagram(
             print(f"  Phase diagram: row {j + 1}/{n_D}")
             _write_payload(
                 output_path,
-                {
-                    "A": A_values,
-                    "D": D_values,
-                    "asym": asym_grid,
-                    "lyap": lyap_grid,
-                    "schema_version": np.array([2], dtype=np.int16),
-                },
+                PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
             )
 
     return _write_payload(
         output_path,
-        {
-            "A": A_values,
-            "D": D_values,
-            "asym": asym_grid,
-            "lyap": lyap_grid,
-            "schema_version": np.array([2], dtype=np.int16),
-        },
+        PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
     )
 
 
@@ -665,15 +703,15 @@ def main():
     try:
         phase_data = safe_load(PHASE_NPZ)
         print(f"Loaded {PHASE_NPZ}")
-        if (
-            "schema_version" not in phase_data.files
-            or int(phase_data["schema_version"][0]) < 2
-            or "asym" not in phase_data.files
-            or "lyap" not in phase_data.files
-        ):
+        try:
+            phase_payload = PhaseDiagramPayload.from_npz(phase_data)
+        except KeyError:
             phase_data.close()
             print("Phase cache missing updated diagnostics; recomputing...")
             phase_data = compute_phase_diagram()
+        else:
+            phase_data.close()
+            phase_data = phase_payload.to_npz()
     except FileNotFoundError:
         print("Computing phase diagram...")
         phase_data = compute_phase_diagram()
