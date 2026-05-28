@@ -34,6 +34,13 @@ import os
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 
+from dynachaos.diagnostics._validation import (
+    finite_nonnegative_scalar,
+    finite_trajectory,
+    positive_int,
+    square_bool_matrix,
+)
+
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
@@ -68,17 +75,9 @@ def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
     eps_used : float
         The threshold actually used (useful when auto-selected).
     """
-    X = np.asarray(X, dtype=np.float64)
-    if X.ndim == 1:
-        X = X[:, np.newaxis]
-    if X.ndim != 2 or len(X) == 0:
-        raise ValueError("X must be a non-empty 1D or 2D trajectory")
-    if not np.all(np.isfinite(X)):
-        raise ValueError("X must contain only finite values")
+    X = finite_trajectory(X, name="X")
     if eps is not None:
-        eps = float(eps)
-        if not np.isfinite(eps) or eps < 0.0:
-            raise ValueError("eps must be a finite non-negative number")
+        eps = finite_nonnegative_scalar(eps, name="eps")
     percentile = float(percentile)
     if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
         raise ValueError("percentile must be in [0, 100]")
@@ -145,21 +144,12 @@ def _vertical_lines(R, v_min=2):
 
 
 def _trajectory_array(X):
-    X = np.asarray(X, dtype=np.float64)
-    if X.ndim == 1:
-        X = X[:, np.newaxis]
-    if X.ndim != 2 or len(X) == 0:
-        raise ValueError("X must be a non-empty 1D or 2D trajectory")
-    if not np.all(np.isfinite(X)):
-        raise ValueError("X must contain only finite values")
-    return X
+    return finite_trajectory(X, name="X")
 
 
 def _validate_recurrence_threshold(eps, percentile):
     if eps is not None:
-        eps = float(eps)
-        if not np.isfinite(eps) or eps < 0.0:
-            raise ValueError("eps must be a finite non-negative number")
+        eps = finite_nonnegative_scalar(eps, name="eps")
     percentile = float(percentile)
     if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
         raise ValueError("percentile must be in [0, 100]")
@@ -239,18 +229,6 @@ def _rqa_from_line_lengths(total_points, recurrent_all, recurrent_upper, diag_le
     }
 
 
-def _positive_int(value, name):
-    if isinstance(value, bool):
-        raise ValueError(f"{name} must be a positive integer")
-    try:
-        value_int = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be a positive integer") from exc
-    if value_int != value or value_int < 1:
-        raise ValueError(f"{name} must be a positive integer")
-    return value_int
-
-
 def rqa(R, l_min=2, v_min=2):
     """Compute Recurrence Quantification Analysis measures.
 
@@ -268,13 +246,9 @@ def rqa(R, l_min=2, v_min=2):
     dict
         Keys: 'RR', 'DET', 'LAM', 'L', 'TT', 'ENTR', 'Lmax'.
     """
-    R = np.asarray(R, dtype=bool)
-    if R.ndim != 2 or R.shape[0] == 0 or R.shape[0] != R.shape[1]:
-        raise ValueError("R must be a non-empty square matrix")
-    if not np.array_equal(R, R.T):
-        raise ValueError("R must be symmetric")
-    l_min = _positive_int(l_min, "l_min")
-    v_min = _positive_int(v_min, "v_min")
+    R = square_bool_matrix(R, name="R", symmetric=True)
+    l_min = positive_int(l_min, "l_min")
+    v_min = positive_int(v_min, "v_min")
 
     n_recurrent_all = int(np.sum(R))
     diag_lens = _diagonal_lines(R, l_min)
@@ -298,8 +272,8 @@ def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, 
     """
     X = _trajectory_array(X)
     eps, percentile = _validate_recurrence_threshold(eps, percentile)
-    l_min = _positive_int(l_min, "l_min")
-    v_min = _positive_int(v_min, "v_min")
+    l_min = positive_int(l_min, "l_min")
+    v_min = positive_int(v_min, "v_min")
     _validate_streaming_metric(metric)
 
     if eps is None:

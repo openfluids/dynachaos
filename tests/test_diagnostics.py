@@ -2,6 +2,14 @@ import numpy as np
 import pytest
 from conftest import logistic_series
 
+from dynachaos.diagnostics._validation import (
+    finite_positive_scalar,
+    finite_series_1d,
+    finite_trajectory,
+    positive_int,
+    sorted_nonnegative_radius_grid,
+    square_bool_matrix,
+)
 from dynachaos.diagnostics.correlation import correlation_dimension
 from dynachaos.diagnostics.permutation import (
     complexity_entropy,
@@ -15,6 +23,56 @@ from dynachaos.diagnostics.recurrence import (
     rqa_from_trajectory,
 )
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
+
+
+def test_validation_helpers_reject_bool_integer():
+    with pytest.raises(ValueError, match="n must be a positive integer"):
+        positive_int(True, "n")
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ([1.0, np.nan], "x must contain only finite values"),
+        ([[1.0, 2.0], [np.inf, 3.0]], "X must contain only finite values"),
+        (0.0, "r must be a finite positive number"),
+    ],
+)
+def test_validation_helpers_reject_non_finite_or_non_positive_values(value, message):
+    with pytest.raises(ValueError, match=message):
+        if message.startswith("x"):
+            finite_series_1d(value, name="x")
+        elif message.startswith("X"):
+            finite_trajectory(value, name="X")
+        else:
+            finite_positive_scalar(value, name="r")
+
+
+@pytest.mark.parametrize(
+    ("r_values", "message"),
+    [
+        ([[0.0, 1.0]], "r_values must be a 1D array"),
+        ([0.0, np.nan], "r_values must contain only finite values"),
+        ([-0.1, 0.2], "r_values must be non-negative"),
+        ([0.2, 0.1], "r_values must be sorted in ascending order"),
+    ],
+)
+def test_validation_helpers_reject_invalid_radius_grids(r_values, message):
+    with pytest.raises(ValueError, match=message):
+        sorted_nonnegative_radius_grid(r_values, name="r_values")
+
+
+@pytest.mark.parametrize(
+    ("matrix", "message"),
+    [
+        (np.ones((0, 0), dtype=bool), "R must be a non-empty square matrix"),
+        (np.ones((2, 3), dtype=bool), "R must be a non-empty square matrix"),
+        (np.array([[True, False], [True, True]]), "R must be symmetric"),
+    ],
+)
+def test_validation_helpers_reject_invalid_recurrence_matrices(matrix, message):
+    with pytest.raises(ValueError, match=message):
+        square_bool_matrix(matrix, name="R", symmetric=True)
 
 
 def test_zero_one_regular_vs_chaotic():

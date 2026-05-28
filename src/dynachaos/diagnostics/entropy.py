@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 
+from dynachaos.diagnostics._validation import finite_positive_scalar, finite_series_1d
 from dynachaos.diagnostics.recurrence import embed_time_delay
 from dynachaos.utils.system import get_rss_mb
 
@@ -47,10 +48,7 @@ def _default_r(x):
 
 def _as_finite_series(x):
     """Return a 1D finite float64 series."""
-    x = np.asarray(x, dtype=np.float64).ravel()
-    if not np.all(np.isfinite(x)):
-        raise ValueError("x must contain only finite values")
-    return x
+    return finite_series_1d(x, name="x")
 
 
 def _print_timing(backend, N, n_pairs, elapsed):
@@ -134,9 +132,7 @@ def sample_entropy(x, m=2, r=None, verbose=False):
 
     if r is None:
         r = _default_r(x)
-    r = float(r)
-    if not np.isfinite(r) or r <= 0.0:
-        raise ValueError("r must be a finite positive number")
+    r = finite_positive_scalar(r, name="r")
 
     traj_m, traj_m1 = _embed_pair(x, m)
     n_m = len(traj_m)
@@ -205,9 +201,7 @@ def approximate_entropy(x, m=2, r=None, verbose=False):
 
     if r is None:
         r = _default_r(x)
-    r = float(r)
-    if not np.isfinite(r) or r <= 0.0:
-        raise ValueError("r must be a finite positive number")
+    r = finite_positive_scalar(r, name="r")
 
     def _phi(order):
         traj = embed_time_delay(x, order, 1)
@@ -273,9 +267,7 @@ def fuzzy_entropy(x, m=2, r=None, n=2, verbose=False):
 
     if r is None:
         r = _default_r(x)
-    r = float(r)
-    if not np.isfinite(r) or r <= 0.0:
-        raise ValueError("r must be a finite positive number")
+    r = finite_positive_scalar(r, name="r")
 
     traj_m, traj_m1 = _embed_pair(x, m)
     n_m = len(traj_m)
@@ -350,9 +342,7 @@ def multiscale_entropy(x, scales=None, m=2, r=None, verbose=False):
 
     if r is None:
         r = 0.15 * np.std(x, ddof=1)  # Costa et al. (2002) convention
-    r = float(r)
-    if not np.isfinite(r) or r <= 0.0:
-        raise ValueError("r must be a finite positive number")
+    r = finite_positive_scalar(r, name="r")
 
     t0 = time.perf_counter()
     n_pairs_total = 0

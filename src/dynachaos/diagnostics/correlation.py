@@ -27,6 +27,7 @@ import time
 
 import numpy as np
 
+from dynachaos.diagnostics._validation import sorted_nonnegative_radius_grid
 from dynachaos.utils.system import get_rss_mb
 
 try:
@@ -101,15 +102,7 @@ def _validate_correlation_inputs(r_values, theiler_window, norm):
     if norm not in {"chebyshev", "euclidean"}:
         raise ValueError("norm must be one of: 'chebyshev', 'euclidean'")
 
-    r_values = np.asarray(r_values, dtype=np.float64)
-    if r_values.ndim != 1:
-        raise ValueError("r_values must be a 1D array")
-    if not np.all(np.isfinite(r_values)):
-        raise ValueError("r_values must contain only finite values")
-    if np.any(r_values < 0.0):
-        raise ValueError("r_values must be non-negative")
-    if np.any(np.diff(r_values) < 0.0):
-        raise ValueError("r_values must be sorted in ascending order")
+    r_values = sorted_nonnegative_radius_grid(r_values, name="r_values")
     return r_values, theiler_int, norm == "chebyshev"
 
 
