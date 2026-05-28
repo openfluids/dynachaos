@@ -55,18 +55,23 @@ def broad_positive_mask(values, threshold=0.02, min_run=4):
     return sustained_positive_mask(values, threshold=threshold, min_run=min_run)
 
 
-def compute_clusters():
+def compute_clusters(
+    *,
+    a=1.55,
+    eps=0.1,
+    n_sites=100,
+    n_transient=20_000,
+    n_record=500,
+    seed=42,
+    output_path=CLUSTER_NPZ,
+):
     """Compute GCM cluster spacetime diagram."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    if output_path is not None:
+        output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    a = 1.55
-    eps = 0.1
-    N = 100
-    n_transient = 20_000
-    n_record = 500
-
-    rng = np.random.default_rng(42)
-    x = rng.uniform(-1, 1, N)
+    rng = np.random.default_rng(seed)
+    x = rng.uniform(-1, 1, n_sites)
 
     # Transient
     print("  Running transient...")
@@ -75,25 +80,30 @@ def compute_clusters():
 
     # Record
     print("  Recording cluster states...")
-    cluster_labels = np.empty((n_record, N), dtype=int)
-    x_record = np.empty((n_record, N))
+    cluster_labels = np.empty((n_record, n_sites), dtype=int)
+    x_record = np.empty((n_record, n_sites))
 
     for t in range(n_record):
         x = gcm_step(x, a, eps)
         cluster_labels[t] = cluster_labels_by_tolerance(x)
         x_record[t] = x
 
-    np.savez_compressed(
-        CLUSTER_NPZ,
-        cluster_labels=cluster_labels,
-        x_record=x_record,
-        a=np.array([a]),
-        eps=np.array([eps]),
-        N=np.array([N]),
-        n_transient=np.array([n_transient]),
-        n_record=np.array([n_record]),
-    )
-    print(f"Saved {CLUSTER_NPZ}")
+    payload = {
+        "cluster_labels": cluster_labels,
+        "x_record": x_record,
+        "a": np.array([a]),
+        "eps": np.array([eps]),
+        "N": np.array([n_sites]),
+        "n_transient": np.array([n_transient]),
+        "n_record": np.array([n_record]),
+    }
+    if output_path is not None:
+        np.savez_compressed(
+            output_path,
+            **payload,
+        )
+        print(f"Saved {output_path}")
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -101,30 +111,39 @@ def compute_clusters():
 # ---------------------------------------------------------------------------
 
 
-def compute_collective():
+def compute_collective(
+    *,
+    eps=0.1,
+    n_sites=500,
+    a_values=None,
+    n_transient=5_000,
+    n_measure=50_000,
+    renorm_interval=10,
+    h_delta=1e-8,
+    seed=42,
+    output_path=COLL_NPZ,
+    progress_interval=10,
+):
     """Compute collective Lyapunov exponent vs a.
 
     Uses the Benettin algorithm adapted to the mean field:
     run two copies of the GCM from nearly identical ICs, track
     mean-field divergence, and periodically renormalize.
     """
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    if output_path is not None:
+        output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    if a_values is None:
+        a_values = np.linspace(1.4, 2.0, 100)
+    else:
+        a_values = np.asarray(a_values, dtype=float)
 
-    eps = 0.1
-    N = 500
-    a_values = np.linspace(1.4, 2.0, 100)
-
-    n_transient = 5_000
-    n_measure = 50_000
-    renorm_interval = 10
-    h_delta = 1e-8  # mean-field perturbation scale
-
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
     lyap_c = np.empty(len(a_values))
 
     for ia, a in enumerate(a_values):
         # Fresh ICs for each a
-        x1 = rng.uniform(-1, 1, N)
+        x1 = rng.uniform(-1, 1, n_sites)
         x2 = x1.copy()
         # Uniform perturbation: mean(x2 - x1) = h_delta
         x2 += h_delta
@@ -171,24 +190,29 @@ def compute_collective():
         else:
             lyap_c[ia] = 0.0
 
-        if (ia + 1) % 10 == 0:
+        if output_path is not None and progress_interval and (ia + 1) % progress_interval == 0:
             print(f"  Collective Lyapunov: {ia + 1}/{len(a_values)}")
             np.savez_compressed(
-                COLL_NPZ,
+                output_path,
                 a_values=a_values[: ia + 1],
                 lyap_c=lyap_c[: ia + 1],
                 eps=np.array([eps]),
-                N=np.array([N]),
+                N=np.array([n_sites]),
             )
 
-    np.savez_compressed(
-        COLL_NPZ,
-        a_values=a_values,
-        lyap_c=lyap_c,
-        eps=np.array([eps]),
-        N=np.array([N]),
-    )
-    print(f"Saved {COLL_NPZ}")
+    payload = {
+        "a_values": a_values,
+        "lyap_c": lyap_c,
+        "eps": np.array([eps]),
+        "N": np.array([n_sites]),
+    }
+    if output_path is not None:
+        np.savez_compressed(
+            output_path,
+            **payload,
+        )
+        print(f"Saved {output_path}")
+    return payload
 
 
 # ---------------------------------------------------------------------------

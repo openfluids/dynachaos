@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from dynachaos.cml.gcm_clusters import broad_positive_mask
+from dynachaos.cml.gcm_clusters import broad_positive_mask, compute_clusters, compute_collective
 from dynachaos.cml.primitives import (
     cluster_labels_by_tolerance,
     cml_jacobian_subblock_logistic,
@@ -206,6 +206,53 @@ def test_sustained_positive_mask_matches_legacy_alias():
         sustained_positive_mask(values, threshold=0.02, min_run=3),
         broad_positive_mask(values, threshold=0.02, min_run=3),
     )
+
+
+def test_compute_clusters_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "gcm_clusters.npz"
+
+    payload = compute_clusters(
+        n_sites=8,
+        n_transient=2,
+        n_record=4,
+        seed=123,
+        output_path=output_path,
+    )
+
+    assert payload["cluster_labels"].shape == (4, 8)
+    assert payload["x_record"].shape == (4, 8)
+    assert int(payload["N"][0]) == 8
+    assert int(payload["n_transient"][0]) == 2
+    assert int(payload["n_record"][0]) == 4
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_array_equal(saved["cluster_labels"], payload["cluster_labels"])
+        np.testing.assert_allclose(saved["x_record"], payload["x_record"])
+
+
+def test_compute_collective_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "collective_lyapunov.npz"
+    a_values = np.array([1.4, 1.6])
+
+    payload = compute_collective(
+        n_sites=8,
+        a_values=a_values,
+        n_transient=2,
+        n_measure=4,
+        renorm_interval=2,
+        seed=123,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(payload["a_values"], a_values)
+    assert payload["lyap_c"].shape == (2,)
+    assert np.all(np.isfinite(payload["lyap_c"]))
+    assert int(payload["N"][0]) == 8
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["a_values"], payload["a_values"])
+        np.testing.assert_allclose(saved["lyap_c"], payload["lyap_c"])
 
 
 def test_cluster_labels_by_tolerance_groups_sorted_runs():
