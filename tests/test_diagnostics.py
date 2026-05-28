@@ -35,6 +35,8 @@ def test_validation_helpers_reject_bool_integer():
     [
         ([1.0, np.nan], "x must contain only finite values"),
         ([[1.0, 2.0], [np.inf, 3.0]], "X must contain only finite values"),
+        (np.array(1.0), "X must be a non-empty 1D or 2D trajectory"),
+        (np.empty((0, 2)), "X must be a non-empty 1D or 2D trajectory"),
         (0.0, "r must be a finite positive number"),
     ],
 )
