@@ -23,7 +23,20 @@ from dynachaos.maps._iter import (
     trajectory_after_transient,
 )
 from dynachaos.maps.circle_map import circle_map, circle_map_derivative
-from dynachaos.maps.coupled_logistic import coupled_logistic, coupled_logistic_jac
+from dynachaos.maps.coupled_logistic import (
+    ATTRACTOR_CASES,
+    coupled_logistic,
+    coupled_logistic_jac,
+)
+from dynachaos.maps.coupled_logistic import (
+    compute_attractors as compute_coupled_attractors,
+)
+from dynachaos.maps.coupled_logistic import (
+    compute_basins as compute_coupled_basins,
+)
+from dynachaos.maps.coupled_logistic import (
+    compute_phase_diagram as compute_coupled_phase_diagram,
+)
 from dynachaos.maps.henon import henon, henon_jac
 from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
 from dynachaos.maps.primitives import (
@@ -71,6 +84,88 @@ def test_coupled_logistic_respects_exchange_symmetry():
     out_swapped = coupled_logistic(swapped, A=1.25, D=0.1)
 
     np.testing.assert_allclose(out_swapped, out[::-1])
+
+
+def test_compute_coupled_phase_diagram_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "phase_diagram.npz"
+
+    payload = compute_coupled_phase_diagram(
+        A_values=np.array([0.8, 1.0, 1.2]),
+        D_values=np.array([0.0, 0.1]),
+        n_transient=2,
+        n_sample=3,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    assert payload["asym"].shape == (2, 3)
+    assert payload["lyap"].shape == (2, 3)
+    assert int(payload["schema_version"][0]) == 2
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["A"], payload["A"])
+        np.testing.assert_allclose(saved["D"], payload["D"])
+        np.testing.assert_allclose(saved["asym"], payload["asym"])
+        np.testing.assert_allclose(saved["lyap"], payload["lyap"])
+
+
+def test_compute_coupled_phase_diagram_accepts_scalar_sweeps():
+    payload = compute_coupled_phase_diagram(
+        A_values=1.0,
+        D_values=0.1,
+        n_transient=1,
+        n_sample=1,
+        output_path=None,
+    )
+
+    assert payload["A"].shape == (1,)
+    assert payload["D"].shape == (1,)
+    assert payload["asym"].shape == (1, 1)
+    assert payload["lyap"].shape == (1, 1)
+
+
+def test_compute_coupled_attractors_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "attractors.npz"
+    cases = ATTRACTOR_CASES[:2]
+
+    payload = compute_coupled_attractors(
+        cases=cases,
+        n_transient=2,
+        n_plot=4,
+        output_path=output_path,
+    )
+
+    assert payload["x_0"].shape == (4,)
+    assert payload["y_0"].shape == (4,)
+    assert payload["x_1"].shape == (4,)
+    assert payload["y_1"].shape == (4,)
+    assert int(payload["schema_version"][0]) == 4
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["A_values"], payload["A_values"])
+        np.testing.assert_allclose(saved["x_0"], payload["x_0"])
+        np.testing.assert_allclose(saved["y_1"], payload["y_1"])
+
+
+def test_compute_coupled_basins_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "basins.npz"
+
+    payload = compute_coupled_basins(
+        n_grid=4,
+        n_transient=2,
+        reference_transient=2,
+        period=2,
+        output_path=output_path,
+    )
+
+    assert payload["x"].shape == (4,)
+    assert payload["y"].shape == (4,)
+    assert payload["basin"].shape == (4, 4)
+    assert payload["basin"].dtype == np.int8
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["x"], payload["x"])
+        np.testing.assert_array_equal(saved["basin"], payload["basin"])
 
 
 # ---------------------------------------------------------------------------

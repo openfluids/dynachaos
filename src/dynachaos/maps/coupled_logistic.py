@@ -46,6 +46,17 @@ ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 
 
+def _write_payload(output_path, payload):
+    """Write a compute payload when requested and return it unchanged."""
+    if output_path is None:
+        return payload
+    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(output_path, **payload)
+    print(f"Saved {output_path}")
+    return payload
+
+
 @dataclass(frozen=True)
 class AttractorCase:
     """One representative attractor panel for the D=0.1 gallery."""
@@ -90,7 +101,15 @@ def coupled_logistic_jac(state, A, D):
 # ---------------------------------------------------------------------------
 
 
-def compute_phase_diagram():
+def compute_phase_diagram(
+    *,
+    A_values=None,
+    D_values=None,
+    n_transient=5000,
+    n_sample=2000,
+    output_path=PHASE_NPZ,
+    progress_interval=50,
+):
     """Compute phase diagram in (A, D) space.
 
     Vectorized: for each D, all A values are iterated simultaneously as
@@ -100,13 +119,15 @@ def compute_phase_diagram():
       - asym = <|x - y|> : symmetry-breaking order parameter
       - lyap = finite-time largest Lyapunov exponent estimate
     """
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    n_A, n_D = 500, 200
-    n_transient = 5000
-    n_sample = 2000
-    A_values = np.linspace(0.5, 1.65, n_A)
-    D_values = np.linspace(0.0, 0.3, n_D)
+    if A_values is None:
+        A_values = np.linspace(0.5, 1.65, 500)
+    else:
+        A_values = np.atleast_1d(np.asarray(A_values, dtype=np.float64))
+    if D_values is None:
+        D_values = np.linspace(0.0, 0.3, 200)
+    else:
+        D_values = np.atleast_1d(np.asarray(D_values, dtype=np.float64))
+    n_A, n_D = len(A_values), len(D_values)
 
     asym_grid = np.full((n_D, n_A), np.nan)
     lyap_grid = np.full((n_D, n_A), np.nan)
@@ -164,26 +185,29 @@ def compute_phase_diagram():
         asym_grid[j] = asym_row
         lyap_grid[j] = lyap_row
 
-        if (j + 1) % 50 == 0:
+        if output_path is not None and progress_interval and (j + 1) % progress_interval == 0:
             print(f"  Phase diagram: row {j + 1}/{n_D}")
-            np.savez_compressed(
-                PHASE_NPZ,
-                A=A_values,
-                D=D_values,
-                asym=asym_grid,
-                lyap=lyap_grid,
-                schema_version=np.array([2], dtype=np.int16),
+            _write_payload(
+                output_path,
+                {
+                    "A": A_values,
+                    "D": D_values,
+                    "asym": asym_grid,
+                    "lyap": lyap_grid,
+                    "schema_version": np.array([2], dtype=np.int16),
+                },
             )
 
-    np.savez_compressed(
-        PHASE_NPZ,
-        A=A_values,
-        D=D_values,
-        asym=asym_grid,
-        lyap=lyap_grid,
-        schema_version=np.array([2], dtype=np.int16),
+    return _write_payload(
+        output_path,
+        {
+            "A": A_values,
+            "D": D_values,
+            "asym": asym_grid,
+            "lyap": lyap_grid,
+            "schema_version": np.array([2], dtype=np.int16),
+        },
     )
-    print(f"Saved {PHASE_NPZ}")
 
 
 # ---------------------------------------------------------------------------
@@ -191,40 +215,42 @@ def compute_phase_diagram():
 # ---------------------------------------------------------------------------
 
 
-def compute_attractors():
+def compute_attractors(
+    *,
+    cases=ATTRACTOR_CASES,
+    D=0.1,
+    n_transient=50_000,
+    n_plot=100_000,
+    output_path=ATTR_NPZ,
+):
     """Compute representative attractor portraits at D=0.1.
 
     The first two panels use an off-diagonal initial condition to expose the
     symmetry-broken tori that coexist with synchronized cycles on x=y.
     """
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    D = 0.1
-
     results = {}
-    for idx, case in enumerate(ATTRACTOR_CASES):
+    for idx, case in enumerate(cases):
         print(f"  A={case.A} ({case.label})")
         traj = trajectory_after_transient(
             np.array(case.initial_state, dtype=float),
             lambda state: coupled_logistic(state, case.A, D),
-            50_000,
-            100_000,
+            n_transient,
+            n_plot,
         )
         results[f"x_{idx}"] = traj[:, 0]
         results[f"y_{idx}"] = traj[:, 1]
 
-    results["A_values"] = np.array([case.A for case in ATTRACTOR_CASES], dtype=np.float64)
-    results["labels"] = np.array([case.label for case in ATTRACTOR_CASES])
+    results["A_values"] = np.array([case.A for case in cases], dtype=np.float64)
+    results["labels"] = np.array([case.label for case in cases])
     results["initial_states"] = np.array(
-        [case.initial_state for case in ATTRACTOR_CASES],
+        [case.initial_state for case in cases],
         dtype=np.float64,
     )
-    results["x_limits"] = np.array([case.xlim for case in ATTRACTOR_CASES], dtype=np.float64)
-    results["y_limits"] = np.array([case.ylim for case in ATTRACTOR_CASES], dtype=np.float64)
+    results["x_limits"] = np.array([case.xlim for case in cases], dtype=np.float64)
+    results["y_limits"] = np.array([case.ylim for case in cases], dtype=np.float64)
     results["D"] = np.array([D])
     results["schema_version"] = np.array([4], dtype=np.int16)
-    np.savez_compressed(ATTR_NPZ, **results)
-    print(f"Saved {ATTR_NPZ}")
+    return _write_payload(output_path, results)
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +272,16 @@ def _find_reference_orbit(A, D, x0, y0, n_transient=500_000, period=32):
     )
 
 
-def compute_basins():
+def compute_basins(
+    *,
+    A=1.35344,
+    D=0.1,
+    n_grid=800,
+    n_transient=50_000,
+    reference_transient=500_000,
+    period=32,
+    output_path=BASIN_NPZ,
+):
     """Compute basin of attraction showing stripe structure.
 
     At A=1.35344, D=0.1, two coexisting asymmetric period-32 cycles
@@ -259,16 +294,9 @@ def compute_basins():
 
     Vectorized: each row of the grid processes all x values in parallel.
     """
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    A = 1.35344
-    D = 0.1
-    n_grid = 800
-    n_transient = 50_000
-
     # Pre-compute the two reference orbits (mirror images about y=x)
     print("  Computing reference orbits...")
-    ref_A = _find_reference_orbit(A, D, 0.1, 0.6)  # 32 points on orbit A
+    ref_A = _find_reference_orbit(A, D, 0.1, 0.6, n_transient=reference_transient, period=period)
     # Orbit B is the mirror: (x, y) -> (y, x)
     ref_B = ref_A[:, ::-1].copy()
 
@@ -291,11 +319,11 @@ def compute_basins():
             y = np.where(diverged, np.nan, y)
 
         # Classify by minimum distance to either reference orbit.
-        # For each grid point, compute distance to all 32 points on
+        # For each grid point, compute distance to all reference points on
         # each reference orbit and take the minimum.
         dist_A = np.full(n_grid, np.inf)
         dist_B = np.full(n_grid, np.inf)
-        for k in range(32):
+        for k in range(period):
             d_a = (x - ref_A[k, 0]) ** 2 + (y - ref_A[k, 1]) ** 2
             d_b = (x - ref_B[k, 0]) ** 2 + (y - ref_B[k, 1]) ** 2
             dist_A = np.minimum(dist_A, d_a)
@@ -308,10 +336,10 @@ def compute_basins():
         if (j + 1) % 200 == 0:
             print(f"  Basins: row {j + 1}/{n_grid}")
 
-    np.savez_compressed(
-        BASIN_NPZ, x=x_range, y=y_range, basin=basin, A=np.array([A]), D=np.array([D])
+    return _write_payload(
+        output_path,
+        {"x": x_range, "y": y_range, "basin": basin, "A": np.array([A]), "D": np.array([D])},
     )
-    print(f"Saved {BASIN_NPZ}")
 
 
 # ---------------------------------------------------------------------------
