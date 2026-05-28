@@ -19,7 +19,7 @@ OUTPUTS: figures/sec04_doubling/*.npz, *.png
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
+from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
 
@@ -45,6 +45,30 @@ def _write_payload(output_path, payload):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(output_path, **payload)
     print(f"Saved {output_path}")
+    return payload
+
+
+def _load_or_compute_payload(npz_path, section_name, compute_fn, *, required_keys=()):
+    """Load a cache file, or use the returned compute payload when recomputing."""
+    path = npz_path
+    keys = tuple(required_keys)
+    try:
+        data = safe_load(path)
+        missing = tuple(key for key in keys if key not in data.files)
+        if not missing:
+            print(f"Loaded {path}")
+            return data
+        data.close()
+        missing_text = ", ".join(missing)
+        print(f"Cache {path} missing keys ({missing_text}); recomputing {section_name}...")
+    except FileNotFoundError:
+        print(f"Computing {section_name}...")
+
+    payload = compute_fn()
+    missing = tuple(key for key in keys if key not in payload)
+    if missing:
+        missing_text = ", ".join(missing)
+        raise KeyError(f"Cache {path} is missing required keys after compute: {missing_text}")
     return payload
 
 
@@ -432,7 +456,7 @@ def make_map_IV_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    m1_data = load_or_compute_npz(
+    m1_data = _load_or_compute_payload(
         MAP1_NPZ,
         "Map (I) attractors",
         compute_map_I,
@@ -440,7 +464,7 @@ def main():
     )
     plot_map_I(m1_data)
 
-    m4_data = load_or_compute_npz(
+    m4_data = _load_or_compute_payload(
         MAP4_NPZ,
         "Map (IV) attractors",
         compute_map_IV,
@@ -448,7 +472,7 @@ def main():
     )
     plot_map_IV(m4_data)
 
-    lyap_data = load_or_compute_npz(
+    lyap_data = _load_or_compute_payload(
         LYAP_NPZ,
         "Map (IV) Lyapunov exponents",
         compute_map_IV_lyapunov,
