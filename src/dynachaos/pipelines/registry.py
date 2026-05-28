@@ -9,6 +9,14 @@ from dynachaos.io.paths import section_dir
 
 
 @dataclass(frozen=True)
+class NpzContract:
+    """Required keys for one generated ``.npz`` artifact."""
+
+    file_name: str
+    required_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SectionSpec:
     """Pipeline specification for one paper section."""
 
@@ -16,6 +24,7 @@ class SectionSpec:
     modules: tuple[str, ...]
     cache_files: tuple[str, ...]
     output_files: tuple[str, ...]
+    npz_contracts: tuple[NpzContract, ...] = ()
 
     def cache_paths(self) -> tuple[Path, ...]:
         base = section_dir(self.section_id)
@@ -24,6 +33,13 @@ class SectionSpec:
     def output_paths(self) -> tuple[Path, ...]:
         base = section_dir(self.section_id)
         return tuple(base / name for name in self.output_files)
+
+    def required_npz_keys(self, file_name: str) -> tuple[str, ...]:
+        """Return required keys for an artifact, or an empty tuple if unconstrained."""
+        for contract in self.npz_contracts:
+            if contract.file_name == file_name:
+                return contract.required_keys
+        return ()
 
 
 SECTION_ORDER = (
@@ -53,6 +69,11 @@ SECTION_SPECS = {
             "staircase_zoom.npz",
             "staircase_zoom.png",
         ),
+        npz_contracts=(
+            NpzContract("devils_staircase.npz", ("A", "rho", "lam")),
+            NpzContract("arnold_tongues.npz", ("Omega", "K", "rho")),
+            NpzContract("staircase_zoom.npz", ("A", "rho")),
+        ),
     ),
     "sec03_transition": SectionSpec(
         section_id="sec03_transition",
@@ -65,6 +86,14 @@ SECTION_SPECS = {
             "phase_diagram.png",
             "attractors.png",
             "basins.png",
+        ),
+        npz_contracts=(
+            NpzContract("phase_diagram.npz", ("A", "D", "asym", "lyap", "schema_version")),
+            NpzContract(
+                "attractors.npz",
+                ("A_values", "labels", "initial_states", "x_limits", "y_limits", "D"),
+            ),
+            NpzContract("basins.npz", ("x", "y", "basin", "A", "D")),
         ),
     ),
     "sec04_doubling": SectionSpec(
@@ -79,6 +108,11 @@ SECTION_SPECS = {
             "map_IV_attractors.png",
             "map_IV_lyapunov.png",
         ),
+        npz_contracts=(
+            NpzContract("map_I_attractors.npz", ("D_values",)),
+            NpzContract("map_IV_attractors.npz", ("D_values",)),
+            NpzContract("map_IV_lyapunov.npz", ("D", "spectra")),
+        ),
     ),
     "sec05_oscillation": SectionSpec(
         section_id="sec05_oscillation",
@@ -91,6 +125,11 @@ SECTION_SPECS = {
             "attractors.png",
             "lyapunov_vs_D.png",
             "locking_sequence.png",
+        ),
+        npz_contracts=(
+            NpzContract("attractors.npz", ("D_values", "A")),
+            NpzContract("lyapunov_vs_D.npz", ("D", "spectra")),
+            NpzContract("locking_sequence.npz", ("D_values", "A")),
         ),
     ),
     "sec06_three_torus": SectionSpec(
@@ -106,6 +145,11 @@ SECTION_SPECS = {
             "double_staircase.png",
             "double_staircase_zoom.png",
         ),
+        npz_contracts=(
+            NpzContract("lyapunov_vs_DB.npz", ("DB", "eps_values")),
+            NpzContract("xz_projections.npz", ("DB_values", "labels", "render_modes")),
+            NpzContract("double_staircase.npz", ("D", "rho_theta", "rho_phi", "A", "C", "eps")),
+        ),
     ),
     "sec07_fractalization": SectionSpec(
         section_id="sec07_fractalization",
@@ -116,6 +160,10 @@ SECTION_SPECS = {
             "correlation_dimension.npz",
             "fractal_attractors.png",
             "correlation_dimension.png",
+        ),
+        npz_contracts=(
+            NpzContract("fractal_attractors.npz", ("D_values", "A")),
+            NpzContract("correlation_dimension.npz", ("D", "D2", "A")),
         ),
     ),
     "sec08_sti": SectionSpec(
@@ -138,6 +186,11 @@ SECTION_SPECS = {
             "correlation_decay.npz",
             "correlation_decay.png",
         ),
+        npz_contracts=(
+            NpzContract("spacetime_diagrams.npz", ("A_eps_0.06", "B_eps_0.02", "C_eps_0.16")),
+            NpzContract("comoving_lyapunov.npz", ("v_values", "a_values", "eps", "N")),
+            NpzContract("correlation_decay.npz", ("a_corr", "r_vals", "all_corr", "xi_values")),
+        ),
     ),
     "sec09_pattern": SectionSpec(
         section_id="sec09_pattern",
@@ -148,6 +201,10 @@ SECTION_SPECS = {
             "space_amplitude.npz",
             "phase_diagram.png",
             "space_amplitude.png",
+        ),
+        npz_contracts=(
+            NpzContract("phase_diagram.npz", ("a", "eps", "lam")),
+            NpzContract("space_amplitude.npz", ("params", "schema_version")),
         ),
     ),
     "sec10_gcm": SectionSpec(
@@ -169,6 +226,11 @@ SECTION_SPECS = {
             "gcm_clusters.png",
             "collective_lyapunov.npz",
             "collective_lyapunov.png",
+        ),
+        npz_contracts=(
+            NpzContract("gcm_results.npz", ("N_values", "a", "eps", "N_grid", "msd_grid")),
+            NpzContract("gcm_clusters.npz", ("cluster_labels", "x_record", "a", "eps", "N")),
+            NpzContract("collective_lyapunov.npz", ("a_values", "lyap_c", "eps", "N")),
         ),
     ),
     "sec11_diagnostics": SectionSpec(
@@ -192,6 +254,16 @@ SECTION_SPECS = {
             "permutation_entropy.png",
             "complexity_entropy_plane.png",
             "rqa_measures.png",
+        ),
+        npz_contracts=(
+            NpzContract("test01_sweep.npz", ("a", "K")),
+            NpzContract("sali_comparison.npz", ("DB_values",)),
+            NpzContract("permutation_entropy.npz", ("a", "H_logistic", "D", "H_delayed")),
+            NpzContract(
+                "complexity_entropy_plane.npz",
+                ("a", "H_logistic", "C_logistic", "D", "H_delayed", "C_delayed"),
+            ),
+            NpzContract("rqa_measures.npz", ("D", "RR", "DET", "LAM", "ENTR")),
         ),
     ),
 }
