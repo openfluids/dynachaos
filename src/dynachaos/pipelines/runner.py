@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 
 from dynachaos.pipelines.registry import get_section, list_sections
+from dynachaos.utils.system import get_rss_mb
 
 _ALLOWED_OUTPUT_SUFFIXES = {".npz", ".png"}
 
@@ -46,6 +49,36 @@ def _run_module(module_name: str, output_root: Path, profile: str) -> None:
     proc = subprocess.run(cmd, env=env, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"Module run failed: {' '.join(cmd)} (exit {proc.returncode})")
+
+
+def _timing_ledger_path(timing_ledger: str | Path | None) -> Path | None:
+    if timing_ledger is not None:
+        return Path(timing_ledger)
+    env_path = os.environ.get("DYNACHAOS_TIMING_LEDGER")
+    return Path(env_path) if env_path else None
+
+
+def _append_timing_event(
+    ledger_path: Path,
+    *,
+    section_id: str,
+    module_name: str,
+    profile: str,
+    cache_state: str,
+    wall_time_s: float,
+    peak_rss_mb: float,
+) -> None:
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "section_id": section_id,
+        "module": module_name,
+        "profile": profile,
+        "cache_state": cache_state,
+        "wall_time_s": round(wall_time_s, 9),
+        "peak_rss_mb": round(peak_rss_mb, 3),
+    }
+    with ledger_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
 
 
 def _validate_npz(path: Path, *, required_keys: tuple[str, ...], section_id: str) -> None:
@@ -130,6 +163,7 @@ def run_section(
     output_root: str | Path | None = None,
     profile: str = "paper",
     recompute: bool = False,
+    timing_ledger: str | Path | None = None,
 ) -> list[Path]:
     """Run one section pipeline and return expected output paths."""
     spec = get_section(section_id)
@@ -144,11 +178,25 @@ def run_section(
             if path.exists():
                 path.unlink()
 
+    cache_state = "not_checked"
     if profile == "smoke":
         validate_section_cache(section_id, output_root=root)
+        cache_state = "validated"
 
+    ledger_path = _timing_ledger_path(timing_ledger)
     for module_name in spec.modules:
+        started = time.perf_counter()
         _run_module(module_name, root, profile)
+        if ledger_path is not None:
+            _append_timing_event(
+                ledger_path,
+                section_id=section_id,
+                module_name=module_name,
+                profile=profile,
+                cache_state=cache_state,
+                wall_time_s=time.perf_counter() - started,
+                peak_rss_mb=get_rss_mb(),
+            )
 
     return validate_section_outputs(section_id, output_root=root)
 
@@ -158,6 +206,7 @@ def run_all(
     output_root: str | Path | None = None,
     profile: str = "paper",
     recompute: bool = False,
+    timing_ledger: str | Path | None = None,
 ) -> dict[str, list[Path]]:
     """Run all section pipelines in paper order."""
     results: dict[str, list[Path]] = {}
@@ -167,5 +216,6 @@ def run_all(
             output_root=output_root,
             profile=profile,
             recompute=recompute,
+            timing_ledger=timing_ledger,
         )
     return results

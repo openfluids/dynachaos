@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -99,6 +100,72 @@ def test_smoke_profile_accepts_valid_cached_outputs_without_recomputation(tmp_pa
         ("dynachaos.maps.circle_map", tmp_path.resolve(), "smoke"),
         ("dynachaos.maps.arnold_tongues", tmp_path.resolve(), "smoke"),
     ]
+
+
+def test_run_section_writes_opt_in_timing_ledger(tmp_path, monkeypatch):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    for png_name in ("devils_staircase.png", "arnold_tongues.png", "staircase_zoom.png"):
+        (section_dir / png_name).write_bytes(b"png")
+
+    clock = iter([10.0, 10.5, 20.0, 21.25])
+    monkeypatch.setattr(runner.time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(runner, "get_rss_mb", lambda: 123.4567)
+    monkeypatch.setattr(runner, "_run_module", lambda module_name, output_root, profile: None)
+
+    ledger_path = tmp_path / "perf" / "sections.jsonl"
+    run_section(
+        "sec02_circle_map",
+        output_root=tmp_path,
+        profile="smoke",
+        timing_ledger=ledger_path,
+    )
+
+    events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+    assert events == [
+        {
+            "cache_state": "validated",
+            "module": "dynachaos.maps.circle_map",
+            "peak_rss_mb": 123.457,
+            "profile": "smoke",
+            "section_id": "sec02_circle_map",
+            "wall_time_s": 0.5,
+        },
+        {
+            "cache_state": "validated",
+            "module": "dynachaos.maps.arnold_tongues",
+            "peak_rss_mb": 123.457,
+            "profile": "smoke",
+            "section_id": "sec02_circle_map",
+            "wall_time_s": 1.25,
+        },
+    ]
+
+
+def test_run_section_timing_ledger_can_come_from_env(tmp_path, monkeypatch):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    for png_name in ("devils_staircase.png", "arnold_tongues.png", "staircase_zoom.png"):
+        (section_dir / png_name).write_bytes(b"png")
+
+    clock = iter([1.0, 1.25, 2.0, 2.75])
+    monkeypatch.setattr(runner.time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(runner, "get_rss_mb", lambda: 50.0)
+    monkeypatch.setattr(runner, "_run_module", lambda module_name, output_root, profile: None)
+
+    ledger_path = tmp_path / "timing.jsonl"
+    monkeypatch.setenv("DYNACHAOS_TIMING_LEDGER", str(ledger_path))
+    run_section("sec02_circle_map", output_root=tmp_path, profile="paper")
+
+    events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+    assert [event["cache_state"] for event in events] == ["not_checked", "not_checked"]
+    assert [event["wall_time_s"] for event in events] == [0.25, 0.75]
 
 
 def test_section_validators_can_check_cache_and_outputs_without_running_modules(tmp_path):

@@ -39,6 +39,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Delete existing outputs for target sections before running",
     )
+    run.add_argument(
+        "--timing-ledger",
+        type=Path,
+        default=None,
+        help="Append per-module timing events to this JSONL file",
+    )
 
     style = sub.add_parser("style", help="Inspect and render plotting style themes")
     style_sub = style.add_subparsers(dest="style_command", required=True)
@@ -95,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             output_root=args.output_root,
             profile=args.profile,
             recompute=args.recompute,
+            timing_ledger=args.timing_ledger,
         )
         for section_id, paths in results.items():
             print(f"[{section_id}] {len(paths)} outputs")
@@ -108,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         output_root=args.output_root,
         profile=args.profile,
         recompute=args.recompute,
+        timing_ledger=args.timing_ledger,
     )
     print(f"[{target}] {len(paths)} outputs")
     return 0
