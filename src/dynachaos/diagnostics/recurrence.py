@@ -15,6 +15,11 @@ From R one extracts diagonal and vertical line structures that quantify:
   - TT   (trapping time):    mean vertical line length
   - ENTR (entropy):          Shannon entropy of diagonal line length dist.
 
+The public :func:`rqa` API enforces a non-empty square symmetric recurrence
+matrix before computing RQA metrics. The direct line extractors used underneath,
+including the Rust-accelerated helpers, are lower-level square-matrix scanners;
+callers should not treat them as full RQA validators.
+
 Reference
 ---------
 Marwan, N. et al. (2007) "Recurrence plots for the analysis of complex

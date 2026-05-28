@@ -189,6 +189,11 @@ templates, using the same Rayon parallel fold + reduce pattern.
 `diagnostics.recurrence` keeps `recurrence_matrix()` for callers that need the
 binary matrix. For large trajectories where only scalar RQA measures are needed,
 use `rqa_from_trajectory()` to avoid materializing the dense recurrence matrix.
+When starting from an existing recurrence matrix, compute public RQA metrics
+through `rqa()`, which validates that the matrix is non-empty, square, and
+symmetric. The direct line extractors, including the Rust-accelerated helpers,
+are lower-level square-matrix scanners and do not replace that public RQA
+validation boundary.
 
 ## Showcase: Kaneko Atlas
 
