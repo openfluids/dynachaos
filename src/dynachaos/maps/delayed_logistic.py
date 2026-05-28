@@ -41,6 +41,23 @@ LOCK_NPZ = FIG_DIR / "locking_sequence.npz"
 LOCK_PNG = FIG_DIR / "locking_sequence.png"
 
 
+def _write_payload(output_path, payload):
+    """Write a compute payload when requested and return it unchanged."""
+    if output_path is None:
+        return payload
+    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(output_path, **payload)
+    print(f"Saved {output_path}")
+    return payload
+
+
+def _validate_unique_d_keys(d_values, fmt):
+    keys = [format(float(value), fmt) for value in d_values]
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"D_values must be unique after {fmt} formatting")
+
+
 # ---------------------------------------------------------------------------
 # Map definition
 # ---------------------------------------------------------------------------
@@ -81,12 +98,20 @@ def compute_attractor(A, D, n_transient=10_000, n_plot=50_000, x0=None):
     )
 
 
-def compute_attractors():
+def compute_attractors(
+    *,
+    A=0.3,
+    D_values=None,
+    n_transient=20_000,
+    n_plot=100_000,
+    output_path=ATTR_NPZ,
+):
     """Compute attractors for twelve D values spanning torus to chaos."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    A = 0.3
-    D_values = [1.55, 1.65, 1.75, 1.82, 1.86, 1.90, 1.92, 1.94, 1.95, 2.00, 2.09, 2.16]
+    if D_values is None:
+        D_values = [1.55, 1.65, 1.75, 1.82, 1.86, 1.90, 1.92, 1.94, 1.95, 2.00, 2.09, 2.16]
+    else:
+        D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
+    _validate_unique_d_keys(D_values, ".2f")
     labels = [
         "(a) torus",
         "(b) torus",
@@ -103,16 +128,16 @@ def compute_attractors():
     ]
 
     results = {}
-    for D, label in zip(D_values, labels):
+    for idx, D in enumerate(D_values):
+        label = labels[idx] if idx < len(labels) else ""
         print(f"  D={D} {label}")
-        traj = compute_attractor(A, D, n_transient=20_000, n_plot=100_000)
+        traj = compute_attractor(A, D, n_transient=n_transient, n_plot=n_plot)
         results[f"D_{D:.2f}_x"] = traj[:, 0]
         results[f"D_{D:.2f}_y"] = traj[:, 1]
 
     results["D_values"] = np.array(D_values)
     results["A"] = np.array([A])
-    np.savez_compressed(ATTR_NPZ, **results)
-    print(f"Saved {ATTR_NPZ}")
+    return _write_payload(output_path, results)
 
 
 # ---------------------------------------------------------------------------
@@ -120,14 +145,23 @@ def compute_attractors():
 # ---------------------------------------------------------------------------
 
 
-def compute_lyapunov_spectrum():
+def compute_lyapunov_spectrum(
+    *,
+    A=0.3,
+    D_values=None,
+    n_iter=50_000,
+    n_transient=10_000,
+    output_path=LYAP_NPZ,
+    progress_interval=500,
+):
     """Sweep D and compute Lyapunov spectrum."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
     from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
 
-    A = 0.3
-    n_params = 2000
-    D_values = np.linspace(1.3, 2.5, n_params)
+    if D_values is None:
+        D_values = np.linspace(1.3, 2.5, 2000)
+    else:
+        D_values = np.atleast_1d(np.asarray(D_values, dtype=np.float64))
+    n_params = len(D_values)
 
     spectra = np.empty((n_params, 2))
     for i, D in enumerate(D_values):
@@ -140,13 +174,12 @@ def compute_lyapunov_spectrum():
         def jac(state, _D=D):
             return delayed_logistic_jac(state, A, _D)
 
-        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=50_000, n_transient=10_000)
-        if (i + 1) % 500 == 0:
+        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
+        if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            np.savez_compressed(LYAP_NPZ, D=D_values[: i + 1], spectra=spectra[: i + 1])
+            _write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]})
 
-    np.savez_compressed(LYAP_NPZ, D=D_values, spectra=spectra)
-    print(f"Saved {LYAP_NPZ}")
+    return _write_payload(output_path, {"D": D_values, "spectra": spectra})
 
 
 # ---------------------------------------------------------------------------
@@ -279,12 +312,20 @@ def plot_lyapunov(data):
 # ---------------------------------------------------------------------------
 
 
-def compute_locking_sequence():
+def compute_locking_sequence(
+    *,
+    A=0.3,
+    D_values=None,
+    n_transient=20_000,
+    n_plot=100_000,
+    output_path=LOCK_NPZ,
+):
     """Compute attractors for 8 D values in [1.86, 1.95]."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    A = 0.3
-    D_values = [1.860, 1.880, 1.895, 1.905, 1.915, 1.930, 1.940, 1.950]
+    if D_values is None:
+        D_values = [1.860, 1.880, 1.895, 1.905, 1.915, 1.930, 1.940, 1.950]
+    else:
+        D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
+    _validate_unique_d_keys(D_values, ".3f")
     labels = [
         "oscillating torus",
         "near-locking",
@@ -297,16 +338,16 @@ def compute_locking_sequence():
     ]
 
     results = {}
-    for D, label in zip(D_values, labels):
+    for idx, D in enumerate(D_values):
+        label = labels[idx] if idx < len(labels) else ""
         print(f"  D={D} {label}")
-        traj = compute_attractor(A, D, n_transient=20_000, n_plot=100_000)
+        traj = compute_attractor(A, D, n_transient=n_transient, n_plot=n_plot)
         results[f"D_{D:.3f}_x"] = traj[:, 0]
         results[f"D_{D:.3f}_y"] = traj[:, 1]
 
     results["D_values"] = np.array(D_values)
     results["A"] = np.array([A])
-    np.savez_compressed(LOCK_NPZ, **results)
-    print(f"Saved {LOCK_NPZ}")
+    return _write_payload(output_path, results)
 
 
 def plot_locking_sequence(data):

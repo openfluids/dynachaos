@@ -37,6 +37,15 @@ from dynachaos.maps.coupled_logistic import (
 from dynachaos.maps.coupled_logistic import (
     compute_phase_diagram as compute_coupled_phase_diagram,
 )
+from dynachaos.maps.delayed_logistic import (
+    compute_attractors as compute_delayed_attractors,
+)
+from dynachaos.maps.delayed_logistic import (
+    compute_locking_sequence as compute_delayed_locking_sequence,
+)
+from dynachaos.maps.delayed_logistic import (
+    compute_lyapunov_spectrum as compute_delayed_lyapunov_spectrum,
+)
 from dynachaos.maps.henon import henon, henon_jac
 from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
 from dynachaos.maps.primitives import (
@@ -231,6 +240,84 @@ def test_delayed_logistic_jac_finite_difference():
             2.0 * eps
         )
         np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)
+
+
+def test_compute_delayed_attractors_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "attractors.npz"
+
+    payload = compute_delayed_attractors(
+        D_values=np.array([1.55, 1.65]),
+        n_transient=2,
+        n_plot=4,
+        output_path=output_path,
+    )
+
+    assert payload["D_values"].shape == (2,)
+    assert payload["D_1.55_x"].shape == (4,)
+    assert payload["D_1.65_y"].shape == (4,)
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D_values"], payload["D_values"])
+        np.testing.assert_allclose(saved["D_1.55_x"], payload["D_1.55_x"])
+
+
+def test_compute_delayed_attractors_rejects_rounded_key_collisions():
+    with pytest.raises(ValueError, match="unique"):
+        compute_delayed_attractors(
+            D_values=np.array([1.554, 1.555]),
+            n_transient=1,
+            n_plot=1,
+            output_path=None,
+        )
+
+
+def test_compute_delayed_lyapunov_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "lyapunov_vs_D.npz"
+
+    payload = compute_delayed_lyapunov_spectrum(
+        D_values=np.array([1.5, 1.6]),
+        n_iter=4,
+        n_transient=2,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    assert payload["D"].shape == (2,)
+    assert payload["spectra"].shape == (2, 2)
+    assert np.all(np.isfinite(payload["spectra"]))
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D"], payload["D"])
+        np.testing.assert_allclose(saved["spectra"], payload["spectra"])
+
+
+def test_compute_delayed_locking_returns_and_writes_explicit_payload(tmp_path):
+    output_path = tmp_path / "locking_sequence.npz"
+
+    payload = compute_delayed_locking_sequence(
+        D_values=np.array([1.86, 1.88]),
+        n_transient=2,
+        n_plot=4,
+        output_path=output_path,
+    )
+
+    assert payload["D_values"].shape == (2,)
+    assert payload["D_1.860_x"].shape == (4,)
+    assert payload["D_1.880_y"].shape == (4,)
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["D_values"], payload["D_values"])
+        np.testing.assert_allclose(saved["D_1.860_x"], payload["D_1.860_x"])
+
+
+def test_compute_delayed_locking_rejects_rounded_key_collisions():
+    with pytest.raises(ValueError, match="unique"):
+        compute_delayed_locking_sequence(
+            D_values=np.array([1.86041, 1.86042]),
+            n_transient=1,
+            n_plot=1,
+            output_path=None,
+        )
 
 
 # ---------------------------------------------------------------------------
