@@ -353,8 +353,7 @@ def main():
         print(f"Loaded {CLUSTER_NPZ}")
     except FileNotFoundError:
         print("Computing GCM cluster states...")
-        compute_clusters()
-        cluster_data = safe_load(CLUSTER_NPZ)
+        cluster_data = compute_clusters()
     plot_clusters(cluster_data)
 
     # Collective Lyapunov exponent
@@ -363,8 +362,7 @@ def main():
         print(f"Loaded {COLL_NPZ}")
     except FileNotFoundError:
         print("Computing collective Lyapunov exponent...")
-        compute_collective()
-        coll_data = safe_load(COLL_NPZ)
+        coll_data = compute_collective()
     plot_collective(coll_data)
 
 
