@@ -182,6 +182,14 @@ def _paired_distances(A, B, metric):
     )
 
 
+def _validate_streaming_metric(metric):
+    if metric not in {"euclidean", "sqeuclidean", "cityblock", "manhattan", "chebyshev"}:
+        raise ValueError(
+            "rqa_from_trajectory currently supports metric values: "
+            "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
+        )
+
+
 def _line_lengths(mask, min_length):
     lengths = []
     current = 0
@@ -292,6 +300,7 @@ def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, 
     eps, percentile = _validate_recurrence_threshold(eps, percentile)
     l_min = _positive_int(l_min, "l_min")
     v_min = _positive_int(v_min, "v_min")
+    _validate_streaming_metric(metric)
 
     if eps is None:
         pdist_metric = "cityblock" if metric == "manhattan" else metric

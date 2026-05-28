@@ -129,6 +129,17 @@ def test_rqa_from_trajectory_constant_signal_matches_dense():
     assert streaming_stats == dense_stats
 
 
+def test_rqa_from_trajectory_matches_dense_with_explicit_eps():
+    t = np.linspace(0.0, 24.0, 160)
+    traj = np.column_stack([np.sin(t), np.cos(1.3 * t)])
+
+    rmat, _ = recurrence_matrix(traj, eps=0.25, metric="euclidean")
+    dense_stats = rqa(rmat, l_min=3, v_min=2)
+    streaming_stats = rqa_from_trajectory(traj, eps=0.25, metric="euclidean", l_min=3, v_min=2)
+
+    assert streaming_stats == pytest.approx(dense_stats)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
