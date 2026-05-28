@@ -108,6 +108,20 @@ def test_rqa_rejects_invalid_matrix_shape(rmat, message):
         rqa(rmat)
 
 
+def test_rqa_rejects_non_symmetric_matrix():
+    rmat = np.array(
+        [
+            [True, True, False],
+            [False, True, True],
+            [False, True, True],
+        ],
+        dtype=bool,
+    )
+
+    with pytest.raises(ValueError, match="symmetric"):
+        rqa(rmat)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

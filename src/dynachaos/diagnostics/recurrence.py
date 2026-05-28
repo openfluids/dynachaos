@@ -175,6 +175,8 @@ def rqa(R, l_min=2, v_min=2):
     R = np.asarray(R, dtype=bool)
     if R.ndim != 2 or R.shape[0] == 0 or R.shape[0] != R.shape[1]:
         raise ValueError("R must be a non-empty square matrix")
+    if not np.array_equal(R, R.T):
+        raise ValueError("R must be symmetric")
     l_min = _positive_int(l_min, "l_min")
     v_min = _positive_int(v_min, "v_min")
 

@@ -172,8 +172,8 @@ templates, using the same Rayon parallel fold + reduce pattern.
 | Correlation dimension | `diagnostics.correlation` | all-pairs kernel | Grassberger & Procaccia 1983 |
 | Multifractal spectrum ($D_q$, $f(\alpha)$) | `diagnostics.multifractal` | multifractal moments | Mukherjee et al. 2024 |
 | AMI (embedding) | `diagnostics.embedding` | histogram | Fraser & Swinney 1986 |
-| Cao's method | `diagnostics.embedding` | statistic | Cao 1997 |
-| False nearest neighbors | `diagnostics.embedding` | statistic | Kennel et al. 1992 |
+| Cao's method | `diagnostics.embedding` | dimension selector only | Cao 1997 |
+| False nearest neighbors | `diagnostics.embedding` | — | Kennel et al. 1992 |
 
 ## Showcase: Kaneko Atlas
 
