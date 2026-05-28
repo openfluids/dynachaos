@@ -67,7 +67,7 @@ def compute_animation_sweep(
                 all_y[i, :actual] = traj[:, 1]
                 all_y[i, actual:] = np.nan
 
-        if (i + 1) % progress_interval == 0:
+        if progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Animation: {i + 1}/{n_frames}")
             np.savez_compressed(
                 output_path,

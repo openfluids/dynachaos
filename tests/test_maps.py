@@ -18,6 +18,7 @@ from dynachaos.diagnostics.compare_all_helpers import (
 )
 from dynachaos.maps._iter import (
     iterate_unwrapped,
+    run_animation_sweep,
     run_transient,
     sample_trajectory,
     trajectory_after_transient,
@@ -411,6 +412,33 @@ def test_compute_torus_map_IV_lyapunov_returns_and_writes_explicit_payload(tmp_p
         assert set(saved.files) == set(payload)
         np.testing.assert_allclose(saved["D"], payload["D"])
         np.testing.assert_allclose(saved["spectra"], payload["spectra"])
+
+
+def test_run_animation_sweep_returns_and_writes_payload(tmp_path):
+    output_path = tmp_path / "animation.npz"
+
+    def iterate_fn(param):
+        return np.column_stack(
+            (
+                np.full(3, param, dtype=np.float64),
+                np.arange(3, dtype=np.float64),
+            )
+        )
+
+    payload = run_animation_sweep(
+        iterate_fn,
+        np.array([0.1, 0.2]),
+        output_path,
+        n_plot=3,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(payload["param_values"], np.array([0.1, 0.2]))
+    np.testing.assert_allclose(payload["all_x"], np.array([[0.1, 0.1, 0.1], [0.2, 0.2, 0.2]]))
+    np.testing.assert_allclose(payload["all_y"], np.array([[0.0, 1.0, 2.0], [0.0, 1.0, 2.0]]))
+    with np.load(output_path, allow_pickle=False) as saved:
+        assert set(saved.files) == set(payload)
+        np.testing.assert_allclose(saved["all_x"], payload["all_x"])
 
 
 # ---------------------------------------------------------------------------

@@ -107,4 +107,4 @@ def run_animation_sweep(
     kwargs = {"n_plot": n_plot}
     if progress_interval is not None:
         kwargs["progress_interval"] = progress_interval
-    compute_animation_sweep(iterate_fn, param_values, output_npz, **kwargs)
+    return compute_animation_sweep(iterate_fn, param_values, output_npz, **kwargs)

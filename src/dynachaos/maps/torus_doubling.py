@@ -396,7 +396,7 @@ def compute_map_I_animation():
             return None
         return traj[:, :2]
 
-    run_animation_sweep(iterate_fn, D_sweep, MAP1_ANIM_NPZ, n_plot=5_000)
+    return run_animation_sweep(iterate_fn, D_sweep, MAP1_ANIM_NPZ, n_plot=5_000)
 
 
 def make_map_I_animation_gif(data):
@@ -428,7 +428,7 @@ def compute_map_IV_animation():
             return None
         return traj[:, :2]
 
-    run_animation_sweep(iterate_fn, D_sweep, MAP4_ANIM_NPZ, n_plot=5_000)
+    return run_animation_sweep(iterate_fn, D_sweep, MAP4_ANIM_NPZ, n_plot=5_000)
 
 
 def make_map_IV_animation_gif(data):
@@ -486,8 +486,7 @@ def main():
         print(f"Loaded {MAP1_ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing Map (I) animation data...")
-        compute_map_I_animation()
-        m1_anim = safe_load(MAP1_ANIM_NPZ)
+        m1_anim = compute_map_I_animation()
     make_map_I_animation_gif(m1_anim)
 
     # Map (IV) animation
@@ -496,8 +495,7 @@ def main():
         print(f"Loaded {MAP4_ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing Map (IV) animation data...")
-        compute_map_IV_animation()
-        m4_anim = safe_load(MAP4_ANIM_NPZ)
+        m4_anim = compute_map_IV_animation()
     make_map_IV_animation_gif(m4_anim)
 
 

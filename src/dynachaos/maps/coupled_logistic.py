@@ -635,7 +635,7 @@ def compute_animation_data():
             5_000,
         )
 
-    run_animation_sweep(iterate_fn, A_sweep, ANIM_NPZ, n_plot=5_000)
+    return run_animation_sweep(iterate_fn, A_sweep, ANIM_NPZ, n_plot=5_000)
 
 
 def make_animation_gif(data):
@@ -720,8 +720,7 @@ def main():
         print(f"Loaded {ANIM_NPZ}")
     except FileNotFoundError:
         print("Computing animation data...")
-        compute_animation_data()
-        anim_data = safe_load(ANIM_NPZ)
+        anim_data = compute_animation_data()
     make_animation_gif(anim_data)
 
 
