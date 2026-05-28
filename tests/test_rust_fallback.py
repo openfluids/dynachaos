@@ -227,7 +227,7 @@ class TestAMIParity:
         np.testing.assert_array_equal(mi, np.zeros(5))
 
 
-# TestCaoParity removed: Rust cao_statistic disabled (scipy cKDTree is 70x faster).
+# TestCaoParity omitted: Cao statistics remain in Python/SciPy.
 
 
 @needs_rust
@@ -323,7 +323,7 @@ class TestCaoSelectorParity:
         assert d_rust == d_python == expected
 
 
-# TestFNNParity removed: Rust fnn_statistic disabled (scipy cKDTree is 100x faster).
+# TestFNNParity omitted: FNN statistics remain in Python/SciPy.
 
 
 @needs_rust
