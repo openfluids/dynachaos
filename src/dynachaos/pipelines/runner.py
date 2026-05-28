@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,17 @@ from dynachaos.pipelines.registry import get_section, list_sections
 from dynachaos.utils.system import get_rss_mb
 
 _ALLOWED_OUTPUT_SUFFIXES = {".npz", ".png"}
+
+
+@dataclass(frozen=True)
+class ArtifactInspection:
+    """Inspection result for one expected pipeline artifact."""
+
+    role: str
+    path: Path
+    status: str
+    detail: str
+    required_keys: tuple[str, ...] = ()
 
 
 def _repo_src_dir() -> Path | None:
@@ -113,6 +125,31 @@ def _validate_artifact(path: Path, *, required_keys: tuple[str, ...], section_id
         raise RuntimeError(f"Section {section_id} artifact {path} is empty")
 
 
+def _inspect_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[str, str]:
+    if not path.exists():
+        return "missing", "missing expected artifact"
+
+    suffix = path.suffix.lower()
+    if suffix not in _ALLOWED_OUTPUT_SUFFIXES:
+        return "unsupported", f"unsupported extension: {path.suffix}"
+
+    if suffix == ".png":
+        if path.stat().st_size == 0:
+            return "empty", "empty artifact"
+        return "ok", "present"
+
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            missing = tuple(key for key in required_keys if key not in data.files)
+    except Exception as exc:
+        return "malformed", f"malformed NPZ artifact: {exc}"
+
+    if missing:
+        return "missing_keys", "missing required NPZ keys: " + ", ".join(missing)
+
+    return "ok", "present"
+
+
 def _section_root(output_root: str | Path | None) -> Path:
     return (
         Path(output_root).resolve()
@@ -155,6 +192,34 @@ def validate_section_outputs(
             section_id=section_id,
         )
     return output_paths
+
+
+def inspect_section_artifacts(
+    section_id: str,
+    *,
+    output_root: str | Path | None = None,
+) -> list[ArtifactInspection]:
+    """Inspect expected section artifacts without running modules."""
+    spec = get_section(section_id)
+    root = _section_root(output_root)
+    results: list[ArtifactInspection] = []
+
+    for role, names in (("cache", spec.cache_files), ("output", spec.output_files)):
+        for name in names:
+            path = root / section_id / name
+            required_keys = spec.required_npz_keys(path.name)
+            status, detail = _inspect_artifact(path, required_keys=required_keys)
+            results.append(
+                ArtifactInspection(
+                    role=role,
+                    path=path,
+                    status=status,
+                    detail=detail,
+                    required_keys=required_keys,
+                )
+            )
+
+    return results
 
 
 def run_section(

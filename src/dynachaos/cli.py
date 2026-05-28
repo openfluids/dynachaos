@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from dynachaos import __version__
 from dynachaos.pipelines.registry import get_section, list_sections
-from dynachaos.pipelines.runner import run_all, run_section
+from dynachaos.pipelines.runner import (
+    inspect_section_artifacts,
+    run_all,
+    run_section,
+    validate_section_cache,
+    validate_section_outputs,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -63,7 +70,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory for generated preview PNG files.",
     )
 
+    verify = sub.add_parser("verify", help="Validate cached artifacts without running modules")
+    verify_sub = verify.add_subparsers(dest="verify_command", required=True)
+    for name in ("caches", "outputs"):
+        verify_cmd = verify_sub.add_parser(name, help=f"Validate section {name}")
+        verify_cmd.add_argument(
+            "target",
+            nargs="?",
+            default="all",
+            help="Section ID or all",
+        )
+        verify_cmd.add_argument(
+            "--output-root",
+            type=Path,
+            default=None,
+            help="Base output directory (defaults to ./figures)",
+        )
+
+    inspect = sub.add_parser("inspect", help="Inspect pipeline contracts without running modules")
+    inspect_sub = inspect.add_subparsers(dest="inspect_command", required=True)
+    inspect_section = inspect_sub.add_parser("section", help="Inspect one section")
+    inspect_section.add_argument("section_id", help="Section ID")
+    inspect_section.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help="Base output directory (defaults to ./figures)",
+    )
+
     return parser
+
+
+def _selected_sections(parser: argparse.ArgumentParser, target: str) -> tuple[str, ...]:
+    if target == "all":
+        return list_sections()
+    if target not in set(list_sections()):
+        parser.error(f"Unknown target '{target}'. Use 'dynachaos list' for valid sections.")
+    return (target,)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,6 +135,33 @@ def main(argv: list[str] | None = None) -> int:
         selected = None if args.theme is None else [args.theme]
         for path in save_theme_previews(args.output_dir, themes=selected):
             print(path)
+        return 0
+
+    if args.command == "verify":
+        sections = _selected_sections(parser, args.target)
+        validator = (
+            validate_section_cache if args.verify_command == "caches" else validate_section_outputs
+        )
+        label = "caches" if args.verify_command == "caches" else "outputs"
+        try:
+            for section_id in sections:
+                paths = validator(section_id, output_root=args.output_root)
+                print(f"[{section_id}] {len(paths)} {label} ok")
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
+
+    if args.command == "inspect":
+        if args.section_id not in set(list_sections()):
+            parser.error(
+                f"Unknown target '{args.section_id}'. Use 'dynachaos list' for valid sections."
+            )
+        spec = get_section(args.section_id)
+        print(f"section\t{args.section_id}")
+        print(f"modules\t{','.join(spec.modules)}")
+        for item in inspect_section_artifacts(args.section_id, output_root=args.output_root):
+            print(f"{item.role}\t{item.status}\t{item.path}\t{item.detail}")
         return 0
 
     target = args.target
