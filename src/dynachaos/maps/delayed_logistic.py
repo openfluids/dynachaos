@@ -27,7 +27,7 @@ USAGE:   python src/dynachaos/maps/delayed_logistic.py
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir, write_payload as _io_write_payload
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -41,43 +41,10 @@ LOCK_NPZ = FIG_DIR / "locking_sequence.npz"
 LOCK_PNG = FIG_DIR / "locking_sequence.png"
 
 
-def _write_payload(output_path, payload):
-    """Write a compute payload when requested and return it unchanged."""
-    if output_path is None:
-        return payload
-    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(output_path, **payload)
-    print(f"Saved {output_path}")
-    return payload
-
-
 def _validate_unique_d_keys(d_values, fmt):
     keys = [format(float(value), fmt) for value in d_values]
     if len(set(keys)) != len(keys):
         raise ValueError(f"D_values must be unique after {fmt} formatting")
-
-
-def _load_or_compute_payload(npz_path, section_name, compute_fn, *, required_keys=()):
-    keys = tuple(required_keys)
-    try:
-        data = safe_load(npz_path)
-        missing = tuple(key for key in keys if key not in data.files)
-        if not missing:
-            print(f"Loaded {npz_path}")
-            return data
-        data.close()
-        missing_text = ", ".join(missing)
-        print(f"Cache {npz_path} missing keys ({missing_text}); recomputing {section_name}...")
-    except FileNotFoundError:
-        print(f"Computing {section_name}...")
-
-    payload = compute_fn()
-    missing = tuple(key for key in keys if key not in payload)
-    if missing:
-        missing_text = ", ".join(missing)
-        raise KeyError(f"Cache {npz_path} is missing required keys after compute: {missing_text}")
-    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +126,7 @@ def compute_attractors(
 
     results["D_values"] = np.array(D_values)
     results["A"] = np.array([A])
-    return _write_payload(output_path, results)
+    return _io_write_payload(output_path, results, base_dir=FIG_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +166,9 @@ def compute_lyapunov_spectrum(
         spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
         if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            _write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]})
+            _io_write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]}, base_dir=FIG_DIR)
 
-    return _write_payload(output_path, {"D": D_values, "spectra": spectra})
+    return _io_write_payload(output_path, {"D": D_values, "spectra": spectra}, base_dir=FIG_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +336,7 @@ def compute_locking_sequence(
 
     results["D_values"] = np.array(D_values)
     results["A"] = np.array([A])
-    return _write_payload(output_path, results)
+    return _io_write_payload(output_path, results, base_dir=FIG_DIR)
 
 
 def plot_locking_sequence(data):
@@ -476,7 +443,7 @@ def make_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    attr_data = _load_or_compute_payload(
+    attr_data = load_or_compute_payload(
         ATTR_NPZ,
         "attractors",
         compute_attractors,
@@ -484,7 +451,7 @@ def main():
     )
     plot_attractors(attr_data)
 
-    lyap_data = _load_or_compute_payload(
+    lyap_data = load_or_compute_payload(
         LYAP_NPZ,
         "Lyapunov spectrum",
         compute_lyapunov_spectrum,
@@ -492,7 +459,7 @@ def main():
     )
     plot_lyapunov(lyap_data)
 
-    lock_data = _load_or_compute_payload(
+    lock_data = load_or_compute_payload(
         LOCK_NPZ,
         "locking sequence",
         compute_locking_sequence,

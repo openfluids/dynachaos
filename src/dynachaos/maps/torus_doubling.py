@@ -19,7 +19,7 @@ OUTPUTS: figures/sec04_doubling/*.npz, *.png
 
 import numpy as np
 
-from dynachaos.io.paths import safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir, write_payload as _io_write_payload
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
 
@@ -35,41 +35,6 @@ MAP1_ANIM_NPZ = FIG_DIR / "map_I_animation.npz"
 MAP1_ANIM_GIF = FIG_DIR / "map_I_animation.gif"
 MAP4_ANIM_NPZ = FIG_DIR / "map_IV_animation.npz"
 MAP4_ANIM_GIF = FIG_DIR / "map_IV_animation.gif"
-
-
-def _write_payload(output_path, payload):
-    """Write a compute payload when requested and return it unchanged."""
-    if output_path is None:
-        return payload
-    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(output_path, **payload)
-    print(f"Saved {output_path}")
-    return payload
-
-
-def _load_or_compute_payload(npz_path, section_name, compute_fn, *, required_keys=()):
-    """Load a cache file, or use the returned compute payload when recomputing."""
-    path = npz_path
-    keys = tuple(required_keys)
-    try:
-        data = safe_load(path)
-        missing = tuple(key for key in keys if key not in data.files)
-        if not missing:
-            print(f"Loaded {path}")
-            return data
-        data.close()
-        missing_text = ", ".join(missing)
-        print(f"Cache {path} missing keys ({missing_text}); recomputing {section_name}...")
-    except FileNotFoundError:
-        print(f"Computing {section_name}...")
-
-    payload = compute_fn()
-    missing = tuple(key for key in keys if key not in payload)
-    if missing:
-        missing_text = ", ".join(missing)
-        raise KeyError(f"Cache {path} is missing required keys after compute: {missing_text}")
-    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +123,7 @@ def compute_map_I(
         if traj is not None:
             results[f"D_{D}_traj"] = traj
     results["D_values"] = np.array(D_values)
-    return _write_payload(output_path, results)
+    return _io_write_payload(output_path, results, base_dir=FIG_DIR)
 
 
 def compute_map_IV(
@@ -185,7 +150,7 @@ def compute_map_IV(
         if traj is not None:
             results[f"D_{D}_traj"] = traj
     results["D_values"] = np.array(D_values)
-    return _write_payload(output_path, results)
+    return _io_write_payload(output_path, results, base_dir=FIG_DIR)
 
 
 def compute_map_IV_lyapunov(
@@ -220,9 +185,9 @@ def compute_map_IV_lyapunov(
         spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
         if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            _write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]})
+            _io_write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]}, base_dir=FIG_DIR)
 
-    return _write_payload(output_path, {"D": D_values, "spectra": spectra})
+    return _io_write_payload(output_path, {"D": D_values, "spectra": spectra}, base_dir=FIG_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +421,7 @@ def make_map_IV_animation_gif(data):
 def main():
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    m1_data = _load_or_compute_payload(
+    m1_data = load_or_compute_payload(
         MAP1_NPZ,
         "Map (I) attractors",
         compute_map_I,
@@ -464,7 +429,7 @@ def main():
     )
     plot_map_I(m1_data)
 
-    m4_data = _load_or_compute_payload(
+    m4_data = load_or_compute_payload(
         MAP4_NPZ,
         "Map (IV) attractors",
         compute_map_IV,
@@ -472,7 +437,7 @@ def main():
     )
     plot_map_IV(m4_data)
 
-    lyap_data = _load_or_compute_payload(
+    lyap_data = load_or_compute_payload(
         LYAP_NPZ,
         "Map (IV) Lyapunov exponents",
         compute_map_IV_lyapunov,

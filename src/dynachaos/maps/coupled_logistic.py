@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir
+from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir, write_payload as _io_write_payload
 from dynachaos.maps._iter import (
     run_animation_sweep,
     run_transient,
@@ -46,17 +46,6 @@ ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 PHASE_SCHEMA_VERSION = 2
 PHASE_REQUIRED_KEYS = ("A", "D", "asym", "lyap", "schema_version")
-
-
-def _write_payload(output_path, payload):
-    """Write a compute payload when requested and return it unchanged."""
-    if output_path is None:
-        return payload
-    output_path = FIG_DIR / output_path if isinstance(output_path, str) else output_path
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(output_path, **payload)
-    print(f"Saved {output_path}")
-    return payload
 
 
 @dataclass(frozen=True)
@@ -237,14 +226,14 @@ def compute_phase_diagram(
 
         if output_path is not None and progress_interval and (j + 1) % progress_interval == 0:
             print(f"  Phase diagram: row {j + 1}/{n_D}")
-            _write_payload(
+            _io_write_payload(
                 output_path,
-                PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
+                PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(), base_dir=FIG_DIR
             )
 
-    return _write_payload(
+    return _io_write_payload(
         output_path,
-        PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
+        PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(), base_dir=FIG_DIR
     )
 
 
@@ -288,7 +277,7 @@ def compute_attractors(
     results["y_limits"] = np.array([case.ylim for case in cases], dtype=np.float64)
     results["D"] = np.array([D])
     results["schema_version"] = np.array([4], dtype=np.int16)
-    return _write_payload(output_path, results)
+    return _io_write_payload(output_path, results, base_dir=FIG_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -374,9 +363,9 @@ def compute_basins(
         if (j + 1) % 200 == 0:
             print(f"  Basins: row {j + 1}/{n_grid}")
 
-    return _write_payload(
+    return _io_write_payload(
         output_path,
-        {"x": x_range, "y": y_range, "basin": basin, "A": np.array([A]), "D": np.array([D])},
+        {"x": x_range, "y": y_range, "basin": basin, "A": np.array([A]), "D": np.array([D])}, base_dir=FIG_DIR
     )
 
 
