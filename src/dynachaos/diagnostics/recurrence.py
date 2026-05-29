@@ -57,6 +57,13 @@ except ImportError:
     _RUST_AVAILABLE = False
 
 
+_STREAMING_METRICS = frozenset({"euclidean", "sqeuclidean", "cityblock", "manhattan", "chebyshev"})
+_STREAMING_METRICS_MSG = (
+    "rqa_from_trajectory currently supports metric values: "
+    "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
+)
+
+
 def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
     """Compute the binary recurrence matrix.
 
@@ -148,10 +155,6 @@ def _vertical_lines(R, v_min=2):
     return np.array(lengths, dtype=int)
 
 
-def _trajectory_array(X):
-    return finite_trajectory(X, name="X")
-
-
 def _validate_recurrence_threshold(eps, percentile):
     if eps is not None:
         eps = finite_nonnegative_scalar(eps, name="eps")
@@ -171,18 +174,12 @@ def _paired_distances(A, B, metric):
         return np.sum(np.abs(A - B), axis=1)
     if metric == "chebyshev":
         return np.max(np.abs(A - B), axis=1)
-    raise ValueError(
-        "rqa_from_trajectory currently supports metric values: "
-        "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
-    )
+    raise ValueError(_STREAMING_METRICS_MSG)
 
 
 def _validate_streaming_metric(metric):
-    if metric not in {"euclidean", "sqeuclidean", "cityblock", "manhattan", "chebyshev"}:
-        raise ValueError(
-            "rqa_from_trajectory currently supports metric values: "
-            "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
-        )
+    if metric not in _STREAMING_METRICS:
+        raise ValueError(_STREAMING_METRICS_MSG)
 
 
 def _line_lengths(mask, min_length):
@@ -275,7 +272,7 @@ def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, 
     caller needs the recurrence matrix itself.  This function is for large-RQA
     workflows that only need the scalar measures.
     """
-    X = _trajectory_array(X)
+    X = finite_trajectory(X, name="X")
     eps, percentile = _validate_recurrence_threshold(eps, percentile)
     l_min = positive_int(l_min, "l_min")
     v_min = positive_int(v_min, "v_min")

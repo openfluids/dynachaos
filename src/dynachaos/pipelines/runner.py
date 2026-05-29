@@ -117,39 +117,7 @@ def _append_timing_event(
         handle.write(json.dumps(event, sort_keys=True) + "\n")
 
 
-def _validate_npz(path: Path, *, required_keys: tuple[str, ...], section_id: str) -> None:
-    try:
-        with np.load(path, allow_pickle=False) as data:
-            missing = tuple(key for key in required_keys if key not in data.files)
-    except Exception as exc:
-        raise RuntimeError(f"Section {section_id} has malformed NPZ artifact: {path}") from exc
-
-    if missing:
-        missing_text = ", ".join(missing)
-        raise RuntimeError(
-            f"Section {section_id} artifact {path} is missing required NPZ keys: {missing_text}"
-        )
-
-
-def _validate_artifact(path: Path, *, required_keys: tuple[str, ...], section_id: str) -> None:
-    if not path.exists():
-        raise RuntimeError(f"Section {section_id} is missing expected artifact: {path}")
-
-    suffix = path.suffix.lower()
-    if suffix not in _ALLOWED_OUTPUT_SUFFIXES:
-        raise RuntimeError(
-            f"Section {section_id} artifact {path} has unsupported extension: {path.suffix}"
-        )
-
-    if suffix == ".npz":
-        _validate_npz(path, required_keys=required_keys, section_id=section_id)
-        return
-
-    if path.stat().st_size == 0:
-        raise RuntimeError(f"Section {section_id} artifact {path} is empty")
-
-
-def _inspect_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[str, str]:
+def _classify_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[str, str]:
     if not path.exists():
         return "missing", "missing expected artifact"
 
@@ -157,7 +125,7 @@ def _inspect_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[st
     if suffix not in _ALLOWED_OUTPUT_SUFFIXES:
         return "unsupported", f"unsupported extension: {path.suffix}"
 
-    if suffix == ".png":
+    if suffix != ".npz":
         if path.stat().st_size == 0:
             return "empty", "empty artifact"
         return "ok", "present"
@@ -172,6 +140,32 @@ def _inspect_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[st
         return "missing_keys", "missing required NPZ keys: " + ", ".join(missing)
 
     return "ok", "present"
+
+
+def _validate_artifact(path: Path, *, required_keys: tuple[str, ...], section_id: str) -> None:
+    status, detail = _classify_artifact(path, required_keys=required_keys)
+    if status == "ok":
+        return
+    if status == "missing":
+        raise RuntimeError(f"Section {section_id} is missing expected artifact: {path}")
+    if status == "unsupported":
+        raise RuntimeError(
+            f"Section {section_id} artifact {path} has unsupported extension: {path.suffix}"
+        )
+    if status == "empty":
+        raise RuntimeError(f"Section {section_id} artifact {path} is empty")
+    if status == "malformed":
+        raise RuntimeError(f"Section {section_id} has malformed NPZ artifact: {path}")
+    if status == "missing_keys":
+        missing_text = detail[len("missing required NPZ keys: ") :]
+        raise RuntimeError(
+            f"Section {section_id} artifact {path} is missing required NPZ keys: {missing_text}"
+        )
+    raise AssertionError(f"unknown artifact status: {status}")
+
+
+def _inspect_artifact(path: Path, *, required_keys: tuple[str, ...]) -> tuple[str, str]:
+    return _classify_artifact(path, required_keys=required_keys)
 
 
 def _section_root(output_root: str | Path | None) -> Path:

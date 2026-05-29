@@ -109,6 +109,12 @@ def _selected_sections(parser: argparse.ArgumentParser, target: str) -> tuple[st
     return (target,)
 
 
+def _require_section(parser: argparse.ArgumentParser, section_id: str) -> str:
+    if section_id not in set(list_sections()):
+        parser.error(f"Unknown target '{section_id}'. Use 'dynachaos list' for valid sections.")
+    return section_id
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -153,14 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "inspect":
-        if args.section_id not in set(list_sections()):
-            parser.error(
-                f"Unknown target '{args.section_id}'. Use 'dynachaos list' for valid sections."
-            )
-        spec = get_section(args.section_id)
-        print(f"section\t{args.section_id}")
+        section_id = _require_section(parser, args.section_id)
+        spec = get_section(section_id)
+        print(f"section\t{section_id}")
         print(f"modules\t{','.join(spec.modules)}")
-        for item in inspect_section_artifacts(args.section_id, output_root=args.output_root):
+        for item in inspect_section_artifacts(section_id, output_root=args.output_root):
             required = ",".join(item.required_keys) if item.required_keys else "-"
             print(f"{item.role}\t{item.status}\t{item.path}\t{item.detail}\t{required}")
         return 0
