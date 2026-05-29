@@ -858,3 +858,61 @@ def test_henon_jac_finite_difference():
         state_minus[j] -= eps
         fd_col = (henon(state_plus, a, b) - henon(state_minus, a, b)) / (2.0 * eps)
         np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)
+
+
+def test_compute_clusters_seed_controls_rng_determinism():
+    first = compute_clusters(seed=7, n_sites=8, n_transient=2, n_record=4, output_path=None)
+    second = compute_clusters(seed=7, n_sites=8, n_transient=2, n_record=4, output_path=None)
+
+    np.testing.assert_array_equal(first["cluster_labels"], second["cluster_labels"])
+    np.testing.assert_array_equal(first["x_record"], second["x_record"])
+
+    different_seed = compute_clusters(seed=99, n_sites=8, n_transient=2, n_record=4, output_path=None)
+
+    assert not np.array_equal(
+        first["cluster_labels"], different_seed["cluster_labels"]
+    ) or not np.array_equal(
+        first["x_record"], different_seed["x_record"]
+    ), "compute_clusters should produce different stochastic payloads for different seeds"
+
+
+def test_compute_collective_seed_controls_rng_determinism():
+    a_values = np.array([1.4, 1.6, 1.8])
+
+    first = compute_collective(
+        seed=7,
+        n_sites=8,
+        a_values=a_values,
+        n_transient=2,
+        n_measure=6,
+        renorm_interval=2,
+        output_path=None,
+        progress_interval=0,
+    )
+    second = compute_collective(
+        seed=7,
+        n_sites=8,
+        a_values=a_values,
+        n_transient=2,
+        n_measure=6,
+        renorm_interval=2,
+        output_path=None,
+        progress_interval=0,
+    )
+
+    np.testing.assert_array_equal(first["lyap_c"], second["lyap_c"])
+
+    different_seed = compute_collective(
+        seed=99,
+        n_sites=8,
+        a_values=a_values,
+        n_transient=2,
+        n_measure=6,
+        renorm_interval=2,
+        output_path=None,
+        progress_interval=0,
+    )
+
+    assert not np.array_equal(
+        first["lyap_c"], different_seed["lyap_c"]
+    ), "compute_collective should produce different lyap_c values for different seeds"

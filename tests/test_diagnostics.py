@@ -201,6 +201,29 @@ def test_rqa_from_trajectory_matches_dense_with_explicit_eps():
     assert streaming_stats == pytest.approx(dense_stats)
 
 
+def test_rqa_from_trajectory_minimal_trajectory():
+    # N==1: single point; eps auto-selects to 0.0 (no positive pairwise distances)
+    X1 = np.ones((1, 2))
+    rmat1, _ = recurrence_matrix(X1)
+    dense_stats1 = rqa(rmat1, l_min=2, v_min=2)
+    streaming_stats1 = rqa_from_trajectory(X1, l_min=2, v_min=2)
+
+    assert dense_stats1["RR"] == pytest.approx(1.0)
+    assert streaming_stats1.keys() == dense_stats1.keys()
+    for key, value in dense_stats1.items():
+        assert streaming_stats1[key] == pytest.approx(value)
+
+    # N==2: two distinct points; explicit eps=0.5 excludes the off-diagonal pair
+    X2 = np.array([[0.0, 0.0], [1.0, 0.0]])
+    rmat2, _ = recurrence_matrix(X2, eps=0.5)
+    dense_stats2 = rqa(rmat2, l_min=2, v_min=2)
+    streaming_stats2 = rqa_from_trajectory(X2, eps=0.5, l_min=2, v_min=2)
+
+    assert streaming_stats2.keys() == dense_stats2.keys()
+    for key, value2 in dense_stats2.items():
+        assert streaming_stats2[key] == pytest.approx(value2)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
