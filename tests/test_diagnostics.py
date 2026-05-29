@@ -25,9 +25,10 @@ from dynachaos.diagnostics.recurrence import (
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
 
-def test_validation_helpers_reject_bool_integer():
+@pytest.mark.parametrize("value", [True, False, np.bool_(True), np.bool_(False)])
+def test_validation_helpers_reject_bool_integer(value):
     with pytest.raises(ValueError, match="n must be a positive integer"):
-        positive_int(True, "n")
+        positive_int(value, "n")
 
 
 @pytest.mark.parametrize(

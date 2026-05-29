@@ -27,7 +27,7 @@ def finite_trajectory(X, *, name="X"):
 
 def positive_int(value, name):
     """Return a positive integer, rejecting bools and lossy conversions."""
-    if isinstance(value, bool):
+    if isinstance(value, (bool, np.bool_)):
         raise ValueError(f"{name} must be a positive integer")
     try:
         value_int = int(value)
