@@ -162,7 +162,7 @@ def test_coupled_phase_payload_rejects_stale_schema(tmp_path):
     )
 
     with np.load(path, allow_pickle=False) as saved:
-        with pytest.raises(KeyError, match="stale phase diagram cache"):
+        with pytest.raises(ValueError, match="stale phase diagram cache"):
             PhaseDiagramPayload.from_npz(saved)
 
 
@@ -193,7 +193,7 @@ def test_coupled_phase_payload_rejects_grid_shape_mismatch(tmp_path):
     )
 
     with np.load(path, allow_pickle=False) as saved:
-        with pytest.raises(KeyError, match="grid shape mismatch"):
+        with pytest.raises(ValueError, match="grid shape mismatch"):
             PhaseDiagramPayload.from_npz(saved)
 
 

@@ -86,7 +86,7 @@ class PhaseDiagramPayload:
 
         version = int(np.atleast_1d(data["schema_version"])[0])
         if version < PHASE_SCHEMA_VERSION:
-            raise KeyError("stale phase diagram cache")
+            raise ValueError("stale phase diagram cache")
 
         A = np.asarray(data["A"], dtype=np.float64)
         D = np.asarray(data["D"], dtype=np.float64)
@@ -94,9 +94,9 @@ class PhaseDiagramPayload:
         lyap = np.asarray(data["lyap"], dtype=np.float64)
         expected_shape = (len(D), len(A))
         if A.ndim != 1 or D.ndim != 1:
-            raise KeyError("phase diagram cache axes must be one-dimensional")
+            raise ValueError("phase diagram cache axes must be one-dimensional")
         if asym.shape != expected_shape or lyap.shape != expected_shape:
-            raise KeyError("phase diagram cache grid shape mismatch")
+            raise ValueError("phase diagram cache grid shape mismatch")
 
         return cls(
             A=A,
@@ -705,7 +705,7 @@ def main():
         print(f"Loaded {PHASE_NPZ}")
         try:
             phase_payload = PhaseDiagramPayload.from_npz(phase_data)
-        except KeyError:
+        except (KeyError, ValueError):
             phase_data.close()
             print("Phase cache missing updated diagnostics; recomputing...")
             phase_data = compute_phase_diagram()
@@ -718,31 +718,39 @@ def main():
     plot_phase_diagram(phase_data)
 
     # Attractors
+    _attr_npz = None
     try:
-        attr_data = safe_load(ATTR_NPZ)
+        _attr_npz = safe_load(ATTR_NPZ)
         print(f"Loaded {ATTR_NPZ}")
         attr_needs_recompute = (
-            "schema_version" not in attr_data.files
-            or int(attr_data["schema_version"][0]) < 4
-            or "A_values" not in attr_data.files
-            or "labels" not in attr_data.files
-            or "initial_states" not in attr_data.files
-            or "x_limits" not in attr_data.files
-            or "y_limits" not in attr_data.files
+            "schema_version" not in _attr_npz.files
+            or int(_attr_npz["schema_version"][0]) < 4
+            or "A_values" not in _attr_npz.files
+            or "labels" not in _attr_npz.files
+            or "initial_states" not in _attr_npz.files
+            or "x_limits" not in _attr_npz.files
+            or "y_limits" not in _attr_npz.files
         )
         if not attr_needs_recompute:
             for idx in range(len(ATTRACTOR_CASES)):
-                if f"x_{idx}" not in attr_data.files or f"y_{idx}" not in attr_data.files:
+                if f"x_{idx}" not in _attr_npz.files or f"y_{idx}" not in _attr_npz.files:
                     attr_needs_recompute = True
                     break
         if attr_needs_recompute:
-            attr_data.close()
+            _attr_npz.close()
+            _attr_npz = None
             print("Attractor cache schema mismatch; recomputing...")
             attr_data = compute_attractors()
+        else:
+            attr_data = _attr_npz
     except FileNotFoundError:
         print("Computing attractors...")
         attr_data = compute_attractors()
-    plot_attractors(attr_data)
+    try:
+        plot_attractors(attr_data)
+    finally:
+        if _attr_npz is not None:
+            _attr_npz.close()
 
     basin_data = load_or_compute_npz(
         BASIN_NPZ,
