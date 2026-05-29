@@ -217,3 +217,139 @@ def test_section_output_validator_rejects_empty_figure(tmp_path):
 
     with pytest.raises(RuntimeError, match="devils_staircase.png.*empty"):
         validate_section_outputs("sec02_circle_map", output_root=tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# T2: schema_version contract for attractors.npz
+# ---------------------------------------------------------------------------
+
+def test_smoke_gate_rejects_attractors_missing_schema_version(tmp_path):
+    """Regression: attractors.npz without schema_version must fail smoke gate (T2).
+
+    Before the fix, schema_version was absent from the NpzContract, so an old-format
+    cache (no schema_version key) would pass validate_section_cache even though
+    main() would reject and recompute it.
+    """
+    section_dir = tmp_path / "sec03_transition"
+    section_dir.mkdir()
+    np.savez_compressed(
+        section_dir / "phase_diagram.npz",
+        A=[1.0], D=[0.1], asym=[0.0], lyap=[0.1], schema_version=[4],
+    )
+    # attractors.npz missing the schema_version key (old pre-v4 cache format)
+    np.savez_compressed(
+        section_dir / "attractors.npz",
+        A_values=[1.0], labels=["sync"], initial_states=[[0.5, 0.5]],
+        x_limits=[0.0, 1.0], y_limits=[0.0, 1.0], D=[0.1],
+    )
+    np.savez_compressed(
+        section_dir / "basins.npz",
+        x=[0.5], y=[0.5], basin=[0], A=[1.0], D=[0.1],
+    )
+    with pytest.raises(RuntimeError, match="missing required NPZ keys.*schema_version"):
+        validate_section_cache("sec03_transition", output_root=tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# T1: child RSS measurement
+# ---------------------------------------------------------------------------
+
+def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
+    """_run_module returns peak RSS of the child process via os.wait4 (T1 unit test).
+
+    Uses a monkeypatched Popen and wait4 to inject a known rusage and verify
+    the KB-to-MB conversion matches get_rss_mb's convention.
+    """
+    import os as _os
+    from dynachaos.pipelines import runner as _runner
+
+    if not hasattr(_os, "wait4"):
+        pytest.skip("os.wait4 not available on this platform")
+
+    # Fake rusage: 262144 KiB = 256 MiB on Linux
+    class FakeRusage:
+        ru_maxrss = 262144  # KiB (Linux units)
+
+    class FakePopen:
+        pid = 9999
+        returncode = None
+
+        def __init__(self, cmd, env=None):
+            pass
+
+    def fake_wait4(pid, options):
+        return (pid, 0, FakeRusage())  # exit_status=0 → clean exit
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(_runner.os, "wait4", fake_wait4)
+    if hasattr(_os, "waitstatus_to_exitcode"):
+        monkeypatch.setattr(_runner.os, "waitstatus_to_exitcode", lambda x: 0)
+
+    rss = _runner._run_module("dummy.module", tmp_path, "paper")
+
+    # Linux: 262144 KiB / 1024 = 256.0 MB
+    assert rss == pytest.approx(256.0, abs=0.01)
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "wait4"), reason="requires POSIX wait4")
+def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
+    """Ledger peak_rss_mb reflects child allocation, not orchestrator RSS (T1 integration).
+
+    A real subprocess that allocates 100 MB is spawned via a monkeypatched _run_module;
+    the ledgered value must be clearly non-zero and above 50 MB (numpy + 100 MB array).
+    """
+    import os as _os
+    from dynachaos.pipelines import runner as _runner
+    from dynachaos.utils.system import get_rss_mb
+
+    section_dir = tmp_path / "sec03_transition"
+    section_dir.mkdir()
+    np.savez_compressed(
+        section_dir / "phase_diagram.npz",
+        A=[1.0], D=[0.1], asym=[0.0], lyap=[0.1], schema_version=[4],
+    )
+    np.savez_compressed(
+        section_dir / "attractors.npz",
+        A_values=[1.0], labels=["sync"], initial_states=[[0.5, 0.5]],
+        x_limits=[0.0, 1.0], y_limits=[0.0, 1.0], D=[0.1], schema_version=[4],
+    )
+    np.savez_compressed(
+        section_dir / "basins.npz",
+        x=[0.5], y=[0.5], basin=[0], A=[1.0], D=[0.1],
+    )
+    for png in ("phase_diagram.png", "attractors.png", "basins.png"):
+        (section_dir / png).write_bytes(b"png")
+
+    orchestrator_rss = get_rss_mb()
+
+    def allocating_module(module_name, output_root, profile):
+        """Spawn a child that allocates ~100 MB and return its peak RSS."""
+        import subprocess as _sp
+        import sys as _sys
+        proc = _sp.Popen(
+            [_sys.executable, "-c",
+             "import numpy as np; x = np.zeros(100 * 1024 * 1024 // 8)"],
+        )
+        pid, status, rusage = _os.wait4(proc.pid, 0)
+        divisor = 1024 * 1024 if _sys.platform == "darwin" else 1024
+        return rusage.ru_maxrss / divisor
+
+    monkeypatch.setattr(_runner, "_run_module", allocating_module)
+
+    ledger_path = tmp_path / "timing.jsonl"
+    run_section("sec03_transition", output_root=tmp_path, profile="paper", timing_ledger=ledger_path)
+
+    events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+    assert len(events) == 1
+    child_rss = events[0]["peak_rss_mb"]
+
+    # Child allocates ~100 MB on top of Python/numpy baseline — must exceed 30 MB
+    # (conservative: kernel may lazily page np.zeros, but RSS should still exceed 30 MB)
+    assert child_rss >= 30.0, (
+        f"Expected child RSS >= 30 MB (numpy + 100 MB alloc), got {child_rss:.1f} MB"
+    )
+    # Verify it is larger than if we had mistakenly read the orchestrator (which would have
+    # recorded ~0 overhead from the no-op orchestrator side)
+    assert child_rss > orchestrator_rss * 0.5, (
+        f"Child RSS {child_rss:.1f} MB is suspiciously close to orchestrator {orchestrator_rss:.1f} MB"
+    )

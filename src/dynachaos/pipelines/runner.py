@@ -55,12 +55,36 @@ def _runner_env(output_root: Path, profile: str) -> dict[str, str]:
     return env
 
 
-def _run_module(module_name: str, output_root: Path, profile: str) -> None:
+def _rss_raw_to_mb(rss_raw: int) -> float:
+    """Convert ru_maxrss to megabytes using the same platform convention as get_rss_mb."""
+    # macOS: ru_maxrss is in bytes; Linux: in KiB
+    return rss_raw / (1024 * 1024) if sys.platform == "darwin" else rss_raw / 1024
+
+
+def _run_module(module_name: str, output_root: Path, profile: str) -> float | None:
+    """Run a module subprocess and return the child's peak RSS in MB (POSIX), or None (Windows)."""
     env = _runner_env(output_root, profile)
     cmd = [sys.executable, "-m", module_name]
-    proc = subprocess.run(cmd, env=env, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(f"Module run failed: {' '.join(cmd)} (exit {proc.returncode})")
+    if hasattr(os, "wait4"):
+        proc = subprocess.Popen(cmd, env=env)
+        _pid, exit_status, rusage = os.wait4(proc.pid, 0)
+        if hasattr(os, "waitstatus_to_exitcode"):
+            returncode = os.waitstatus_to_exitcode(exit_status)
+        elif os.WIFEXITED(exit_status):
+            returncode = os.WEXITSTATUS(exit_status)
+        else:
+            returncode = -os.WTERMSIG(exit_status)
+        proc.returncode = returncode
+        if returncode != 0:
+            raise RuntimeError(f"Module run failed: {' '.join(cmd)} (exit {returncode})")
+        return _rss_raw_to_mb(rusage.ru_maxrss)
+    else:
+        # Windows or systems without wait4 — fall back; caller uses get_rss_mb() instead
+        proc = subprocess.Popen(cmd, env=env)
+        proc.wait()
+        if proc.returncode != 0:
+            raise RuntimeError(f"Module run failed: {' '.join(cmd)} (exit {proc.returncode})")
+        return None
 
 
 def _timing_ledger_path(timing_ledger: str | Path | None) -> Path | None:
@@ -251,8 +275,10 @@ def run_section(
     ledger_path = _timing_ledger_path(timing_ledger)
     for module_name in spec.modules:
         started = time.perf_counter() if ledger_path is not None else 0.0
-        _run_module(module_name, root, profile)
+        child_rss = _run_module(module_name, root, profile)
         if ledger_path is not None:
+            if child_rss is None:
+                child_rss = get_rss_mb()
             _append_timing_event(
                 ledger_path,
                 section_id=section_id,
@@ -260,7 +286,7 @@ def run_section(
                 profile=profile,
                 cache_state=cache_state,
                 wall_time_s=time.perf_counter() - started,
-                peak_rss_mb=get_rss_mb(),
+                peak_rss_mb=child_rss,
             )
 
     return validate_section_outputs(section_id, output_root=root)

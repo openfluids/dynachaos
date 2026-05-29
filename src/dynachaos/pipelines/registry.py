@@ -91,7 +91,7 @@ SECTION_SPECS = {
             NpzContract("phase_diagram.npz", ("A", "D", "asym", "lyap", "schema_version")),
             NpzContract(
                 "attractors.npz",
-                ("A_values", "labels", "initial_states", "x_limits", "y_limits", "D"),
+                ("A_values", "labels", "initial_states", "x_limits", "y_limits", "D", "schema_version"),
             ),
             NpzContract("basins.npz", ("x", "y", "basin", "A", "D")),
         ),
@@ -147,7 +147,7 @@ SECTION_SPECS = {
         ),
         npz_contracts=(
             NpzContract("lyapunov_vs_DB.npz", ("DB", "eps_values")),
-            NpzContract("xz_projections.npz", ("DB_values", "labels", "render_modes")),
+            NpzContract("xz_projections.npz", ("DB_values", "labels", "render_modes", "schema_version")),
             NpzContract("double_staircase.npz", ("D", "rho_theta", "rho_phi", "A", "C", "eps")),
         ),
     ),
