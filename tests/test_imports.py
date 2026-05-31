@@ -57,3 +57,30 @@ def test_viz_reexports():
 
     assert callable(poincare_section_plot)
     assert callable(return_map_plot)
+
+
+def test_no_rust_env_returns_false_without_importing():
+    from dynachaos import _ensure_rust_backend
+
+    def failing_importer(name):
+        raise AssertionError(f"unexpected import: {name}")
+
+    assert _ensure_rust_backend(
+        env={"DYNACHAOS_NO_RUST": "1"}, import_module=failing_importer
+    ) is False
+
+
+def test_rust_backend_available():
+    from dynachaos import _ensure_rust_backend
+
+    assert _ensure_rust_backend(env={}) is True
+
+
+def test_missing_rust_backend_raises_runtime_error():
+    from dynachaos import _ensure_rust_backend
+
+    def failing_importer(name):
+        raise ImportError(name)
+
+    with pytest.raises(RuntimeError, match="maturin develop"):
+        _ensure_rust_backend(env={}, import_module=failing_importer)

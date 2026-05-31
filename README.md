@@ -111,20 +111,26 @@ uv run --extra viz python examples/benchmark_gp_vs_multifractal.py
 
 ## Rust-Accelerated Backends
 
-Performance-critical algorithms are implemented as Rust kernels and loaded
-automatically when the extension is installed.
-Pure-Python fallbacks are always available and produce identical results.
+Performance-critical algorithms are implemented as Rust kernels. The Rust
+extension is required by default: `import dynachaos` fails loudly if it has not
+been built.
+
+Build the extension in editable mode:
+
+```bash
+uv run maturin develop --release
+```
 
 ### Pure-Python fallback policy
 
 The Rust kernels are the intended path for production-sized all-pairs and
-large-N diagnostics. The pure-Python paths are correctness and portability
-fallbacks: they keep the public APIs usable without a compiled extension, and
-the test suite checks parity on representative small workloads. Some fallback
-implementations remain exact and quadratic by design, so large pure-Python runs
-should be treated as diagnostic or development runs unless a future release
-explicitly makes large fallback performance a target. Use `DYNACHAOS_NO_RUST=1`
-when you need to exercise this fallback policy explicitly.
+large-N diagnostics. Pure-Python paths are an explicit opt-in for parity testing
+and portability, not an automatic silent fallback. Set `DYNACHAOS_NO_RUST=1`
+when you need to exercise them; the test suite checks parity on representative
+small workloads. Some fallback implementations remain exact and quadratic by
+design, so large pure-Python runs should be treated as diagnostic or development
+runs unless a future release explicitly makes large fallback performance a
+target.
 
 ### Correlation integral (Grassberger-Procaccia)
 
