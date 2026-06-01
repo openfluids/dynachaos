@@ -1,7 +1,10 @@
 """Modern diagnostic tools for dynamical systems."""
 
-from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
-from dynachaos.diagnostics.correlation import fit_power_law_loglog
+from dynachaos.diagnostics.correlation import (
+    correlation_dimension,
+    correlation_integral,
+    fit_power_law_loglog,
+)
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -16,6 +19,11 @@ from dynachaos.diagnostics.entropy import (
     multiscale_entropy,
     sample_entropy,
 )
+from dynachaos.diagnostics.intermittency import (
+    LaminarLengthDistribution,
+    detect_laminar_phases,
+    laminar_length_distribution,
+)
 from dynachaos.diagnostics.lyapunov import (
     flow_lyapunov_spectrum,
     lyapunov_exponent_1d,
@@ -25,8 +33,8 @@ from dynachaos.diagnostics.multifractal import local_multifractality, multifract
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
 from dynachaos.diagnostics.poincare import poincare_section
 from dynachaos.diagnostics.recurrence import (
-    embed_time_delay,
     LaminarLengthsResult,
+    embed_time_delay,
     laminar_lengths,
     recurrence_matrix,
     rqa,
@@ -49,6 +57,9 @@ __all__ = [
     "fuzzy_entropy",
     "gali",
     "LaminarLengthsResult",
+    "LaminarLengthDistribution",
+    "detect_laminar_phases",
+    "laminar_length_distribution",
     "laminar_lengths",
     "lyapunov_exponent_1d",
     "lyapunov_spectrum",
