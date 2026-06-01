@@ -12,7 +12,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.optimize import brentq
 from scipy.special import zeta
-from scipy.stats import expon, linregress, norm
+from scipy.stats import expon, ks_2samp, linregress, norm
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog as _shared_fit_power_law_loglog
 from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr
@@ -118,6 +118,42 @@ class MeanLaminarScaling:
     inverse_epsilon: CandidateScalingLaw
     logarithmic: CandidateScalingLaw
     rpd_alpha: float | None
+
+
+@dataclass(frozen=True)
+class ReinjectionMx:
+    """Linear RPD characteristic relation from reinjection points."""
+
+    slope: float
+    intercept: float
+    rvalue: float
+    pvalue: float
+    stderr: float
+    alpha: float
+    x_hat: float
+    reinjection_points: np.ndarray
+    thresholds: np.ndarray
+    conditional_means: np.ndarray
+
+
+@dataclass(frozen=True)
+class BurstAmplitudeDistribution:
+    """Burst-amplitude empirical distribution and CSN power-law fit."""
+
+    amplitudes: np.ndarray
+    bin_edges: np.ndarray
+    density: np.ndarray
+    power_law: PowerLawMLE
+
+
+@dataclass(frozen=True)
+class LaminarBurstSymmetry:
+    """Two-sample KS comparison of laminar and burst duration distributions."""
+
+    statistic: float
+    p_value: float
+    laminar_lengths: np.ndarray
+    burst_lengths: np.ndarray
 
 
 def detect_laminar_phases(
@@ -341,6 +377,86 @@ def mean_laminar_scaling(eps, mean_lengths, *, rpd_alpha=None, min_points=3):
     )
 
 
+def reinjection_Mx(x, mask):
+    """Estimate the reinjection probability-density exponent from ``M(x)``.
+
+    Reinjection points are samples where a burst switches into a laminar run.
+    The cumulative conditional mean relation is fitted with
+    :func:`scipy.stats.linregress`; the RPD exponent is
+    ``alpha = (2m - 1) / (1 - m)`` from the fitted slope ``m``.
+    """
+    series = _finite_series(x)
+    mask = _finite_mask(mask, series.size)
+    starts = np.flatnonzero(mask & np.r_[False, ~mask[:-1]])
+    reinjections = np.sort(series[starts])
+    if reinjections.size < 3:
+        raise ValueError("at least three reinjection points are required")
+
+    thresholds = np.unique(reinjections)
+    if thresholds.size < 3:
+        raise ValueError("at least three unique reinjection points are required")
+    cumulative_sum = np.cumsum(reinjections)
+    right_edges = np.searchsorted(reinjections, thresholds, side="right")
+    conditional_means = cumulative_sum[right_edges - 1] / right_edges
+
+    result = linregress(thresholds, conditional_means)
+    if result.slope >= 1.0:
+        alpha = np.inf
+        x_hat = np.nan
+    else:
+        alpha = (2.0 * result.slope - 1.0) / (1.0 - result.slope)
+        x_hat = result.intercept / (1.0 - result.slope)
+
+    return ReinjectionMx(
+        slope=float(result.slope),
+        intercept=float(result.intercept),
+        rvalue=float(result.rvalue),
+        pvalue=float(result.pvalue),
+        stderr=float(result.stderr),
+        alpha=float(alpha),
+        x_hat=float(x_hat),
+        reinjection_points=reinjections.astype(np.float64),
+        thresholds=thresholds.astype(np.float64),
+        conditional_means=conditional_means.astype(np.float64),
+    )
+
+
+def burst_amplitude_distribution(x, mask, *, min_tail=None):
+    """Fit the burst-amplitude law on non-laminar samples."""
+    series = np.abs(_finite_series(x))
+    mask = _finite_mask(mask, series.size)
+    amplitudes = series[~mask]
+    amplitudes = amplitudes[amplitudes > 0.0]
+    if amplitudes.size < 2:
+        raise ValueError("at least two positive burst amplitudes are required")
+
+    bin_edges = np.histogram_bin_edges(amplitudes, bins="fd")
+    density, bin_edges = np.histogram(amplitudes, bins=bin_edges, density=True)
+    return BurstAmplitudeDistribution(
+        amplitudes=amplitudes.astype(np.float64),
+        bin_edges=bin_edges.astype(np.float64),
+        density=density.astype(np.float64),
+        power_law=fit_power_law_mle(amplitudes, discrete=False, min_tail=min_tail),
+    )
+
+
+def laminar_burst_symmetry(x, mask):
+    """Compare laminar and burst duration distributions with a KS test."""
+    series = _finite_series(x)
+    mask = _finite_mask(mask, series.size)
+    laminar = _mask_run_lengths(mask)
+    burst = _mask_run_lengths(~mask)
+    if laminar.size < 2 or burst.size < 2:
+        raise ValueError("at least two laminar and burst runs are required")
+    result = ks_2samp(laminar, burst)
+    return LaminarBurstSymmetry(
+        statistic=float(result.statistic),
+        p_value=float(result.pvalue),
+        laminar_lengths=laminar,
+        burst_lengths=burst,
+    )
+
+
 def _detect_laminar_recurrence(series, eps, percentile, v_min):
     result = recurrence_laminar_lengths(
         series[:, np.newaxis],
@@ -451,6 +567,13 @@ def _positive_observations(values):
         raise ValueError("observations must contain only finite values")
     if np.any(arr <= 0.0):
         raise ValueError("observations must be positive")
+    return arr
+
+
+def _finite_mask(mask, size):
+    arr = np.asarray(mask, dtype=bool).ravel()
+    if arr.size != size:
+        raise ValueError("mask must have the same length as x")
     return arr
 
 
@@ -565,19 +688,25 @@ def _fit_logarithmic_candidate(eps, mean_lengths):
 
 __all__ = [
     "CandidateScalingLaw",
+    "BurstAmplitudeDistribution",
     "DiagnosticLogLogFit",
     "ExponentialFit",
     "LaminarLengthDistribution",
+    "LaminarBurstSymmetry",
     "MeanLaminarScaling",
     "PowerLawGoF",
     "PowerLawMLE",
+    "ReinjectionMx",
     "VuongComparison",
     "compare_powerlaw_exponential",
+    "burst_amplitude_distribution",
     "detect_laminar_phases",
     "fit_exponential",
     "fit_power_law_loglog",
     "fit_power_law_mle",
     "laminar_length_distribution",
+    "laminar_burst_symmetry",
     "mean_laminar_scaling",
     "powerlaw_gof",
+    "reinjection_Mx",
 ]

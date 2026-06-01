@@ -3,6 +3,8 @@ import pytest
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog
 from dynachaos.diagnostics.intermittency import (
+    burst_amplitude_distribution,
+    BurstAmplitudeDistribution,
     CandidateScalingLaw,
     compare_powerlaw_exponential,
     DiagnosticLogLogFit,
@@ -10,13 +12,17 @@ from dynachaos.diagnostics.intermittency import (
     fit_power_law_loglog as fit_intermittency_power_law_loglog,
     fit_power_law_mle,
     LaminarLengthDistribution,
+    LaminarBurstSymmetry,
     MeanLaminarScaling,
     detect_laminar_phases,
     laminar_length_distribution,
+    laminar_burst_symmetry,
     mean_laminar_scaling,
     powerlaw_gof,
+    reinjection_Mx,
+    ReinjectionMx,
 )
-from dynachaos.maps.intermittency import logistic_type_i_oracle, pm_type_i_oracle
+from dynachaos.maps.intermittency import logistic_type_i_oracle, on_off_oracle, pm_type_i_oracle
 
 
 def test_recurrence_laminar_detection_reuses_vertical_lengths():
@@ -199,3 +205,62 @@ def test_mean_laminar_scaling_reports_contested_candidate_laws_and_rpd_alpha():
     assert scaling.logarithmic.name == "log(1/eps)"
     assert scaling.rpd_alpha == pytest.approx(0.25)
     assert scaling.logarithmic.residual_sum_squares < scaling.inverse_epsilon.residual_sum_squares
+
+
+def test_reinjection_mx_recovers_synthetic_rpd_alpha():
+    rng = np.random.default_rng(2034)
+    alpha = 0.5
+    x_hat = 0.2
+    reinjections = x_hat + rng.random(2000) ** (1.0 / (alpha + 1.0))
+    series = np.empty(reinjections.size * 3, dtype=np.float64)
+    mask = np.zeros(series.size, dtype=bool)
+    series[0::3] = 2.0
+    series[1::3] = reinjections
+    series[2::3] = reinjections + 0.01
+    mask[1::3] = True
+    mask[2::3] = True
+
+    result = reinjection_Mx(series, mask)
+
+    np.testing.assert_equal(isinstance(result, ReinjectionMx), True)
+    np.testing.assert_allclose(result.alpha, alpha, atol=0.08)
+    np.testing.assert_allclose(result.x_hat, x_hat, atol=0.04)
+    np.testing.assert_array_less(0.99, result.rvalue)
+
+
+def test_reinjection_mx_ignores_initial_laminar_run():
+    series = np.array([10.0, 11.0, 3.0, 0.0, 0.5, 3.0, 1.0, 1.5, 3.0, 2.0, 2.5])
+    mask = np.array([True, True, False, True, True, False, True, True, False, True, True])
+
+    result = reinjection_Mx(series, mask)
+
+    np.testing.assert_allclose(result.reinjection_points, [0.0, 1.0, 2.0])
+
+
+def test_burst_amplitude_distribution_detects_inverse_amplitude_law():
+    rng = np.random.default_rng(2035)
+    amplitudes = np.exp(rng.uniform(0.0, 20.0, size=5000))
+    mask = np.zeros(amplitudes.size, dtype=bool)
+
+    result = burst_amplitude_distribution(amplitudes, mask, min_tail=amplitudes.size)
+
+    np.testing.assert_equal(isinstance(result, BurstAmplitudeDistribution), True)
+    np.testing.assert_allclose(result.power_law.alpha, -1.0, atol=0.15)
+    np.testing.assert_equal(result.amplitudes.size, amplitudes.size)
+
+
+def test_laminar_burst_symmetry_separates_on_off_from_type_i_oracle():
+    on_off = on_off_oracle(20_000, x0=1e-4, transverse_lyapunov=0.0, noise_scale=0.8, seed=2036)
+    on_off_threshold = np.percentile(np.abs(on_off), 50.0)
+    on_off_mask = np.abs(on_off) <= on_off_threshold
+
+    type_i = logistic_type_i_oracle(8000, x0=0.2)
+    type_i_mask, _ = detect_laminar_phases(type_i, method="period", percentile=10)
+
+    on_off_symmetry = laminar_burst_symmetry(on_off, on_off_mask)
+    type_i_symmetry = laminar_burst_symmetry(type_i, type_i_mask)
+
+    np.testing.assert_equal(isinstance(on_off_symmetry, LaminarBurstSymmetry), True)
+    np.testing.assert_array_less(0.1, on_off_symmetry.p_value)
+    np.testing.assert_array_less(type_i_symmetry.p_value, 1e-6)
+    np.testing.assert_array_less(on_off_symmetry.statistic, type_i_symmetry.statistic)
