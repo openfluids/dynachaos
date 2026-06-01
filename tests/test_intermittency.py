@@ -13,6 +13,8 @@ from dynachaos.diagnostics.intermittency import (
     fit_exponential,
     fit_power_law_loglog as fit_intermittency_power_law_loglog,
     fit_power_law_mle,
+    IntermittencySummary,
+    intermittency_summary,
     LaminarLengthDistribution,
     LaminarBurstSymmetry,
     MeanLaminarScaling,
@@ -313,3 +315,44 @@ def test_return_map_reconstruction_reuses_poincare_on_lorenz_1662():
     np.testing.assert_equal(reconstruction.poincare["section_points"].shape[1], 2)
     np.testing.assert_array_less(2, reconstruction.extrema.points.shape[0])
     np.testing.assert_equal(isinstance(reconstruction.tangent_channel, TangentChannel), True)
+
+
+def test_intermittency_summary_matches_standalone_subroutines():
+    series = logistic_type_i_oracle(1500, x0=0.2)
+    mask, lengths = detect_laminar_phases(series, method="period", percentile=10.0)
+    distribution = laminar_length_distribution(lengths)
+    power_law = fit_power_law_mle(lengths)
+    gof = powerlaw_gof(lengths, fit=power_law, n_bootstrap=3, rng=77)
+    comparison = compare_powerlaw_exponential(lengths)
+
+    summary = intermittency_summary(
+        series,
+        laminar_method="period",
+        percentile=10.0,
+        powerlaw_gof_bootstrap=3,
+        rng=77,
+    )
+
+    np.testing.assert_equal(isinstance(summary, IntermittencySummary), True)
+    np.testing.assert_array_equal(summary.laminar_mask, mask)
+    np.testing.assert_array_equal(summary.laminar_lengths, lengths)
+    np.testing.assert_array_equal(summary.laminar_distribution.values, distribution.values)
+    np.testing.assert_array_equal(summary.laminar_distribution.counts, distribution.counts)
+    np.testing.assert_allclose(summary.laminar_power_law.alpha, power_law.alpha)
+    np.testing.assert_allclose(summary.powerlaw_gof.p_value, gof.p_value)
+    np.testing.assert_allclose(summary.family_comparison.z, comparison.z)
+    np.testing.assert_array_less(0, summary.recurrence_laminarity.lengths.size)
+    np.testing.assert_array_less(0, summary.reinjection.reinjection_points.size)
+    np.testing.assert_array_less(0, summary.burst_amplitude.amplitudes.size)
+    np.testing.assert_array_less(0, summary.laminar_burst_symmetry.laminar_lengths.size)
+    np.testing.assert_array_less(0, summary.return_map.extrema.points.shape[0])
+
+
+def test_intermittency_module_docstring_carries_signature_caveats():
+    import dynachaos.diagnostics.intermittency as intermittency_module
+
+    doc = intermittency_module.__doc__
+
+    np.testing.assert_equal("Signature guide" in doc, True)
+    np.testing.assert_equal("Caveats" in doc, True)
+    np.testing.assert_equal("not as a theorem or classifier" in doc, True)

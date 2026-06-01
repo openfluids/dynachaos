@@ -1,9 +1,27 @@
 """Building-block diagnostics for intermittency in scalar signals.
 
-The routines here expose laminar masks, laminar-run lengths, and empirical
-distributions. They deliberately do not return a Pomeau-Manneville or on-off
-type label; downstream analysis should interpret the statistics with the
+The routines here expose laminar masks, laminar-run lengths, empirical
+distributions, reinjection statistics, return-map geometry, and recurrence
+laminarity. They deliberately do not return a Pomeau-Manneville or on-off type
+label; downstream analysis should interpret the statistics with the
 assumption-dependent caveats from the literature.
+
+Signature guide
+---------------
+- Type I: laminar-length tail near ``ell^-3/2`` and mean laminar length often
+  scales like ``eps^-1/2`` under standard uniform-reinjection assumptions.
+- Type II/III: laminar lengths are usually better described by exponential
+  decay; the mean-scaling law is reinjection-distribution dependent, so both
+  ``eps^-1`` and ``log(1/eps)`` candidates should be inspected.
+- On-off: laminar durations have the same ``-3/2`` onset exponent as Type I,
+  so use burst-amplitude ``|x|^-1`` behavior and laminar/burst duration
+  symmetry as additional discriminators.
+
+Caveats
+-------
+Reinjection probability density, finite data windows, colored driving, and the
+choice of observable can change apparent exponents and cutoffs. Treat the
+returned objects as diagnostic evidence, not as a theorem or classifier.
 """
 
 from dataclasses import dataclass
@@ -18,6 +36,7 @@ from scipy.stats import expon, ks_2samp, linregress, norm
 from dynachaos.diagnostics.correlation import fit_power_law_loglog as _shared_fit_power_law_loglog
 from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr
 from dynachaos.diagnostics.poincare import poincare_section
+from dynachaos.diagnostics.recurrence import LaminarLengthsResult
 from dynachaos.diagnostics.recurrence import laminar_lengths as recurrence_laminar_lengths
 from dynachaos.diagnostics.recurrence import recurrence_matrix
 
@@ -191,6 +210,23 @@ class ReturnMapReconstruction:
     poincare: dict[str, object]
     extrema: ExtremaReturnMap
     tangent_channel: TangentChannel
+
+
+@dataclass(frozen=True)
+class IntermittencySummary:
+    """Composed intermittency diagnostics without a mechanism label."""
+
+    laminar_mask: np.ndarray
+    laminar_lengths: np.ndarray
+    laminar_distribution: LaminarLengthDistribution
+    laminar_power_law: PowerLawMLE
+    powerlaw_gof: PowerLawGoF
+    family_comparison: VuongComparison
+    recurrence_laminarity: LaminarLengthsResult
+    reinjection: ReinjectionMx
+    burst_amplitude: BurstAmplitudeDistribution
+    laminar_burst_symmetry: LaminarBurstSymmetry
+    return_map: ReturnMapReconstruction
 
 
 def detect_laminar_phases(
@@ -586,6 +622,60 @@ def return_map_reconstruction(
     )
 
 
+def intermittency_summary(
+    x,
+    *,
+    fs=1.0,
+    laminar_method="recurrence",
+    eps=None,
+    period=None,
+    window=None,
+    percentile=5.0,
+    v_min=2,
+    recurrence_metric="euclidean",
+    powerlaw_gof_bootstrap=100,
+    rng=None,
+    burst_min_tail=None,
+    return_map_kwargs=None,
+):
+    """Compose the intermittency building blocks without assigning a type label."""
+    series = _finite_series(x)
+    laminar_mask, lengths = detect_laminar_phases(
+        series,
+        method=laminar_method,
+        eps=eps,
+        period=period,
+        window=window,
+        percentile=percentile,
+        v_min=v_min,
+    )
+    distribution = laminar_length_distribution(lengths)
+    power_law = fit_power_law_mle(lengths)
+    gof = powerlaw_gof(lengths, fit=power_law, n_bootstrap=powerlaw_gof_bootstrap, rng=rng)
+    comparison = compare_powerlaw_exponential(lengths)
+    recurrence = recurrence_laminar_lengths(
+        series[:, np.newaxis],
+        eps=eps,
+        metric=recurrence_metric,
+        percentile=percentile,
+        v_min=v_min,
+    )
+    return_kwargs = {} if return_map_kwargs is None else dict(return_map_kwargs)
+    return IntermittencySummary(
+        laminar_mask=laminar_mask,
+        laminar_lengths=lengths,
+        laminar_distribution=distribution,
+        laminar_power_law=power_law,
+        powerlaw_gof=gof,
+        family_comparison=comparison,
+        recurrence_laminarity=recurrence,
+        reinjection=reinjection_Mx(series, laminar_mask),
+        burst_amplitude=burst_amplitude_distribution(series, laminar_mask, min_tail=burst_min_tail),
+        laminar_burst_symmetry=laminar_burst_symmetry(series, laminar_mask),
+        return_map=return_map_reconstruction(series, fs=fs, **return_kwargs),
+    )
+
+
 def _detect_laminar_recurrence(series, eps, percentile, v_min):
     result = recurrence_laminar_lengths(
         series[:, np.newaxis],
@@ -827,6 +917,7 @@ __all__ = [
     "PowerLawMLE",
     "ReinjectionMx",
     "ExtremaReturnMap",
+    "IntermittencySummary",
     "ReturnMapReconstruction",
     "TangentChannel",
     "VuongComparison",
@@ -837,6 +928,7 @@ __all__ = [
     "fit_exponential",
     "fit_power_law_loglog",
     "fit_power_law_mle",
+    "intermittency_summary",
     "laminar_length_distribution",
     "laminar_burst_symmetry",
     "mean_laminar_scaling",
