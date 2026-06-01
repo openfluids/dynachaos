@@ -7,6 +7,7 @@ mod correlation_gp;
 mod coupled_logistic;
 mod embedding;
 mod entropy;
+mod intermittency;
 mod multifractal;
 mod permutation;
 mod recurrence;
@@ -33,5 +34,10 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(entropy::apen_counts, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::fuzzy_entropy_sum, m)?)?;
     m.add_function(wrap_pyfunction!(multifractal::multifractal_moments, m)?)?;
+    m.add_function(wrap_pyfunction!(intermittency::pm_type_i_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(intermittency::pm_type_ii_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(intermittency::pm_type_iii_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(intermittency::on_off_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(intermittency::logistic_type_i_oracle, m)?)?;
     Ok(())
 }

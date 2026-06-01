@@ -83,3 +83,35 @@ def multifractal_moments(
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
 ]: ...
+def pm_type_i_oracle(
+    n: int,
+    x0: float,
+    eps: float,
+    a: float,
+    modulo: bool,
+) -> npt.NDArray[np.float64]: ...
+def pm_type_ii_oracle(
+    n: int,
+    x0: float,
+    y0: float,
+    eps: float,
+    a: float,
+    theta: float,
+) -> npt.NDArray[np.float64]: ...
+def pm_type_iii_oracle(
+    n: int,
+    x0: float,
+    eps: float,
+    a: float,
+) -> npt.NDArray[np.float64]: ...
+def on_off_oracle(
+    driver: npt.NDArray[np.float64],
+    x0: float,
+    transverse_lyapunov: float,
+    noise_scale: float,
+) -> npt.NDArray[np.float64]: ...
+def logistic_type_i_oracle(
+    n: int,
+    x0: float,
+    r: float,
+) -> npt.NDArray[np.float64]: ...

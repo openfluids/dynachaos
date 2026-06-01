@@ -20,6 +20,16 @@ from dynachaos.maps.flows import (
     rossler_trajectory,
 )
 from dynachaos.maps.henon import henon, henon_jac
+from dynachaos.maps.intermittency import (
+    LOGISTIC_TYPE_I_ONSET,
+    LORENZ_INTERMITTENCY_RHO,
+    logistic_type_i_oracle,
+    lorenz_1662_oracle,
+    on_off_oracle,
+    pm_type_i_oracle,
+    pm_type_ii_oracle,
+    pm_type_iii_oracle,
+)
 from dynachaos.maps.modulated_circle import modulated_circle, rotation_numbers
 from dynachaos.maps.primitives import (
     delayed_logistic,
@@ -34,6 +44,8 @@ __all__ = [
     "CircleMap",
     "DiscreteMap",
     "HenonMap",
+    "LOGISTIC_TYPE_I_ONSET",
+    "LORENZ_INTERMITTENCY_RHO",
     "LogisticMap",
     "circle_map",
     "circle_map_derivative",
@@ -47,6 +59,8 @@ __all__ = [
     "henon_jac",
     "logistic",
     "logistic_derivative",
+    "logistic_type_i_oracle",
+    "lorenz_1662_oracle",
     "lorenz_jac",
     "lorenz_rhs",
     "lorenz_trajectory",
@@ -56,6 +70,10 @@ __all__ = [
     "map_IV",
     "map_IV_jac",
     "modulated_circle",
+    "on_off_oracle",
+    "pm_type_i_oracle",
+    "pm_type_ii_oracle",
+    "pm_type_iii_oracle",
     "rossler_jac",
     "rossler_rhs",
     "rossler_trajectory",

@@ -739,6 +739,83 @@ class TestCoupledLogisticBasinsParity:
         np.testing.assert_allclose(rust_payload["D"], python_payload["D"])
 
 
+@needs_rust
+class TestIntermittencyOracleParity:
+    """Verify Rust intermittency oracle kernels match Python fallbacks."""
+
+    def test_direct_pm_type_i_parity(self):
+        from dynachaos._rust import pm_type_i_oracle
+        from dynachaos.maps.intermittency import _pm_type_i_oracle_python
+
+        kwargs = dict(n=80, x0=0.012, eps=2e-4, a=0.8, modulo=True)
+        rust_result = np.asarray(pm_type_i_oracle(**kwargs))
+        python_result = _pm_type_i_oracle_python(**kwargs)
+
+        np.testing.assert_allclose(rust_result, python_result)
+
+    def test_direct_pm_type_ii_parity(self):
+        from dynachaos._rust import pm_type_ii_oracle
+        from dynachaos.maps.intermittency import _pm_type_ii_oracle_python
+
+        kwargs = dict(n=80, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0, theta=0.37)
+        rust_result = np.asarray(pm_type_ii_oracle(**kwargs))
+        python_result = _pm_type_ii_oracle_python(**kwargs)
+
+        np.testing.assert_allclose(rust_result, python_result)
+
+    def test_direct_pm_type_iii_parity(self):
+        from dynachaos._rust import pm_type_iii_oracle
+        from dynachaos.maps.intermittency import _pm_type_iii_oracle_python
+
+        kwargs = dict(n=80, x0=1e-3, eps=1e-3, a=1.0)
+        rust_result = np.asarray(pm_type_iii_oracle(**kwargs))
+        python_result = _pm_type_iii_oracle_python(**kwargs)
+
+        np.testing.assert_allclose(rust_result, python_result)
+
+    def test_direct_on_off_parity(self):
+        from dynachaos._rust import on_off_oracle
+        from dynachaos.maps.intermittency import _on_off_oracle_python
+
+        driver = np.random.default_rng(2026).normal(size=80)
+        rust_result = np.asarray(on_off_oracle(driver, 1e-6, 0.0, 0.25))
+        python_result = _on_off_oracle_python(driver, 1e-6, 0.0, 0.25)
+
+        np.testing.assert_allclose(rust_result, python_result)
+
+    def test_direct_logistic_type_i_parity(self):
+        from dynachaos._rust import logistic_type_i_oracle
+        from dynachaos.maps.intermittency import LOGISTIC_TYPE_I_ONSET, _logistic_type_i_oracle_python
+
+        kwargs = dict(n=80, x0=0.2, r=LOGISTIC_TYPE_I_ONSET - 1e-4)
+        rust_result = np.asarray(logistic_type_i_oracle(**kwargs))
+        python_result = _logistic_type_i_oracle_python(**kwargs)
+
+        np.testing.assert_allclose(rust_result, python_result)
+
+    def test_public_dispatch_parity(self):
+        from dynachaos.maps import intermittency as int_mod
+
+        calls = [
+            (int_mod.pm_type_i_oracle, dict(n=50, x0=0.01, eps=1e-4, a=1.0)),
+            (int_mod.pm_type_ii_oracle, dict(n=50, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0)),
+            (int_mod.pm_type_iii_oracle, dict(n=50, x0=1e-3, eps=1e-3, a=1.0)),
+            (int_mod.logistic_type_i_oracle, dict(n=50, x0=0.2)),
+            (int_mod.on_off_oracle, dict(n=50, seed=2027)),
+        ]
+
+        old_flag = int_mod._RUST_AVAILABLE
+        try:
+            for func, kwargs in calls:
+                int_mod._RUST_AVAILABLE = True
+                rust_result = func(**kwargs)
+                int_mod._RUST_AVAILABLE = False
+                python_result = func(**kwargs)
+                np.testing.assert_allclose(rust_result, python_result)
+        finally:
+            int_mod._RUST_AVAILABLE = old_flag
+
+
 class TestDiscreteMap:
     """Test the new DiscreteMap convenience class."""
 

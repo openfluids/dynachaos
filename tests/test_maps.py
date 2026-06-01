@@ -50,6 +50,16 @@ from dynachaos.maps.delayed_logistic import (
     compute_lyapunov_spectrum as compute_delayed_lyapunov_spectrum,
 )
 from dynachaos.maps.henon import henon, henon_jac
+from dynachaos.maps.intermittency import (
+    LOGISTIC_TYPE_I_ONSET,
+    LORENZ_INTERMITTENCY_RHO,
+    logistic_type_i_oracle,
+    lorenz_1662_oracle,
+    on_off_oracle,
+    pm_type_i_oracle,
+    pm_type_ii_oracle,
+    pm_type_iii_oracle,
+)
 from dynachaos.maps.modulated_circle import longest_plateau_window, modulated_circle
 from dynachaos.maps.primitives import (
     delayed_logistic,
@@ -86,6 +96,34 @@ def test_coupled_logistic_shapes():
     assert jac.shape == (2, 2)
     assert np.all(np.isfinite(out))
     assert np.all(np.isfinite(jac))
+
+
+def test_intermittency_oracles_are_deterministic_and_finite():
+    type_i = pm_type_i_oracle(64, x0=0.01, eps=1e-4, a=1.0)
+    type_ii = pm_type_ii_oracle(64, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0)
+    type_iii = pm_type_iii_oracle(64, x0=1e-3, eps=1e-3, a=1.0)
+    logistic = logistic_type_i_oracle(64, x0=0.2, r=LOGISTIC_TYPE_I_ONSET - 1e-4)
+    on_off_a = on_off_oracle(64, seed=123)
+    on_off_b = on_off_oracle(64, seed=123)
+    on_off_c = on_off_oracle(64, seed=124)
+
+    assert type_i.shape == (64,)
+    assert type_ii.shape == (64, 2)
+    assert type_iii.shape == (64,)
+    assert logistic.shape == (64,)
+    assert on_off_a.shape == (64,)
+    for series in (type_i, type_ii, type_iii, logistic, on_off_a):
+        assert np.all(np.isfinite(series))
+    np.testing.assert_allclose(on_off_a, on_off_b)
+    assert not np.array_equal(on_off_a, on_off_c)
+
+
+def test_lorenz_1662_oracle_reuses_flow_helper():
+    traj = lorenz_1662_oracle(t_span=(0.0, 0.05), dt=0.01, t_transient=0.0)
+
+    assert LORENZ_INTERMITTENCY_RHO == pytest.approx(166.2)
+    assert traj.shape == (5, 3)
+    assert np.all(np.isfinite(traj))
 
 
 def test_coupled_logistic_preserves_diagonal():
