@@ -567,6 +567,111 @@ class TestCMLJacobianParity:
         return density
 
 
+@needs_rust
+class TestCoupledLogisticBasinsParity:
+    """Verify Rust and Python coupled-logistic basin grids agree."""
+
+    def test_coupled_logistic_basin_grid_parity(self):
+        from dynachaos._rust import coupled_logistic_basin_grid
+        from dynachaos.maps.coupled_logistic import _basin_grid_python, _find_reference_orbit
+
+        A = 1.35344
+        D = 0.1
+        n_grid = 5
+        n_transient = 6
+        reference_transient = 8
+        period = 4
+
+        ref_a = _find_reference_orbit(
+            A,
+            D,
+            0.1,
+            0.6,
+            n_transient=reference_transient,
+            period=period,
+        )
+        x_range = np.linspace(-1.0, 1.0, n_grid)
+        y_range = np.linspace(-1.0, 1.0, n_grid)
+
+        python_basin = _basin_grid_python(A, D, x_range, y_range, n_transient, ref_a)
+
+        rust_basin = np.asarray(
+            coupled_logistic_basin_grid(
+                x_range,
+                y_range,
+                A,
+                D,
+                n_transient,
+                ref_a,
+            )
+        )
+
+        np.testing.assert_array_equal(rust_basin, python_basin)
+
+    def test_coupled_logistic_basin_grid_divergence_and_tie_cases(self):
+        from dynachaos._rust import coupled_logistic_basin_grid
+
+        ref_a = np.array([[0.0, 0.0]], dtype=np.float64)
+
+        diverged = np.asarray(
+            coupled_logistic_basin_grid(
+                np.array([1.0], dtype=np.float64),
+                np.array([1.0], dtype=np.float64),
+                200.0,
+                0.1,
+                1,
+                ref_a,
+            )
+        )
+        np.testing.assert_array_equal(diverged, np.array([[-1]], dtype=np.int8))
+
+        tied = np.asarray(
+            coupled_logistic_basin_grid(
+                np.array([0.0], dtype=np.float64),
+                np.array([0.0], dtype=np.float64),
+                1.0,
+                0.1,
+                0,
+                ref_a,
+            )
+        )
+        np.testing.assert_array_equal(tied, np.array([[0]], dtype=np.int8))
+
+    def test_compute_basins_parity(self, tmp_path):
+        import importlib
+
+        basin_mod = importlib.import_module("dynachaos.maps.coupled_logistic")
+
+        kwargs = {
+            "n_grid": 5,
+            "n_transient": 6,
+            "reference_transient": 8,
+            "period": 4,
+        }
+        old_flag = basin_mod._RUST_AVAILABLE
+        try:
+            basin_mod._RUST_AVAILABLE = True
+            rust_payload = basin_mod.compute_basins(
+                **kwargs,
+                output_path=tmp_path / "basins_rust.npz",
+            )
+
+            basin_mod._RUST_AVAILABLE = False
+            python_payload = basin_mod.compute_basins(
+                **kwargs,
+                output_path=tmp_path / "basins_python.npz",
+            )
+        finally:
+            basin_mod._RUST_AVAILABLE = old_flag
+
+        assert rust_payload.keys() == python_payload.keys()
+        np.testing.assert_allclose(rust_payload["x"], python_payload["x"])
+        np.testing.assert_allclose(rust_payload["y"], python_payload["y"])
+        np.testing.assert_array_equal(rust_payload["basin"], python_payload["basin"])
+        np.testing.assert_allclose(rust_payload["A"], python_payload["A"])
+        np.testing.assert_allclose(rust_payload["D"], python_payload["D"])
+
+
 class TestDiscreteMap:
     """Test the new DiscreteMap convenience class."""
 

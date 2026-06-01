@@ -21,11 +21,19 @@ OUTPUTS: figures/sec03_transition/phase_diagram.npz, phase_diagram.png
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_npz, safe_load, section_dir, write_payload as _io_write_payload
+from dynachaos.io.paths import (
+    load_or_compute_npz,
+    safe_load,
+    section_dir,
+)
+from dynachaos.io.paths import (
+    write_payload as _io_write_payload,
+)
 from dynachaos.maps._iter import (
     run_animation_sweep,
     run_transient,
@@ -33,6 +41,16 @@ from dynachaos.maps._iter import (
     trajectory_after_transient,
 )
 from dynachaos.maps.primitives import logistic, logistic_derivative
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import coupled_logistic_basin_grid as _coupled_logistic_basin_grid_rs
+
+    _RUST_AVAILABLE = True
+except ImportError:
+    _coupled_logistic_basin_grid_rs = None
+    _RUST_AVAILABLE = False
 
 FIG_DIR = section_dir("sec03_transition")
 
@@ -228,12 +246,14 @@ def compute_phase_diagram(
             print(f"  Phase diagram: row {j + 1}/{n_D}")
             _io_write_payload(
                 output_path,
-                PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(), base_dir=FIG_DIR
+                PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
+                base_dir=FIG_DIR,
             )
 
     return _io_write_payload(
         output_path,
-        PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(), base_dir=FIG_DIR
+        PhaseDiagramPayload(A_values, D_values, asym_grid, lyap_grid).to_npz(),
+        base_dir=FIG_DIR,
     )
 
 
@@ -299,6 +319,63 @@ def _find_reference_orbit(A, D, x0, y0, n_transient=500_000, period=32):
     )
 
 
+def _basin_grid_python(A, D, x_range, y_range, n_transient, ref_A):
+    """Compute coupled-logistic basin labels using the NumPy row loop."""
+    ref_B = ref_A[:, ::-1].copy()
+    n_grid = len(x_range)
+    basin = np.zeros((len(y_range), n_grid), dtype=np.int8)
+
+    for j, y0 in enumerate(y_range):
+        # Vectorize across all x values for this row
+        x = x_range.copy()
+        y = np.full(n_grid, y0)
+
+        # Transient
+        for _ in range(n_transient):
+            x_new = logistic(x, A) + D * (y - x)
+            y_new = logistic(y, A) + D * (x - y)
+            x, y = x_new, y_new
+            diverged = (np.abs(x) > 100) | (np.abs(y) > 100)
+            x = np.where(diverged, np.nan, x)
+            y = np.where(diverged, np.nan, y)
+
+        # Classify by minimum distance to either reference orbit.
+        # For each grid point, compute distance to all reference points on
+        # each reference orbit and take the minimum.
+        dist_A = np.full(n_grid, np.inf)
+        dist_B = np.full(n_grid, np.inf)
+        for k in range(len(ref_A)):
+            d_a = (x - ref_A[k, 0]) ** 2 + (y - ref_A[k, 1]) ** 2
+            d_b = (x - ref_B[k, 0]) ** 2 + (y - ref_B[k, 1]) ** 2
+            dist_A = np.minimum(dist_A, d_a)
+            dist_B = np.minimum(dist_B, d_b)
+
+        basin[j] = np.where(
+            np.isnan(x), -1, np.where(dist_A < dist_B, 1, np.where(dist_B < dist_A, 2, 0))
+        ).astype(np.int8)
+
+        if (j + 1) % 200 == 0:
+            print(f"  Basins: row {j + 1}/{len(y_range)}")
+
+    return basin
+
+
+def _basin_grid(A, D, x_range, y_range, n_transient, ref_A):
+    if _RUST_AVAILABLE and _coupled_logistic_basin_grid_rs is not None:
+        return np.asarray(
+            _coupled_logistic_basin_grid_rs(
+                np.ascontiguousarray(x_range, dtype=np.float64),
+                np.ascontiguousarray(y_range, dtype=np.float64),
+                A,
+                D,
+                int(n_transient),
+                np.ascontiguousarray(ref_A, dtype=np.float64),
+            )
+        )
+
+    return _basin_grid_python(A, D, x_range, y_range, n_transient, ref_A)
+
+
 def compute_basins(
     *,
     A=1.35344,
@@ -324,48 +401,15 @@ def compute_basins(
     # Pre-compute the two reference orbits (mirror images about y=x)
     print("  Computing reference orbits...")
     ref_A = _find_reference_orbit(A, D, 0.1, 0.6, n_transient=reference_transient, period=period)
-    # Orbit B is the mirror: (x, y) -> (y, x)
-    ref_B = ref_A[:, ::-1].copy()
 
     x_range = np.linspace(-1.0, 1.0, n_grid)
     y_range = np.linspace(-1.0, 1.0, n_grid)
-    basin = np.zeros((n_grid, n_grid), dtype=np.int8)
-
-    for j, y0 in enumerate(y_range):
-        # Vectorize across all x values for this row
-        x = x_range.copy()
-        y = np.full(n_grid, y0)
-
-        # Transient
-        for _ in range(n_transient):
-            x_new = logistic(x, A) + D * (y - x)
-            y_new = logistic(y, A) + D * (x - y)
-            x, y = x_new, y_new
-            diverged = (np.abs(x) > 100) | (np.abs(y) > 100)
-            x = np.where(diverged, np.nan, x)
-            y = np.where(diverged, np.nan, y)
-
-        # Classify by minimum distance to either reference orbit.
-        # For each grid point, compute distance to all reference points on
-        # each reference orbit and take the minimum.
-        dist_A = np.full(n_grid, np.inf)
-        dist_B = np.full(n_grid, np.inf)
-        for k in range(period):
-            d_a = (x - ref_A[k, 0]) ** 2 + (y - ref_A[k, 1]) ** 2
-            d_b = (x - ref_B[k, 0]) ** 2 + (y - ref_B[k, 1]) ** 2
-            dist_A = np.minimum(dist_A, d_a)
-            dist_B = np.minimum(dist_B, d_b)
-
-        basin[j] = np.where(
-            np.isnan(x), -1, np.where(dist_A < dist_B, 1, np.where(dist_B < dist_A, 2, 0))
-        ).astype(np.int8)
-
-        if (j + 1) % 200 == 0:
-            print(f"  Basins: row {j + 1}/{n_grid}")
+    basin = _basin_grid(A, D, x_range, y_range, n_transient, ref_A)
 
     return _io_write_payload(
         output_path,
-        {"x": x_range, "y": y_range, "basin": basin, "A": np.array([A]), "D": np.array([D])}, base_dir=FIG_DIR
+        {"x": x_range, "y": y_range, "basin": basin, "A": np.array([A]), "D": np.array([D])},
+        base_dir=FIG_DIR,
     )
 
 

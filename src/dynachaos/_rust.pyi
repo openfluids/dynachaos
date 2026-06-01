@@ -47,6 +47,14 @@ def cml_jacobian_logistic(
     eps: float,
     L: int,
 ) -> npt.NDArray[np.float64]: ...
+def coupled_logistic_basin_grid(
+    x_values: npt.NDArray[np.float64],
+    y_values: npt.NDArray[np.float64],
+    A: float,
+    D: float,
+    n_transient: int,
+    ref_a: npt.NDArray[np.float64],
+) -> npt.NDArray[np.int8]: ...
 def apen_counts(
     traj: npt.NDArray[np.float64],
     r: float,
