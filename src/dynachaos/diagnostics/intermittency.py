@@ -11,11 +11,13 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage
 from scipy.optimize import brentq
+from scipy.signal import find_peaks
 from scipy.special import zeta
 from scipy.stats import expon, ks_2samp, linregress, norm
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog as _shared_fit_power_law_loglog
 from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr
+from dynachaos.diagnostics.poincare import poincare_section
 from dynachaos.diagnostics.recurrence import laminar_lengths as recurrence_laminar_lengths
 from dynachaos.diagnostics.recurrence import recurrence_matrix
 
@@ -154,6 +156,41 @@ class LaminarBurstSymmetry:
     p_value: float
     laminar_lengths: np.ndarray
     burst_lengths: np.ndarray
+
+
+@dataclass(frozen=True)
+class ExtremaReturnMap:
+    """First-return map built from successive extrema."""
+
+    indices: np.ndarray
+    values: np.ndarray
+    points: np.ndarray
+    kind: str
+    prominence: float | None
+    distance: int | None
+
+
+@dataclass(frozen=True)
+class TangentChannel:
+    """Near-diagonal return-map channel and its linear trend."""
+
+    points: np.ndarray
+    mask: np.ndarray
+    distance_threshold: float
+    slope: float
+    intercept: float
+    rvalue: float
+    pvalue: float
+    stderr: float
+
+
+@dataclass(frozen=True)
+class ReturnMapReconstruction:
+    """Poincare section plus extrema return-map reconstruction."""
+
+    poincare: dict[str, object]
+    extrema: ExtremaReturnMap
+    tangent_channel: TangentChannel
 
 
 def detect_laminar_phases(
@@ -457,6 +494,98 @@ def laminar_burst_symmetry(x, mask):
     )
 
 
+def extrema_return_map(x, *, kind="max", prominence=None, distance=None):
+    """Build a first-return map from successive extrema in a scalar signal."""
+    series = _finite_series(x)
+    if kind == "max":
+        peak_source = series
+    elif kind == "min":
+        peak_source = -series
+    else:
+        raise ValueError("kind must be one of: 'max', 'min'")
+
+    if prominence is not None:
+        prominence = _finite_nonnegative_float(prominence, "prominence")
+    if distance is not None:
+        distance = _positive_int(distance, "distance")
+    indices, _ = find_peaks(peak_source, prominence=prominence, distance=distance)
+    values = series[indices].astype(np.float64)
+    if values.size < 2:
+        points = np.empty((0, 2), dtype=np.float64)
+    else:
+        points = np.column_stack((values[:-1], values[1:])).astype(np.float64)
+    return ExtremaReturnMap(
+        indices=indices.astype(np.int64),
+        values=values,
+        points=points,
+        kind=kind,
+        prominence=prominence,
+        distance=distance,
+    )
+
+
+def near_diagonal_tangent_channel(points, *, percentile=10.0, min_points=3):
+    """Extract a near-diagonal return-map channel using a distance percentile."""
+    points = np.asarray(points, dtype=np.float64)
+    min_points = _positive_int(min_points, "min_points")
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError("points must have shape (n, 2)")
+    if points.shape[0] < min_points:
+        raise ValueError("at least min_points return-map points are required")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite values")
+    percentile = float(percentile)
+    if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
+        raise ValueError("percentile must be in [0, 100]")
+
+    distances = np.abs(points[:, 1] - points[:, 0]) / np.sqrt(2.0)
+    threshold = float(np.percentile(distances, percentile))
+    mask = distances <= threshold
+    if np.count_nonzero(mask) < min_points:
+        order = np.argsort(distances)
+        mask = np.zeros(points.shape[0], dtype=bool)
+        mask[order[:min_points]] = True
+        threshold = float(distances[order[min_points - 1]])
+    channel = points[mask]
+    result = linregress(channel[:, 0], channel[:, 1])
+    return TangentChannel(
+        points=channel.astype(np.float64),
+        mask=mask,
+        distance_threshold=threshold,
+        slope=float(result.slope),
+        intercept=float(result.intercept),
+        rvalue=float(result.rvalue),
+        pvalue=float(result.pvalue),
+        stderr=float(result.stderr),
+    )
+
+
+def return_map_reconstruction(
+    x,
+    fs=1.0,
+    *,
+    kind="max",
+    prominence=None,
+    distance=None,
+    channel_percentile=10.0,
+    min_channel_points=3,
+    **poincare_kwargs,
+):
+    """Compose existing Poincare reconstruction with extrema return-map geometry."""
+    section = poincare_section(_finite_series(x), fs, **poincare_kwargs)
+    extrema = extrema_return_map(x, kind=kind, prominence=prominence, distance=distance)
+    channel = near_diagonal_tangent_channel(
+        extrema.points,
+        percentile=channel_percentile,
+        min_points=min_channel_points,
+    )
+    return ReturnMapReconstruction(
+        poincare=section,
+        extrema=extrema,
+        tangent_channel=channel,
+    )
+
+
 def _detect_laminar_recurrence(series, eps, percentile, v_min):
     result = recurrence_laminar_lengths(
         series[:, np.newaxis],
@@ -697,16 +826,22 @@ __all__ = [
     "PowerLawGoF",
     "PowerLawMLE",
     "ReinjectionMx",
+    "ExtremaReturnMap",
+    "ReturnMapReconstruction",
+    "TangentChannel",
     "VuongComparison",
     "compare_powerlaw_exponential",
     "burst_amplitude_distribution",
     "detect_laminar_phases",
+    "extrema_return_map",
     "fit_exponential",
     "fit_power_law_loglog",
     "fit_power_law_mle",
     "laminar_length_distribution",
     "laminar_burst_symmetry",
     "mean_laminar_scaling",
+    "near_diagonal_tangent_channel",
     "powerlaw_gof",
     "reinjection_Mx",
+    "return_map_reconstruction",
 ]

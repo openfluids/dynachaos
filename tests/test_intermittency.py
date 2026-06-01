@@ -8,6 +8,8 @@ from dynachaos.diagnostics.intermittency import (
     CandidateScalingLaw,
     compare_powerlaw_exponential,
     DiagnosticLogLogFit,
+    ExtremaReturnMap,
+    extrema_return_map,
     fit_exponential,
     fit_power_law_loglog as fit_intermittency_power_law_loglog,
     fit_power_law_mle,
@@ -18,11 +20,20 @@ from dynachaos.diagnostics.intermittency import (
     laminar_length_distribution,
     laminar_burst_symmetry,
     mean_laminar_scaling,
+    near_diagonal_tangent_channel,
     powerlaw_gof,
     reinjection_Mx,
     ReinjectionMx,
+    ReturnMapReconstruction,
+    return_map_reconstruction,
+    TangentChannel,
 )
-from dynachaos.maps.intermittency import logistic_type_i_oracle, on_off_oracle, pm_type_i_oracle
+from dynachaos.maps.intermittency import (
+    logistic_type_i_oracle,
+    lorenz_1662_oracle,
+    on_off_oracle,
+    pm_type_i_oracle,
+)
 
 
 def test_recurrence_laminar_detection_reuses_vertical_lengths():
@@ -264,3 +275,41 @@ def test_laminar_burst_symmetry_separates_on_off_from_type_i_oracle():
     np.testing.assert_array_less(0.1, on_off_symmetry.p_value)
     np.testing.assert_array_less(type_i_symmetry.p_value, 1e-6)
     np.testing.assert_array_less(on_off_symmetry.statistic, type_i_symmetry.statistic)
+
+
+def test_extrema_return_map_uses_successive_peaks():
+    t = np.linspace(0.0, 12.0 * np.pi, 4096)
+    series = np.sin(t)
+
+    result = extrema_return_map(series, kind="max")
+
+    np.testing.assert_equal(isinstance(result, ExtremaReturnMap), True)
+    np.testing.assert_equal(result.points.shape[1], 2)
+    np.testing.assert_equal(result.values.size - 1, result.points.shape[0])
+    np.testing.assert_allclose(result.points[:, 0], result.values[:-1])
+    np.testing.assert_allclose(result.points[:, 1], result.values[1:])
+
+
+def test_near_diagonal_tangent_channel_extracts_type_i_channel():
+    series = logistic_type_i_oracle(8000, x0=0.2)
+    extrema = extrema_return_map(series, kind="max")
+
+    channel = near_diagonal_tangent_channel(extrema.points, percentile=10.0)
+
+    np.testing.assert_equal(isinstance(channel, TangentChannel), True)
+    np.testing.assert_array_less(20, channel.points.shape[0])
+    np.testing.assert_allclose(channel.slope, 1.0, atol=0.05)
+    np.testing.assert_array_less(0.95, abs(channel.rvalue))
+
+
+def test_return_map_reconstruction_reuses_poincare_on_lorenz_1662():
+    traj = lorenz_1662_oracle(t_span=(0.0, 5.0), dt=0.01, t_transient=0.0)
+    series = traj[:, 0]
+
+    reconstruction = return_map_reconstruction(series, fs=100.0)
+
+    np.testing.assert_equal(isinstance(reconstruction, ReturnMapReconstruction), True)
+    np.testing.assert_equal(reconstruction.poincare["section_plane_type"], "signal_delay_pair")
+    np.testing.assert_equal(reconstruction.poincare["section_points"].shape[1], 2)
+    np.testing.assert_array_less(2, reconstruction.extrema.points.shape[0])
+    np.testing.assert_equal(isinstance(reconstruction.tangent_channel, TangentChannel), True)
