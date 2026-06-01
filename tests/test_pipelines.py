@@ -23,6 +23,7 @@ def test_section_registry_contains_all_expected_sections():
         "sec09_pattern",
         "sec10_gcm",
         "sec11_diagnostics",
+        "sec12_intermittency",
     )
 
 

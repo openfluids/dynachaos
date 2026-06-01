@@ -53,6 +53,7 @@ SECTION_ORDER = (
     "sec09_pattern",
     "sec10_gcm",
     "sec11_diagnostics",
+    "sec12_intermittency",
 )
 
 
@@ -264,6 +265,32 @@ SECTION_SPECS = {
                 ("a", "H_logistic", "C_logistic", "D", "H_delayed", "C_delayed"),
             ),
             NpzContract("rqa_measures.npz", ("D", "RR", "DET", "LAM", "ENTR")),
+        ),
+    ),
+    "sec12_intermittency": SectionSpec(
+        section_id="sec12_intermittency",
+        modules=("dynachaos.diagnostics.intermittency_figure",),
+        cache_files=("intermittency_diagnostics.npz",),
+        output_files=(
+            "intermittency_diagnostics.npz",
+            "intermittency_diagnostics.png",
+        ),
+        npz_contracts=(
+            NpzContract(
+                "intermittency_diagnostics.npz",
+                (
+                    "schema_version",
+                    "source_file",
+                    "seed",
+                    "type_i_laminar_lengths",
+                    "type_i_tail_alpha",
+                    "type_i_vuong_z",
+                    "on_off_burst_alpha",
+                    "on_off_symmetry_p",
+                    "lorenz_section_points",
+                    "lorenz_channel_slope",
+                ),
+            ),
         ),
     ),
 }
