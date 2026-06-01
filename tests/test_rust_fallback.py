@@ -568,6 +568,73 @@ class TestCMLJacobianParity:
 
 
 @needs_rust
+class TestComovingLyapunovParity:
+    """Verify specialized Rust and Python co-moving Lyapunov paths agree."""
+
+    def test_comoving_lyapunov_logistic_kernel_parity(self):
+        from dynachaos._rust import comoving_lyapunov_logistic
+        from dynachaos.diagnostics.comoving_lyapunov import _comoving_lyapunov_spectrum_python
+        from dynachaos.maps.primitives import logistic, logistic_derivative
+
+        a = 1.7
+        eps = 0.3
+        x_init = np.linspace(-0.75, 0.85, 12)
+        v_values = np.array([-0.5, 0.0, 0.75], dtype=np.float64)
+        n_iter = 37
+        n_transient = 11
+
+        python_result = _comoving_lyapunov_spectrum_python(
+            lambda x: logistic(x, a),
+            lambda x: logistic_derivative(x, a),
+            lambda x: logistic(x, a),
+            lambda x: logistic_derivative(x, a),
+            eps,
+            x_init,
+            v_values,
+            n_iter,
+            n_transient,
+        )
+        rust_result = np.asarray(
+            comoving_lyapunov_logistic(
+                x_init,
+                v_values,
+                a,
+                eps,
+                n_iter,
+                n_transient,
+            )
+        )
+
+        np.testing.assert_allclose(rust_result, python_result, rtol=1e-12, atol=1e-12)
+
+    def test_comoving_lyapunov_logistic_public_dispatch_parity(self):
+        import importlib
+
+        comoving_mod = importlib.import_module("dynachaos.diagnostics.comoving_lyapunov")
+
+        kwargs = {
+            "a": 1.85,
+            "eps": 0.3,
+            "N": 10,
+            "v_values": np.array([-0.25, 0.25], dtype=np.float64),
+            "n_iter": 25,
+            "n_transient": 7,
+            "x_init": np.linspace(-0.5, 0.6, 10),
+        }
+        old_flag = comoving_mod._RUST_AVAILABLE
+        try:
+            comoving_mod._RUST_AVAILABLE = True
+            rust_result = comoving_mod.comoving_lyapunov_spectrum_logistic(**kwargs)
+
+            comoving_mod._RUST_AVAILABLE = False
+            python_result = comoving_mod.comoving_lyapunov_spectrum_logistic(**kwargs)
+        finally:
+            comoving_mod._RUST_AVAILABLE = old_flag
+
+        np.testing.assert_allclose(rust_result, python_result, rtol=1e-12, atol=1e-12)
+
+
+@needs_rust
 class TestCoupledLogisticBasinsParity:
     """Verify Rust and Python coupled-logistic basin grids agree."""
 

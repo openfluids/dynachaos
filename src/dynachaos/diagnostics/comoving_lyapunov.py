@@ -25,7 +25,30 @@ Usage
                                           n_iter, n_transient)
 """
 
+import os
+
 import numpy as np
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import comoving_lyapunov_logistic as _comoving_lyapunov_logistic_rs
+
+    _RUST_AVAILABLE = True
+except ImportError:
+    _comoving_lyapunov_logistic_rs = None
+    _RUST_AVAILABLE = False
+
+
+def _initial_state(N, x_init=None):
+    if x_init is None:
+        rng = np.random.default_rng(42)
+        return rng.uniform(-1.0, 1.0, N)
+
+    x_init = np.asarray(x_init, dtype=np.float64)
+    if x_init.shape != (N,):
+        raise ValueError(f"x_init must have shape ({N},)")
+    return np.ascontiguousarray(x_init)
 
 
 def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transient):
@@ -73,15 +96,70 @@ def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transie
     lambda_v : ndarray, shape (len(v_values),)
         Co-moving Lyapunov exponent at each velocity.
     """
+    x_init = _initial_state(N)
+    return _comoving_lyapunov_spectrum_python(
+        f,
+        df,
+        g,
+        dg,
+        eps,
+        x_init,
+        v_values,
+        n_iter,
+        n_transient,
+    )
+
+
+def comoving_lyapunov_spectrum_logistic(
+    *,
+    a,
+    eps,
+    N,
+    v_values,
+    n_iter,
+    n_transient,
+    x_init=None,
+):
+    """Compute co-moving Lyapunov exponents for logistic CML with g=f."""
+    from dynachaos.maps.primitives import logistic, logistic_derivative
+
+    x_init = _initial_state(N, x_init)
+    v_values = np.asarray(v_values, dtype=np.float64)
+
+    if _RUST_AVAILABLE and _comoving_lyapunov_logistic_rs is not None:
+        lambda_v = np.asarray(
+            _comoving_lyapunov_logistic_rs(
+                x_init,
+                np.ascontiguousarray(v_values, dtype=np.float64),
+                float(a),
+                float(eps),
+                int(n_iter),
+                int(n_transient),
+            )
+        )
+        _print_progress(v_values, lambda_v)
+        return lambda_v
+
+    return _comoving_lyapunov_spectrum_python(
+        lambda x: logistic(x, a),
+        lambda x: logistic_derivative(x, a),
+        lambda x: logistic(x, a),
+        lambda x: logistic_derivative(x, a),
+        eps,
+        x_init,
+        v_values,
+        n_iter,
+        n_transient,
+    )
+
+
+def _comoving_lyapunov_spectrum_python(f, df, g, dg, eps, x_init, v_values, n_iter, n_transient):
     v_values = np.asarray(v_values, dtype=np.float64)
     n_vel = len(v_values)
+    N = len(x_init)
     center = N // 2
 
-    # Initialize CML state and run transient to reach the attractor
-    rng = np.random.default_rng(42)
-    x_init = rng.uniform(-1.0, 1.0, N)
-
-    x = x_init.copy()
+    x = np.asarray(x_init, dtype=np.float64).copy()
     for _ in range(n_transient):
         fx = f(x)
         gx = g(x)
@@ -156,6 +234,17 @@ def comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transie
             lambda_v[iv] = -10.0
 
         if (iv + 1) % 50 == 0 or iv == 0:
-            print(f"  v={v:+.2f}: lambda={lambda_v[iv]:.4f}  [{iv + 1}/{n_vel}]")
+            _print_one_progress(v, lambda_v[iv], iv, n_vel)
 
     return lambda_v
+
+
+def _print_progress(v_values, lambda_v):
+    n_vel = len(v_values)
+    for iv, v in enumerate(v_values):
+        if (iv + 1) % 50 == 0 or iv == 0:
+            _print_one_progress(v, lambda_v[iv], iv, n_vel)
+
+
+def _print_one_progress(v, value, iv, n_vel):
+    print(f"  v={v:+.2f}: lambda={value:.4f}  [{iv + 1}/{n_vel}]")

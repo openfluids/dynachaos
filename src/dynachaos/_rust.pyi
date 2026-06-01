@@ -47,6 +47,14 @@ def cml_jacobian_logistic(
     eps: float,
     L: int,
 ) -> npt.NDArray[np.float64]: ...
+def comoving_lyapunov_logistic(
+    x_init: npt.NDArray[np.float64],
+    v_values: npt.NDArray[np.float64],
+    a: float,
+    eps: float,
+    n_iter: int,
+    n_transient: int,
+) -> npt.NDArray[np.float64]: ...
 def coupled_logistic_basin_grid(
     x_values: npt.NDArray[np.float64],
     y_values: npt.NDArray[np.float64],

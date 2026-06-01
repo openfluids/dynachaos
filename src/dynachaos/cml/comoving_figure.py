@@ -23,7 +23,6 @@ USAGE:   python src/dynachaos/cml/comoving_figure.py
 import numpy as np
 
 from dynachaos.io.paths import safe_load, section_dir
-from dynachaos.maps.primitives import logistic, logistic_derivative
 
 FIG_DIR = section_dir("sec08_sti")
 OUTPUT_NPZ = FIG_DIR / "comoving_lyapunov.npz"
@@ -37,7 +36,7 @@ OUTPUT_PNG = FIG_DIR / "comoving_lyapunov.png"
 
 def compute():
     """Compute co-moving Lyapunov exponent for three values of a."""
-    from dynachaos.diagnostics.comoving_lyapunov import comoving_lyapunov_spectrum
+    from dynachaos.diagnostics.comoving_lyapunov import comoving_lyapunov_spectrum_logistic
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -53,18 +52,14 @@ def compute():
     all_lambda = {}
     for ia, (a, label) in enumerate(zip(a_values, a_labels)):
         print(f"a={a} ({label})...")
-
-        def f(x, _a=a):
-            return logistic(x, _a)
-
-        def df(x, _a=a):
-            return logistic_derivative(x, _a)
-
-        # Coupling function g = f, dg = df
-        g = f
-        dg = df
-
-        lam_v = comoving_lyapunov_spectrum(f, df, g, dg, eps, N, v_values, n_iter, n_transient)
+        lam_v = comoving_lyapunov_spectrum_logistic(
+            a=a,
+            eps=eps,
+            N=N,
+            v_values=v_values,
+            n_iter=n_iter,
+            n_transient=n_transient,
+        )
         all_lambda[f"lambda_a{a:.2f}"] = lam_v
 
         # Save iteratively after each a value
