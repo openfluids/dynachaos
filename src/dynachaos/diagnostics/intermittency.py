@@ -12,7 +12,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.optimize import brentq
 from scipy.special import zeta
-from scipy.stats import expon, norm
+from scipy.stats import expon, linregress, norm
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog as _shared_fit_power_law_loglog
 from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr
@@ -92,6 +92,32 @@ class DiagnosticLogLogFit:
     local_slopes: np.ndarray
     scaling_mask: np.ndarray
     diagnostic_only: bool = True
+
+
+@dataclass(frozen=True)
+class CandidateScalingLaw:
+    """Least-squares candidate law for contested mean-laminar scaling."""
+
+    name: str
+    coefficients: np.ndarray
+    residual_sum_squares: float
+
+
+@dataclass(frozen=True)
+class MeanLaminarScaling:
+    """Mean laminar length scaling summary.
+
+    ``beta`` is estimated from ``<l> ~ eps**(-beta)``. The Type-II/III mean
+    scaling is assumption dependent, so this result also reports the
+    ``eps^-1`` and ``log(1/eps)`` candidate-law residuals without choosing a
+    mechanism label.
+    """
+
+    beta: float
+    loglog: DiagnosticLogLogFit
+    inverse_epsilon: CandidateScalingLaw
+    logarithmic: CandidateScalingLaw
+    rpd_alpha: float | None
 
 
 def detect_laminar_phases(
@@ -283,6 +309,35 @@ def fit_power_law_loglog(x, y, *, min_points=5):
         rvalue=rvalue,
         local_slopes=local_slopes,
         scaling_mask=scaling_mask,
+    )
+
+
+def mean_laminar_scaling(eps, mean_lengths, *, rpd_alpha=None, min_points=3):
+    """Estimate ``<l> ~ eps**(-beta)`` and report contested alternatives.
+
+    Type-I intermittency has robust ``beta ~= 1/2`` under the standard
+    assumptions. Type-II/III mean scaling is RPD-dependent, so both
+    ``eps^-1`` and ``log(1/eps)`` candidate fits are returned along with the
+    optional RPD exponent from :func:`reinjection_Mx` once available.
+    """
+    eps = _positive_observations(eps)
+    mean_lengths = _positive_observations(mean_lengths)
+    if eps.shape != mean_lengths.shape:
+        raise ValueError("eps and mean_lengths must have matching shape")
+    if rpd_alpha is not None:
+        rpd_alpha = float(rpd_alpha)
+        if not np.isfinite(rpd_alpha):
+            raise ValueError("rpd_alpha must be finite when provided")
+
+    loglog = fit_power_law_loglog(eps, mean_lengths, min_points=min_points)
+    inverse = _fit_inverse_epsilon_candidate(eps, mean_lengths)
+    logarithmic = _fit_logarithmic_candidate(eps, mean_lengths)
+    return MeanLaminarScaling(
+        beta=float(-loglog.slope),
+        loglog=loglog,
+        inverse_epsilon=inverse,
+        logarithmic=logarithmic,
+        rpd_alpha=rpd_alpha,
     )
 
 
@@ -486,10 +541,34 @@ def _sample_power_law_tail(fit, rng, size):
     return samples.astype(np.float64)
 
 
+def _fit_inverse_epsilon_candidate(eps, mean_lengths):
+    design = (1.0 / eps)[:, np.newaxis]
+    coefficients, *_ = np.linalg.lstsq(design, mean_lengths, rcond=None)
+    residual = mean_lengths - design @ coefficients
+    return CandidateScalingLaw(
+        name="eps^-1",
+        coefficients=coefficients.astype(np.float64),
+        residual_sum_squares=float(np.sum(residual * residual)),
+    )
+
+
+def _fit_logarithmic_candidate(eps, mean_lengths):
+    x = np.log(1.0 / eps)
+    result = linregress(x, mean_lengths)
+    residual = mean_lengths - (result.intercept + result.slope * x)
+    return CandidateScalingLaw(
+        name="log(1/eps)",
+        coefficients=np.array([result.intercept, result.slope], dtype=np.float64),
+        residual_sum_squares=float(np.sum(residual * residual)),
+    )
+
+
 __all__ = [
+    "CandidateScalingLaw",
     "DiagnosticLogLogFit",
     "ExponentialFit",
     "LaminarLengthDistribution",
+    "MeanLaminarScaling",
     "PowerLawGoF",
     "PowerLawMLE",
     "VuongComparison",
@@ -499,5 +578,6 @@ __all__ = [
     "fit_power_law_loglog",
     "fit_power_law_mle",
     "laminar_length_distribution",
+    "mean_laminar_scaling",
     "powerlaw_gof",
 ]

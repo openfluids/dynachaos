@@ -20,9 +20,11 @@ from dynachaos.diagnostics.entropy import (
     sample_entropy,
 )
 from dynachaos.diagnostics.intermittency import (
+    CandidateScalingLaw,
     DiagnosticLogLogFit,
     ExponentialFit,
     LaminarLengthDistribution,
+    MeanLaminarScaling,
     PowerLawGoF,
     PowerLawMLE,
     VuongComparison,
@@ -32,6 +34,7 @@ from dynachaos.diagnostics.intermittency import (
     fit_power_law_mle,
     fit_power_law_loglog as fit_intermittency_power_law_loglog,
     laminar_length_distribution,
+    mean_laminar_scaling,
     powerlaw_gof,
 )
 from dynachaos.diagnostics.lyapunov import (
@@ -59,6 +62,7 @@ __all__ = [
     "cao_method",
     "complexity_entropy",
     "compare_powerlaw_exponential",
+    "CandidateScalingLaw",
     "correlation_dimension",
     "correlation_integral",
     "embed_time_delay",
@@ -71,6 +75,7 @@ __all__ = [
     "ExponentialFit",
     "LaminarLengthsResult",
     "LaminarLengthDistribution",
+    "MeanLaminarScaling",
     "PowerLawGoF",
     "PowerLawMLE",
     "VuongComparison",
@@ -79,6 +84,7 @@ __all__ = [
     "fit_intermittency_power_law_loglog",
     "fit_power_law_mle",
     "laminar_length_distribution",
+    "mean_laminar_scaling",
     "laminar_lengths",
     "lyapunov_exponent_1d",
     "lyapunov_spectrum",

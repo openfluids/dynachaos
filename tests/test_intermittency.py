@@ -3,17 +3,20 @@ import pytest
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog
 from dynachaos.diagnostics.intermittency import (
+    CandidateScalingLaw,
     compare_powerlaw_exponential,
     DiagnosticLogLogFit,
     fit_exponential,
     fit_power_law_loglog as fit_intermittency_power_law_loglog,
     fit_power_law_mle,
     LaminarLengthDistribution,
+    MeanLaminarScaling,
     detect_laminar_phases,
     laminar_length_distribution,
+    mean_laminar_scaling,
     powerlaw_gof,
 )
-from dynachaos.maps.intermittency import logistic_type_i_oracle
+from dynachaos.maps.intermittency import logistic_type_i_oracle, pm_type_i_oracle
 
 
 def test_recurrence_laminar_detection_reuses_vertical_lengths():
@@ -167,3 +170,32 @@ def test_intermittency_loglog_fit_is_marked_diagnostic_only():
     assert isinstance(fit, DiagnosticLogLogFit)
     np.testing.assert_equal(fit.diagnostic_only, True)
     assert fit.slope == pytest.approx(-1.5)
+
+
+def test_mean_laminar_scaling_recovers_type_i_beta_from_oracle_sweep():
+    eps_values = np.logspace(-4.0, -2.0, 7)
+    mean_lengths = []
+    for eps in eps_values:
+        orbit = pm_type_i_oracle(20_000, x0=0.0, eps=eps, a=1.0, modulo=False)
+        crossing = np.argmax(orbit > 0.5)
+        mean_lengths.append(crossing + 1)
+
+    scaling = mean_laminar_scaling(eps_values, np.asarray(mean_lengths, dtype=np.float64))
+
+    np.testing.assert_equal(isinstance(scaling, MeanLaminarScaling), True)
+    np.testing.assert_allclose(scaling.beta, 0.5, atol=0.08)
+    np.testing.assert_equal(scaling.loglog.diagnostic_only, True)
+
+
+def test_mean_laminar_scaling_reports_contested_candidate_laws_and_rpd_alpha():
+    eps_values = np.logspace(-4.0, -2.0, 8)
+    mean_lengths = 2.0 * np.log(1.0 / eps_values) + 1.0
+
+    scaling = mean_laminar_scaling(eps_values, mean_lengths, rpd_alpha=0.25)
+
+    assert isinstance(scaling.inverse_epsilon, CandidateScalingLaw)
+    assert isinstance(scaling.logarithmic, CandidateScalingLaw)
+    assert scaling.inverse_epsilon.name == "eps^-1"
+    assert scaling.logarithmic.name == "log(1/eps)"
+    assert scaling.rpd_alpha == pytest.approx(0.25)
+    assert scaling.logarithmic.residual_sum_squares < scaling.inverse_epsilon.residual_sum_squares
