@@ -37,6 +37,12 @@ def correlation_counts(
     theiler_window: int = 0,
     use_chebyshev: bool = True,
 ) -> npt.NDArray[np.int64]: ...
+def cml_jacobian_logistic(
+    x: npt.NDArray[np.float64],
+    a: float,
+    eps: float,
+    L: int,
+) -> npt.NDArray[np.float64]: ...
 def apen_counts(
     traj: npt.NDArray[np.float64],
     r: float,

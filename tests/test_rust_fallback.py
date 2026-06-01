@@ -405,6 +405,112 @@ class TestEntropyRustBoundaries:
         assert fuzzy_entropy_sum(traj, 1.0, 2, sys.maxsize) == 0.0
 
 
+@needs_rust
+class TestCMLJacobianParity:
+    @pytest.mark.parametrize("L", [1, 3, 5])
+    def test_cml_jacobian_logistic_direct_rust_matches_python_path(self, L):
+        from dynachaos._rust import cml_jacobian_logistic as rust_jacobian
+        from dynachaos.cml import primitives as cml_mod
+
+        x = np.array([0.125, -0.25, 0.375, -0.5, 0.625], dtype=np.float64)
+        a = 1.73
+        eps = 0.31
+
+        old_flag = cml_mod._RUST_AVAILABLE
+        cml_mod._RUST_AVAILABLE = False
+        try:
+            py_jacobian = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
+        finally:
+            cml_mod._RUST_AVAILABLE = old_flag
+
+        rust_jacobian_flat = np.asarray(rust_jacobian(x, a=a, eps=eps, L=L))
+        rust_jacobian_matrix = rust_jacobian_flat.reshape((L, L))
+
+        np.testing.assert_allclose(rust_jacobian_matrix, py_jacobian, atol=0.0, rtol=0.0)
+
+    def test_cml_jacobian_public_dispatcher_matches_python_path(self):
+        from dynachaos.cml import primitives as cml_mod
+
+        x = np.array([0.2, -0.1, 0.4, -0.3], dtype=np.float64)
+        a = 1.91
+        eps = 0.27
+        L = len(x)
+
+        old_flag = cml_mod._RUST_AVAILABLE
+        try:
+            cml_mod._RUST_AVAILABLE = True
+            rust_path = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
+
+            cml_mod._RUST_AVAILABLE = False
+            python_path = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
+        finally:
+            cml_mod._RUST_AVAILABLE = old_flag
+
+        np.testing.assert_allclose(rust_path, python_path, atol=0.0, rtol=0.0)
+
+    def test_cml_jacobian_logistic_rejects_invalid_l(self):
+        from dynachaos._rust import cml_jacobian_logistic as rust_jacobian
+
+        x = np.array([0.1, -0.2, 0.3], dtype=np.float64)
+
+        with pytest.raises(ValueError, match="L must satisfy"):
+            rust_jacobian(x, 1.5, 0.2, 0)
+
+        with pytest.raises(ValueError, match="L must satisfy"):
+            rust_jacobian(x, 1.5, 0.2, len(x) + 1)
+
+    def test_cml_lyapunov_density_inner_loop_parity(self):
+        rust_density = self._small_lyapunov_density(use_rust=True)
+        python_density = self._small_lyapunov_density(use_rust=False)
+
+        np.testing.assert_allclose(rust_density, python_density, atol=1e-14, rtol=1e-14)
+
+    def _small_lyapunov_density(self, use_rust):
+        from dynachaos.cml import primitives as cml_mod
+
+        N = 6
+        eps = 0.3
+        a_values = np.array([1.55, 1.82])
+        L_values = np.array([2, 4, 6])
+        n_transient = 5
+        n_iter = 10
+        rng = np.random.default_rng(123)
+
+        density = np.empty((len(a_values), len(L_values)))
+        old_flag = cml_mod._RUST_AVAILABLE
+        cml_mod._RUST_AVAILABLE = use_rust
+        try:
+            for ia, a in enumerate(a_values):
+                x = rng.uniform(-0.5, 0.5, N)
+                for _ in range(n_transient):
+                    x = cml_mod.cml_step_logistic(x, a, eps)
+
+                for iL, L in enumerate(L_values):
+                    x_run = x.copy()
+                    v = rng.standard_normal(L)
+                    v /= np.linalg.norm(v)
+
+                    log_sum = 0.0
+                    for _ in range(n_iter):
+                        jacobian = cml_mod.cml_jacobian_subblock_logistic(x_run, a, eps, L)
+                        v = jacobian @ v
+                        norm_v = np.linalg.norm(v)
+                        if norm_v > 0:
+                            log_sum += np.log(norm_v)
+                            v /= norm_v
+                        else:
+                            log_sum += -100.0
+                            v = rng.standard_normal(L)
+                            v /= np.linalg.norm(v)
+                        x_run = cml_mod.cml_step_logistic(x_run, a, eps)
+
+                    density[ia, iL] = log_sum / n_iter / L
+        finally:
+            cml_mod._RUST_AVAILABLE = old_flag
+
+        return density
+
+
 class TestDiscreteMap:
     """Test the new DiscreteMap convenience class."""
 

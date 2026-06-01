@@ -1,8 +1,20 @@
 """Low-level reusable CML/GCM kernels and numeric helpers."""
 
+import os
+
 import numpy as np
 
 from dynachaos.maps.primitives import logistic, logistic_derivative
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import cml_jacobian_logistic as _cml_jacobian_logistic_rs
+
+    _RUST_AVAILABLE = True
+except ImportError:
+    _cml_jacobian_logistic_rs = None
+    _RUST_AVAILABLE = False
 
 
 def _roll_pair(values, axis):
@@ -92,11 +104,16 @@ def sustained_positive_mask(values, threshold=0.02, min_run=4):
 
 def cml_jacobian_subblock_logistic(x, a, eps, L):
     """Jacobian block for logistic CML subsystem (sites 0..L-1)."""
-    N = len(x)
+    values = np.asarray(x, dtype=np.float64)
+    N = len(values)
     if L < 1 or L > N:
         raise ValueError(f"L must satisfy 1 <= L <= N (got L={L}, N={N})")
 
-    dfx = logistic_derivative(x, a)
+    if _RUST_AVAILABLE and _cml_jacobian_logistic_rs is not None:
+        flat = _cml_jacobian_logistic_rs(np.ascontiguousarray(values), a, eps, L)
+        return np.asarray(flat).reshape((L, L))
+
+    dfx = logistic_derivative(values, a)
     J = np.zeros((L, L))
     for i in range(L):
         J[i, i] = (1.0 - eps) * dfx[i]
