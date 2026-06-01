@@ -34,11 +34,9 @@ from scipy.special import zeta
 from scipy.stats import expon, ks_2samp, linregress, norm
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog as _shared_fit_power_law_loglog
-from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr
-from dynachaos.diagnostics.poincare import poincare_section
-from dynachaos.diagnostics.recurrence import LaminarLengthsResult
+from dynachaos.diagnostics.poincare import _auto_delay_from_autocorr, poincare_section
+from dynachaos.diagnostics.recurrence import LaminarLengthsResult, recurrence_matrix
 from dynachaos.diagnostics.recurrence import laminar_lengths as recurrence_laminar_lengths
-from dynachaos.diagnostics.recurrence import recurrence_matrix
 
 
 @dataclass(frozen=True)
@@ -270,8 +268,8 @@ def laminar_length_distribution(lengths):
             probabilities=empty_float,
         )
 
-    bin_edges = np.histogram_bin_edges(lengths, bins="fd")
-    density, bin_edges = np.histogram(lengths, bins=bin_edges, density=True)
+    bin_edges = _bounded_histogram_bin_edges(lengths)
+    density, bin_edges = _finite_histogram_mass(lengths, bin_edges)
     values, counts = np.unique(lengths, return_counts=True)
     probabilities = counts / np.sum(counts)
     return LaminarLengthDistribution(
@@ -305,7 +303,10 @@ def fit_power_law_mle(lengths, *, discrete=None, min_tail=None):
         tail = data[data >= x_min]
         if tail.size < min_tail:
             continue
-        csn_alpha = _discrete_power_law_alpha(tail, x_min) if discrete else _continuous_power_law_alpha(tail, x_min)
+        if discrete:
+            csn_alpha = _discrete_power_law_alpha(tail, x_min)
+        else:
+            csn_alpha = _continuous_power_law_alpha(tail, x_min)
         ks_distance = _power_law_ks(tail, x_min, csn_alpha, discrete)
         if best_fit is None or ks_distance < best_fit.ks_distance:
             best_fit = PowerLawMLE(
@@ -503,8 +504,8 @@ def burst_amplitude_distribution(x, mask, *, min_tail=None):
     if amplitudes.size < 2:
         raise ValueError("at least two positive burst amplitudes are required")
 
-    bin_edges = np.histogram_bin_edges(amplitudes, bins="fd")
-    density, bin_edges = np.histogram(amplitudes, bins=bin_edges, density=True)
+    bin_edges = _bounded_histogram_bin_edges(amplitudes)
+    density, bin_edges = _finite_histogram_mass(amplitudes, bin_edges)
     return BurstAmplitudeDistribution(
         amplitudes=amplitudes.astype(np.float64),
         bin_edges=bin_edges.astype(np.float64),
@@ -816,7 +817,7 @@ def _positive_int(value, name):
 
 
 def _continuous_power_law_alpha(tail, x_min):
-    denominator = np.sum(np.log(tail / x_min))
+    denominator = np.sum(np.log(tail) - np.log(x_min))
     if denominator <= 0.0:
         raise ValueError("continuous power-law tail has zero logarithmic spread")
     return 1.0 + tail.size / denominator
@@ -827,14 +828,13 @@ def _discrete_power_law_alpha(tail, x_min):
     n = tail.size
 
     def score(alpha):
-        step = max(1e-5, alpha * 1e-5)
+        step = _zeta_derivative_step(alpha)
         z_left = zeta(alpha - step, x_min)
         z_right = zeta(alpha + step, x_min)
-        z_mid = zeta(alpha, x_min)
         derivative = (np.log(z_right) - np.log(z_left)) / (2.0 * step)
         return -sum_log - n * derivative
 
-    lower = 1.0 + np.finfo(float).eps
+    lower = 1.0 + 1e-6
     upper = 10.0
     try:
         while score(upper) > 0.0 and upper < 100.0:
@@ -845,6 +845,55 @@ def _discrete_power_law_alpha(tail, x_min):
         if denominator <= 0.0:
             raise
         return float(1.0 + n / denominator)
+
+
+def _bounded_histogram_bin_edges(values, *, max_bins=512):
+    data = np.asarray(values, dtype=np.float64).ravel()
+    if data.size == 0:
+        return np.empty(0, dtype=np.float64)
+    data_min = float(np.min(data))
+    data_max = float(np.max(data))
+    if data_min == data_max:
+        width = abs(data_min) * 0.5 if data_min != 0.0 else 0.5
+        return np.array([data_min - width, data_max + width], dtype=np.float64)
+
+    max_bins = _positive_int(max_bins, "max_bins")
+    q25, q75 = np.percentile(data, [25.0, 75.0])
+    iqr = q75 - q25
+    data_range = data_max - data_min
+    if iqr > 0.0:
+        log_fd_width = np.log(2.0) + np.log(iqr) - np.log(np.cbrt(data.size))
+        log_bin_ratio = np.log(data_range) - log_fd_width
+        if log_bin_ratio > np.log(max_bins):
+            n_bins = max_bins + 1
+        else:
+            n_bins = int(np.ceil(np.exp(log_bin_ratio)))
+    else:
+        n_bins = int(np.ceil(np.sqrt(data.size)))
+
+    if n_bins > max_bins and data_min > 0.0 and data_max / data_min > 1e6:
+        with np.errstate(under="ignore"):
+            return np.geomspace(data_min, data_max, max_bins + 1, dtype=np.float64)
+
+    n_bins = min(max(n_bins, 1), max_bins)
+    return np.linspace(data_min, data_max, n_bins + 1, dtype=np.float64)
+
+
+def _finite_histogram_mass(values, bin_edges):
+    counts, bin_edges = np.histogram(values, bins=bin_edges, density=False)
+    total = np.sum(counts)
+    if total == 0:
+        mass = np.zeros_like(counts, dtype=np.float64)
+    else:
+        mass = counts.astype(np.float64) / total
+    return mass, bin_edges
+
+
+def _zeta_derivative_step(alpha):
+    distance_to_pole = alpha - 1.0
+    if distance_to_pole <= 0.0:
+        raise ValueError("discrete power-law alpha must be greater than one")
+    return min(max(1e-6, alpha * 1e-5), 0.5 * distance_to_pole)
 
 
 def _power_law_ks(tail, x_min, csn_alpha, discrete):
@@ -859,14 +908,16 @@ def _power_law_cdf(values, x_min, csn_alpha, discrete):
     if discrete:
         floors = np.floor(values)
         return 1.0 - zeta(csn_alpha, floors + 1.0) / zeta(csn_alpha, x_min)
-    return 1.0 - (values / x_min) ** (1.0 - csn_alpha)
+    log_ratio = np.log(values) - np.log(x_min)
+    return 1.0 - np.exp((1.0 - csn_alpha) * log_ratio)
 
 
 def _power_law_logpdf(values, x_min, csn_alpha, discrete):
     values = np.asarray(values, dtype=np.float64)
     if discrete:
         return -csn_alpha * np.log(values) - np.log(zeta(csn_alpha, x_min))
-    return np.log(csn_alpha - 1.0) - np.log(x_min) - csn_alpha * np.log(values / x_min)
+    log_ratio = np.log(values) - np.log(x_min)
+    return np.log(csn_alpha - 1.0) - np.log(x_min) - csn_alpha * log_ratio
 
 
 def _sample_power_law_tail(fit, rng, size):

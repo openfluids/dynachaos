@@ -3,32 +3,34 @@ import pytest
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog
 from dynachaos.diagnostics.intermittency import (
-    burst_amplitude_distribution,
     BurstAmplitudeDistribution,
     CandidateScalingLaw,
-    compare_powerlaw_exponential,
     DiagnosticLogLogFit,
     ExtremaReturnMap,
+    IntermittencySummary,
+    LaminarBurstSymmetry,
+    LaminarLengthDistribution,
+    MeanLaminarScaling,
+    ReinjectionMx,
+    ReturnMapReconstruction,
+    TangentChannel,
+    burst_amplitude_distribution,
+    compare_powerlaw_exponential,
+    detect_laminar_phases,
     extrema_return_map,
     fit_exponential,
-    fit_power_law_loglog as fit_intermittency_power_law_loglog,
     fit_power_law_mle,
-    IntermittencySummary,
     intermittency_summary,
-    LaminarLengthDistribution,
-    LaminarBurstSymmetry,
-    MeanLaminarScaling,
-    detect_laminar_phases,
-    laminar_length_distribution,
     laminar_burst_symmetry,
+    laminar_length_distribution,
     mean_laminar_scaling,
     near_diagonal_tangent_channel,
     powerlaw_gof,
     reinjection_Mx,
-    ReinjectionMx,
-    ReturnMapReconstruction,
     return_map_reconstruction,
-    TangentChannel,
+)
+from dynachaos.diagnostics.intermittency import (
+    fit_power_law_loglog as fit_intermittency_power_law_loglog,
 )
 from dynachaos.maps.intermittency import (
     logistic_type_i_oracle,
@@ -137,6 +139,17 @@ def test_fit_power_law_mle_discrete_hurwitz_zeta_path_is_finite():
     assert fit.csn_alpha > 1.0
     assert fit.alpha < -1.0
     assert fit.n_tail >= 1000
+    assert np.isfinite(fit.ks_distance)
+
+
+def test_fit_power_law_mle_discrete_hurwitz_zeta_path_is_warning_free():
+    samples = np.r_[np.ones(500, dtype=np.int64), np.arange(2, 80, dtype=np.int64)]
+
+    with np.errstate(all="raise"):
+        fit = fit_power_law_mle(samples, discrete=True, min_tail=20)
+
+    np.testing.assert_equal(fit.discrete, True)
+    assert fit.csn_alpha > 1.0
     assert np.isfinite(fit.ks_distance)
 
 
@@ -260,6 +273,61 @@ def test_burst_amplitude_distribution_detects_inverse_amplitude_law():
     np.testing.assert_equal(isinstance(result, BurstAmplitudeDistribution), True)
     np.testing.assert_allclose(result.power_law.alpha, -1.0, atol=0.15)
     np.testing.assert_equal(result.amplitudes.size, amplitudes.size)
+
+
+def test_burst_amplitude_distribution_bounds_heavy_tailed_fd_bins():
+    amplitudes = np.r_[
+        np.full(1000, 1e-76),
+        np.full(1000, 2e-76),
+        [1e-20, 1e-8, 1.0, 1e8, 1e20],
+    ]
+    mask = np.zeros(amplitudes.size, dtype=bool)
+
+    with np.errstate(all="raise"):
+        result = burst_amplitude_distribution(amplitudes, mask, min_tail=20)
+
+    np.testing.assert_equal(isinstance(result, BurstAmplitudeDistribution), True)
+    np.testing.assert_array_less(result.bin_edges.size, 514)
+    np.testing.assert_equal(np.all(np.isfinite(result.bin_edges)), True)
+    np.testing.assert_array_less(0.0, np.diff(result.bin_edges))
+    np.testing.assert_equal(np.all(np.isfinite(result.density)), True)
+
+
+def test_burst_amplitude_distribution_bounds_overflowing_fd_ratio():
+    amplitudes = np.r_[
+        np.full(1000, 1e-308),
+        np.full(1000, 2e-308),
+        [1e-200, 1e-100, 1.0, 1e100, 1e308],
+    ]
+    mask = np.zeros(amplitudes.size, dtype=bool)
+
+    with np.errstate(all="raise"):
+        result = burst_amplitude_distribution(amplitudes, mask, min_tail=20)
+
+    np.testing.assert_equal(isinstance(result, BurstAmplitudeDistribution), True)
+    np.testing.assert_array_less(result.bin_edges.size, 514)
+    np.testing.assert_equal(np.all(np.isfinite(result.bin_edges)), True)
+    np.testing.assert_equal(np.all(np.isfinite(result.density)), True)
+
+
+def test_burst_amplitude_distribution_handles_on_off_oracle_regression():
+    on_off = on_off_oracle(
+        20_000,
+        x0=1e-4,
+        transverse_lyapunov=0.0,
+        noise_scale=0.8,
+        seed=1092158367,
+    )
+    threshold = np.percentile(np.abs(on_off), 50.0)
+    mask = np.abs(on_off) <= threshold
+
+    with np.errstate(all="raise"):
+        result = burst_amplitude_distribution(on_off, mask)
+
+    np.testing.assert_equal(isinstance(result, BurstAmplitudeDistribution), True)
+    np.testing.assert_array_less(result.bin_edges.size, 514)
+    np.testing.assert_equal(np.all(np.isfinite(result.bin_edges)), True)
+    np.testing.assert_equal(np.all(np.isfinite(result.density)), True)
 
 
 def test_laminar_burst_symmetry_separates_on_off_from_type_i_oracle():
