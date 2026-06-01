@@ -6,9 +6,54 @@
 //! They validate non-empty square shape only; public RQA semantics such as
 //! recurrence-matrix symmetry are enforced by `dynachaos.diagnostics.recurrence.rqa`.
 
-use numpy::{PyArray1, PyReadonlyArray2};
+use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+/// Count consecutive `true` run lengths in a one-dimensional boolean mask.
+///
+/// Parameters
+/// ----------
+/// mask : numpy.ndarray, shape (N,), dtype bool
+///     Boolean mask to scan.
+/// min_length : int
+///     Minimum run length to record.
+///
+/// Returns
+/// -------
+/// numpy.ndarray of int64
+///     Run lengths that meet the minimum threshold.
+#[pyfunction]
+#[pyo3(signature = (mask, min_length))]
+pub fn count_line_lengths<'py>(
+    py: Python<'py>,
+    mask: PyReadonlyArray1<'py, bool>,
+    min_length: usize,
+) -> PyResult<Bound<'py, PyArray1<i64>>> {
+    if min_length == 0 {
+        return Err(PyValueError::new_err("min_length must be > 0"));
+    }
+
+    let arr = mask.as_array();
+    let mut lengths: Vec<i64> = Vec::new();
+    let mut current: usize = 0;
+
+    for &value in arr.iter() {
+        if value {
+            current += 1;
+        } else {
+            if current >= min_length {
+                lengths.push(current as i64);
+            }
+            current = 0;
+        }
+    }
+    if current >= min_length {
+        lengths.push(current as i64);
+    }
+
+    Ok(PyArray1::from_vec(py, lengths))
+}
 
 /// Extract diagonal line lengths from the upper triangle of a recurrence matrix.
 ///

@@ -22,6 +22,7 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(embedding::select_dimension_cao, m)?)?;
     m.add_function(wrap_pyfunction!(correlation_gp::correlation_counts, m)?)?;
     m.add_function(wrap_pyfunction!(cml::cml_jacobian_logistic, m)?)?;
+    m.add_function(wrap_pyfunction!(recurrence::count_line_lengths, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::apen_counts, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::fuzzy_entropy_sum, m)?)?;
     m.add_function(wrap_pyfunction!(multifractal::multifractal_moments, m)?)?;

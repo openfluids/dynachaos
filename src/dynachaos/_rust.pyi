@@ -11,6 +11,10 @@ def vertical_lines(
     r: npt.NDArray[np.bool_],
     v_min: int = 2,
 ) -> npt.NDArray[np.int64]: ...
+def count_line_lengths(
+    mask: npt.NDArray[np.bool_],
+    min_length: int,
+) -> npt.NDArray[np.int64]: ...
 def ordinal_distribution(
     x: npt.NDArray[np.float64],
     d: int = 5,

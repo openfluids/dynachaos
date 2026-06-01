@@ -65,6 +65,62 @@ class TestRecurrenceParity:
         np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
 
     @pytest.mark.parametrize(
+        ("mask", "min_length"),
+        [
+            ([], 2),
+            ([False, False, False], 2),
+            ([True, False, True, True, False, True, True, True], 2),
+            ([True, True, False, True, False, True, True], 1),
+            ([False, True, True, True], 3),
+        ],
+    )
+    def test_count_line_lengths_parity(self, mask, min_length):
+        from dynachaos._rust import count_line_lengths as rust_line_lengths
+        from dynachaos.diagnostics import recurrence as rec_mod
+
+        mask_array = np.asarray(mask, dtype=np.bool_)
+
+        old_flag = rec_mod._RUST_AVAILABLE
+        try:
+            rec_mod._RUST_AVAILABLE = False
+            python_result = rec_mod._line_lengths(mask_array, min_length)
+        finally:
+            rec_mod._RUST_AVAILABLE = old_flag
+        rust_result = np.asarray(rust_line_lengths(mask_array, min_length))
+
+        np.testing.assert_array_equal(rust_result, np.asarray(python_result, dtype=np.int64))
+
+    def test_count_line_lengths_rejects_invalid_min_length(self):
+        from dynachaos._rust import count_line_lengths as rust_line_lengths
+
+        with pytest.raises(ValueError, match="min_length"):
+            rust_line_lengths(np.array([True, False], dtype=np.bool_), 0)
+
+    def test_streaming_rqa_uses_line_scanner_transparently(self):
+        from dynachaos.diagnostics import recurrence as rec_mod
+
+        t = np.linspace(0.0, 18.0, 120)
+        traj = np.column_stack([np.sin(t), np.cos(1.4 * t)])
+
+        old_flag = rec_mod._RUST_AVAILABLE
+        try:
+            rec_mod._RUST_AVAILABLE = True
+            rust_stats = rec_mod.rqa_from_trajectory(
+                traj, percentile=7, metric="chebyshev", l_min=2, v_min=3
+            )
+
+            rec_mod._RUST_AVAILABLE = False
+            python_stats = rec_mod.rqa_from_trajectory(
+                traj, percentile=7, metric="chebyshev", l_min=2, v_min=3
+            )
+        finally:
+            rec_mod._RUST_AVAILABLE = old_flag
+
+        assert rust_stats.keys() == python_stats.keys()
+        for key, value in python_stats.items():
+            assert rust_stats[key] == pytest.approx(value)
+
+    @pytest.mark.parametrize(
         ("function_name", "kwargs", "message"),
         [
             ("diagonal_lines", {"l_min": 0}, "l_min"),

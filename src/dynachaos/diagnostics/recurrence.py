@@ -49,11 +49,13 @@ from dynachaos.diagnostics._validation import (
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import count_line_lengths as _count_line_lengths_rs
     from dynachaos._rust import diagonal_lines as _diagonal_lines_rs
     from dynachaos._rust import vertical_lines as _vertical_lines_rs
 
     _RUST_AVAILABLE = True
 except ImportError:
+    _count_line_lengths_rs = None
     _RUST_AVAILABLE = False
 
 
@@ -183,6 +185,14 @@ def _validate_streaming_metric(metric):
 
 
 def _line_lengths(mask, min_length):
+    if min_length < 1:
+        raise ValueError("min_length must be >= 1")
+    if _RUST_AVAILABLE and _count_line_lengths_rs is not None:
+        return [
+            int(length)
+            for length in _count_line_lengths_rs(np.asarray(mask, dtype=np.bool_), int(min_length))
+        ]
+
     lengths = []
     current = 0
     for value in mask:
