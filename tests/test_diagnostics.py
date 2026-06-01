@@ -10,7 +10,7 @@ from dynachaos.diagnostics._validation import (
     sorted_nonnegative_radius_grid,
     square_bool_matrix,
 )
-from dynachaos.diagnostics.correlation import correlation_dimension
+from dynachaos.diagnostics.correlation import correlation_dimension, fit_power_law_loglog
 from dynachaos.diagnostics.permutation import (
     complexity_entropy,
     ordinal_distribution,
@@ -18,6 +18,7 @@ from dynachaos.diagnostics.permutation import (
 )
 from dynachaos.diagnostics.recurrence import (
     embed_time_delay,
+    laminar_lengths,
     recurrence_matrix,
     rqa,
     rqa_from_trajectory,
@@ -201,6 +202,30 @@ def test_rqa_from_trajectory_matches_dense_with_explicit_eps():
     assert streaming_stats == pytest.approx(dense_stats)
 
 
+def test_laminar_lengths_exposes_vertical_line_distribution_and_rqa_measures():
+    traj = np.array([[0.0], [0.0], [1.0], [1.0], [1.0]])
+
+    result = laminar_lengths(traj, eps=0.0, v_min=3)
+
+    np.testing.assert_array_equal(result.lengths, np.array([3, 3, 3]))
+    assert result.LAM == pytest.approx(9.0 / 13.0)
+    assert result.TT == pytest.approx(3.0)
+    assert result.eps == pytest.approx(0.0)
+
+
+def test_laminar_lengths_matches_rqa_laminarity_and_trapping_time():
+    t = np.linspace(0.0, 20.0, 140)
+    traj = np.column_stack([np.sin(t), np.cos(1.2 * t)])
+
+    rmat, eps = recurrence_matrix(traj, percentile=9)
+    stats = rqa(rmat, v_min=2)
+    result = laminar_lengths(traj, percentile=9, v_min=2)
+
+    assert result.eps == pytest.approx(eps)
+    assert result.LAM == pytest.approx(stats["LAM"])
+    assert result.TT == pytest.approx(stats["TT"])
+
+
 def test_rqa_from_trajectory_minimal_trajectory():
     # N==1: single point; eps auto-selects to 0.0 (no positive pairwise distances)
     X1 = np.ones((1, 2))
@@ -376,3 +401,33 @@ def test_correlation_dimension_circle():
     traj = np.column_stack([np.cos(t), np.sin(t)])
     D2, _, _, _, _ = correlation_dimension(traj)
     assert 0.8 < D2 < 1.3
+
+
+def test_fit_power_law_loglog_recovers_synthetic_exponent():
+    x = np.logspace(-2.0, 2.0, 80)
+    y = 2.5 * x**1.75
+
+    slope, intercept, rvalue, slopes, scaling = fit_power_law_loglog(x, y, min_points=5)
+
+    assert slope == pytest.approx(1.75)
+    assert intercept == pytest.approx(np.log(2.5))
+    assert rvalue == pytest.approx(1.0)
+    assert np.all(np.isfinite(slopes))
+    assert np.count_nonzero(scaling) >= 5
+
+
+def test_correlation_dimension_uses_shared_power_law_fit():
+    t = np.linspace(0, 2 * np.pi, 600, endpoint=False)
+    traj = np.column_stack([np.cos(t), np.sin(t)])
+
+    D2, r_values, C_values, slopes, scaling = correlation_dimension(traj, n_r=25)
+    n_valid = len(traj) * (len(traj) - 1) // 2
+    c_floor = 1.0 / np.sqrt(n_valid)
+    fit_values = np.where(C_values > c_floor, C_values, np.nan)
+    slope, _, _, helper_slopes, helper_scaling = fit_power_law_loglog(
+        r_values, fit_values, min_points=3
+    )
+
+    assert D2 == pytest.approx(slope)
+    np.testing.assert_allclose(slopes, helper_slopes, equal_nan=True)
+    np.testing.assert_array_equal(scaling, helper_scaling)

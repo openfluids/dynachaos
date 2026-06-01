@@ -1,6 +1,7 @@
 """Modern diagnostic tools for dynamical systems."""
 
 from dynachaos.diagnostics.correlation import correlation_dimension, correlation_integral
+from dynachaos.diagnostics.correlation import fit_power_law_loglog
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -25,6 +26,8 @@ from dynachaos.diagnostics.permutation import complexity_entropy, permutation_en
 from dynachaos.diagnostics.poincare import poincare_section
 from dynachaos.diagnostics.recurrence import (
     embed_time_delay,
+    LaminarLengthsResult,
+    laminar_lengths,
     recurrence_matrix,
     rqa,
     rqa_from_trajectory,
@@ -41,9 +44,12 @@ __all__ = [
     "correlation_integral",
     "embed_time_delay",
     "false_nearest_neighbors",
+    "fit_power_law_loglog",
     "flow_lyapunov_spectrum",
     "fuzzy_entropy",
     "gali",
+    "LaminarLengthsResult",
+    "laminar_lengths",
     "lyapunov_exponent_1d",
     "lyapunov_spectrum",
     "local_multifractality",

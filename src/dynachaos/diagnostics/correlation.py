@@ -26,6 +26,7 @@ import os
 import time
 
 import numpy as np
+from scipy.stats import linregress
 
 from dynachaos.diagnostics._validation import sorted_nonnegative_radius_grid
 from dynachaos.utils.system import get_rss_mb
@@ -249,6 +250,44 @@ def _find_scaling_region(log_r, log_C, min_points=5):
     return mask, slopes
 
 
+def fit_power_law_loglog(x, y, min_points=5):
+    """Fit ``y ~ x**slope`` over a data-driven log-log scaling region.
+
+    This regression is a diagnostic scaling fit. It preserves the
+    Grassberger-Procaccia scaling-region heuristic used by
+    :func:`correlation_dimension` and is factored for other diagnostics that
+    need the same log-log fit without duplicating the detector.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    if x.ndim != 1 or y.ndim != 1 or len(x) != len(y):
+        raise ValueError("x and y must be 1D arrays with matching length")
+    if min_points < 1:
+        raise ValueError("min_points must be >= 1")
+
+    valid = (x > 0.0) & (y > 0.0) & np.isfinite(x) & np.isfinite(y)
+    full_slopes = np.full(len(x), np.nan)
+    full_scaling = np.zeros(len(x), dtype=bool)
+    if np.sum(valid) < min_points:
+        return np.nan, np.nan, np.nan, full_slopes, full_scaling
+
+    log_x = np.log(x[valid])
+    log_y = np.log(y[valid])
+    scaling_local, slopes_local = _find_scaling_region(log_x, log_y, min_points=min_points)
+
+    valid_idx = np.where(valid)[0]
+    full_slopes[valid_idx] = slopes_local
+    full_scaling[valid_idx[scaling_local]] = True
+
+    fit_x = log_x[scaling_local]
+    fit_y = log_y[scaling_local]
+    if len(fit_x) < min_points:
+        return np.nan, np.nan, np.nan, full_slopes, full_scaling
+
+    result = linregress(fit_x, fit_y)
+    return float(result.slope), float(result.intercept), float(result.rvalue), full_slopes, full_scaling
+
+
 def correlation_dimension(
     traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
 ):
@@ -324,7 +363,7 @@ def correlation_dimension(
     # sqrt(n_valid) pairs with relative error n_valid^{-1/4}.
     n_valid = _valid_pair_count(N, theiler_window)
     c_floor = 1.0 / np.sqrt(n_valid) if n_valid > 0 else 1e-5
-    valid = C_values > c_floor
+    fit_values = np.where(C_values > c_floor, C_values, np.nan)
     # Note: saturation ceiling (formerly 0.8) is now handled organically
     # inside _find_scaling_region via the log_spacing slope filter.
 
@@ -332,28 +371,8 @@ def correlation_dimension(
     full_slopes = np.full(len(r_values), np.nan)
     full_scaling = np.zeros(len(r_values), dtype=bool)
 
-    if np.sum(valid) < 3:
-        return np.nan, r_values, C_values, full_slopes, full_scaling
-
-    log_r = np.log(r_values[valid])
-    log_C = np.log(C_values[valid])
-
-    # Find scaling region via plateau detection
-    scaling_local, slopes_local = _find_scaling_region(log_r, log_C)
-
-    # Map local masks back to full-size arrays
-    valid_idx = np.where(valid)[0]
-    full_slopes[valid_idx] = slopes_local
-    full_scaling[valid_idx[scaling_local]] = True
-
-    # Fit D2 in the scaling region
-    fit_r = log_r[scaling_local]
-    fit_C = log_C[scaling_local]
-
-    if len(fit_r) < 3:
-        return np.nan, r_values, C_values, full_slopes, full_scaling
-
-    coeffs = np.polyfit(fit_r, fit_C, 1)
-    D2 = coeffs[0]
+    D2, _, _, full_slopes, full_scaling = fit_power_law_loglog(
+        r_values, fit_values, min_points=3
+    )
 
     return D2, r_values, C_values, full_slopes, full_scaling

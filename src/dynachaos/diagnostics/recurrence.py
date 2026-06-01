@@ -35,6 +35,7 @@ Usage
 """
 
 import os
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
@@ -64,6 +65,16 @@ _STREAMING_METRICS_MSG = (
     "rqa_from_trajectory currently supports metric values: "
     "euclidean, sqeuclidean, cityblock, manhattan, chebyshev"
 )
+
+
+@dataclass(frozen=True)
+class LaminarLengthsResult:
+    """Laminar vertical-line distribution and RQA laminarity measures."""
+
+    lengths: np.ndarray
+    LAM: float
+    TT: float
+    eps: float
 
 
 def recurrence_matrix(X, eps=None, metric="euclidean", percentile=5):
@@ -272,6 +283,37 @@ def rqa(R, l_min=2, v_min=2):
         n_recurrent_upper,
         list(diag_lens),
         list(vert_lens),
+    )
+
+
+def laminar_lengths(X, eps=None, metric="euclidean", percentile=5, v_min=2):
+    """Return recurrence-plot laminar lengths plus LAM and TT for a trajectory.
+
+    Laminar phases are represented by vertical recurrence-plot line lengths.
+    ``eps`` is estimated from the requested distance percentile when omitted.
+    LAM follows the Marwan et al. RQA convention: its numerator sums vertical
+    lines with length at least ``v_min``, while its denominator sums all
+    recurrent points, equivalently vertical lines with length at least one.
+    """
+    v_min = positive_int(v_min, "v_min")
+    R, eps_used = recurrence_matrix(X, eps=eps, metric=metric, percentile=percentile)
+
+    lengths = np.asarray(_vertical_lines(R, v_min), dtype=int)
+    all_lengths = np.asarray(_vertical_lines(R, 1), dtype=int)
+    denominator = int(np.sum(all_lengths))
+
+    if lengths.size:
+        numerator = int(np.sum(lengths))
+        LAM = numerator / denominator if denominator > 0 else 0.0
+        TT = float(np.mean(lengths))
+    else:
+        LAM, TT = 0.0, 0.0
+
+    return LaminarLengthsResult(
+        lengths=lengths,
+        LAM=float(LAM),
+        TT=float(TT),
+        eps=float(eps_used),
     )
 
 
