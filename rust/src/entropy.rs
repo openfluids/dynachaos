@@ -6,9 +6,83 @@
 //!
 //! Reference: Chen, W. et al. (2007), Medical Engineering & Physics 29(2), 164-169.
 
-use numpy::PyReadonlyArray2;
+use numpy::{PyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+
+/// Count approximate-entropy template matches for every template row.
+///
+/// Parameters
+/// ----------
+/// traj : numpy.ndarray of float64, shape (N, d)
+///     Embedded trajectory templates. Must be C-contiguous.
+/// r : float
+///     Positive match tolerance. Matches use Chebyshev distance <= r.
+///
+/// Returns
+/// -------
+/// numpy.ndarray of int64, shape (N,)
+///     counts[i] = number of rows j with max(abs(traj[i] - traj[j])) <= r.
+///     Self-matches are included, matching ApEn (Pincus, 1991).
+#[pyfunction]
+pub fn apen_counts<'py>(
+    py: Python<'py>,
+    traj: PyReadonlyArray2<'py, f64>,
+    r: f64,
+) -> PyResult<Bound<'py, PyArray1<i64>>> {
+    if r <= 0.0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "r must be positive",
+        ));
+    }
+
+    let traj_arr = traj.as_array();
+    let shape = traj_arr.shape();
+    let n_pts = *shape.first().ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>("traj must be two-dimensional")
+    })?;
+    let dim = *shape.get(1).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>("traj must be two-dimensional")
+    })?;
+    let all_rows_count = i64::try_from(n_pts)
+        .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("too many template rows"))?;
+
+    let traj_slice = traj_arr.as_slice().ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>("traj must be C-contiguous")
+    })?;
+
+    let traj_owned: Vec<f64> = traj_slice.to_vec();
+
+    let counts = if dim == 0 {
+        vec![all_rows_count; n_pts]
+    } else {
+        let counts_usize = py.detach(|| {
+            let rows: Vec<&[f64]> = traj_owned.chunks_exact(dim).collect();
+            rows.par_iter()
+                .map(|row_i| {
+                    rows.iter()
+                        .filter(|row_j| {
+                            row_i
+                                .iter()
+                                .zip(row_j.iter())
+                                .all(|(a, b)| (*a - *b).abs() <= r)
+                        })
+                        .count()
+                })
+                .collect::<Vec<usize>>()
+        });
+        counts_usize
+            .into_iter()
+            .map(|count| {
+                i64::try_from(count).map_err(|_| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>("too many template matches")
+                })
+            })
+            .collect::<PyResult<Vec<i64>>>()?
+    };
+
+    Ok(PyArray1::from_vec(py, counts))
+}
 
 /// Compute the total fuzzy-membership sum over all valid template pairs.
 ///

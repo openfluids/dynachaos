@@ -31,12 +31,14 @@ from dynachaos.utils.system import get_rss_mb
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import apen_counts as _apen_counts_rs
     from dynachaos._rust import correlation_counts as _correlation_counts_rs
     from dynachaos._rust import fuzzy_entropy_sum as _fuzzy_entropy_sum_rs
 
     _RUST_AVAILABLE = True
 except ImportError:
     _RUST_AVAILABLE = False
+    _apen_counts_rs = None
     _correlation_counts_rs = None
     _fuzzy_entropy_sum_rs = None
 
@@ -92,6 +94,20 @@ def _fuzzy_entropy_sum_python(traj, r, n, theiler_window=0):
         dists = np.max(np.abs(traj[j_start:] - traj[i]), axis=1)
         total += float(np.exp(-((dists / r) ** n_float)).sum())
     return total
+
+
+def _apen_counts_python(traj, r):
+    """Count self-included template matches with Chebyshev distance <= r."""
+    n_templates = len(traj)
+    counts = np.empty(n_templates, dtype=np.int64)
+    for i in range(n_templates):
+        count = 0
+        for j in range(n_templates):
+            d_max = np.max(np.abs(traj[i] - traj[j]))
+            if d_max <= r:  # ApEn uses <= per Pincus (1991)
+                count += 1
+        counts[i] = count
+    return counts
 
 
 def sample_entropy(x, m=2, r=None, verbose=False):
@@ -206,14 +222,11 @@ def approximate_entropy(x, m=2, r=None, verbose=False):
     def _phi(order):
         traj = embed_time_delay(x, order, 1)
         n_templates = len(traj)
-        c = np.empty(n_templates, dtype=np.float64)
-        for i in range(n_templates):
-            count = 0
-            for j in range(n_templates):
-                d_max = np.max(np.abs(traj[i] - traj[j]))
-                if d_max <= r:  # ApEn uses <= per Pincus (1991)
-                    count += 1
-            c[i] = count / n_templates
+        if _RUST_AVAILABLE:
+            counts = np.asarray(_apen_counts_rs(traj, r), dtype=np.float64)
+        else:
+            counts = _apen_counts_python(traj, r).astype(np.float64)
+        c = counts / n_templates
         return float(np.mean(np.log(c)))
 
     n_m = len(x) - m + 1
@@ -224,7 +237,8 @@ def approximate_entropy(x, m=2, r=None, verbose=False):
     elapsed = time.perf_counter() - t0
 
     if verbose:
-        _print_timing("Python", len(x), n_pairs, elapsed)
+        backend = "Rust" if _RUST_AVAILABLE else "Python"
+        _print_timing(backend, len(x), n_pairs, elapsed)
     return float(apen)
 
 

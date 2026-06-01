@@ -232,6 +232,20 @@ def test_sample_entropy_rust_python_parity(monkeypatch):
     assert abs(se_rust - se_python) < 1e-10
 
 
+def test_approximate_entropy_rust_python_parity(monkeypatch):
+    """Rust and pure-Python backends produce identical ApEn values."""
+    import dynachaos.diagnostics.entropy as _ent
+
+    x = logistic_series(n=240, a=1.99, burn=100)
+    r = 0.2 * np.std(x, ddof=1)
+    ae_rust = approximate_entropy(x, m=2, r=r)
+
+    monkeypatch.setattr(_ent, "_RUST_AVAILABLE", False)
+    ae_python = approximate_entropy(x, m=2, r=r)
+
+    assert abs(ae_rust - ae_python) < 1e-10
+
+
 def test_fuzzy_entropy_rust_python_parity(monkeypatch):
     """Rust and pure-Python backends produce identical FuzzyEn values."""
     import dynachaos.diagnostics.entropy as _ent

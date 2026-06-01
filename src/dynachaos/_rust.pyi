@@ -37,6 +37,10 @@ def correlation_counts(
     theiler_window: int = 0,
     use_chebyshev: bool = True,
 ) -> npt.NDArray[np.int64]: ...
+def apen_counts(
+    traj: npt.NDArray[np.float64],
+    r: float,
+) -> npt.NDArray[np.int64]: ...
 def fuzzy_entropy_sum(
     traj: npt.NDArray[np.float64],
     r: float,

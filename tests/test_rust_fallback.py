@@ -374,6 +374,29 @@ class TestCorrelationCountsParity:
 
 @needs_rust
 class TestEntropyRustBoundaries:
+    def test_apen_counts_uses_inclusive_self_matches(self):
+        from dynachaos._rust import apen_counts
+
+        traj = np.array(
+            [
+                [0.0, 0.1],
+                [0.1, 0.2],
+                [0.2, 0.4],
+                [0.4, 0.45],
+            ],
+            dtype=np.float64,
+        )
+
+        counts = np.asarray(apen_counts(traj, 0.2))
+
+        np.testing.assert_array_equal(counts, np.array([2, 3, 3, 2], dtype=np.int64))
+
+    def test_apen_counts_rejects_invalid_r(self):
+        from dynachaos._rust import apen_counts
+
+        with pytest.raises(ValueError, match="r must be positive"):
+            apen_counts(np.arange(6.0).reshape(3, 2), 0.0)
+
     def test_fuzzy_entropy_sum_huge_theiler_window_has_no_pairs(self):
         from dynachaos._rust import fuzzy_entropy_sum
 
