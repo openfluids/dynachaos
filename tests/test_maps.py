@@ -916,3 +916,238 @@ def test_compute_collective_seed_controls_rng_determinism():
     assert not np.array_equal(
         first["lyap_c"], different_seed["lyap_c"]
     ), "compute_collective should produce different lyap_c values for different seeds"
+
+
+# ---------------------------------------------------------------------------
+# Golden-value regression tests for compute-aggregate functions
+# ---------------------------------------------------------------------------
+
+
+# params: D_values=[1.5, 1.6], n_iter=20, n_transient=5, seed=N/A
+def test_compute_delayed_lyapunov_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "lyapunov_golden.npz"
+    payload = compute_delayed_lyapunov_spectrum(
+        D_values=np.array([1.5, 1.6]),
+        n_iter=20,
+        n_transient=5,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(payload["D"], np.array([1.5, 1.6]), rtol=1e-9)
+    np.testing.assert_allclose(
+        payload["spectra"],
+        np.array(
+            [
+                [0.075066870334274, 0.07028722946827429],
+                [0.0970755525312533, 0.09294026515025561],
+            ]
+        ),
+        rtol=1e-9,
+    )
+    assert payload["spectra"].shape == (2, 2)
+    assert np.all(np.isfinite(payload["spectra"]))
+
+    with np.load(output_path) as saved:
+        np.testing.assert_allclose(saved["spectra"], payload["spectra"], rtol=1e-9)
+
+
+# params: D_values=[1.5, 1.51], n_iter=20, n_transient=5, seed=N/A
+def test_compute_map_IV_lyapunov_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "map_iv_lyap_golden.npz"
+    payload = compute_map_IV_lyapunov(
+        D_values=np.array([1.5, 1.51]),
+        n_iter=20,
+        n_transient=5,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(payload["D"], np.array([1.5, 1.51]), rtol=1e-9)
+    np.testing.assert_allclose(
+        payload["spectra"],
+        np.array(
+            [
+                [
+                    0.16140671993531416,
+                    0.04742302325520868,
+                    0.04219401941837471,
+                    -0.07178967726173077,
+                ],
+                [
+                    0.16270287321983554,
+                    0.04828748938330477,
+                    0.04415935310015298,
+                    -0.07025603073637762,
+                ],
+            ]
+        ),
+        rtol=1e-9,
+    )
+    assert payload["spectra"].shape == (2, 4)
+    assert np.all(np.isfinite(payload["spectra"]))
+
+    with np.load(output_path) as saved:
+        np.testing.assert_allclose(saved["spectra"], payload["spectra"], rtol=1e-9)
+
+
+# params: a=1.55, eps=0.1, n_sites=4, n_transient=5, n_record=3, seed=7
+def test_compute_clusters_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "gcm_clusters_golden.npz"
+    payload = compute_clusters(
+        a=1.55,
+        eps=0.1,
+        n_sites=4,
+        n_transient=5,
+        n_record=3,
+        seed=7,
+        output_path=output_path,
+    )
+
+    np.testing.assert_array_equal(
+        payload["cluster_labels"],
+        np.array([[0, 3, 2, 1], [3, 0, 1, 2], [0, 1, 3, 2]]),
+    )
+    np.testing.assert_allclose(
+        payload["x_record"],
+        np.array(
+            [
+                [
+                    -0.04545209715542766,
+                    0.9563681048236234,
+                    0.6832212378395283,
+                    0.6648412697350994,
+                ],
+                [
+                    0.9263795270955607,
+                    -0.3466612849138426,
+                    0.27808764055024543,
+                    0.31265203806958264,
+                ],
+                [
+                    -0.24185543228176498,
+                    0.7876615172785664,
+                    0.8474251456092492,
+                    0.8189412528994947,
+                ],
+            ]
+        ),
+        rtol=1e-9,
+    )
+
+    with np.load(output_path) as saved:
+        np.testing.assert_array_equal(saved["cluster_labels"], payload["cluster_labels"])
+        np.testing.assert_allclose(saved["x_record"], payload["x_record"], rtol=1e-9)
+
+
+# params: n_sites=4, a_values=[1.4, 1.6], n_transient=5, n_measure=10, seed=7
+def test_compute_collective_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "collective_golden.npz"
+    payload = compute_collective(
+        n_sites=4,
+        a_values=np.array([1.4, 1.6]),
+        n_transient=5,
+        n_measure=10,
+        renorm_interval=5,
+        seed=7,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(payload["a_values"], np.array([1.4, 1.6]), rtol=1e-9)
+    np.testing.assert_allclose(
+        payload["lyap_c"],
+        np.array([-0.11970016300271111, 0.17056225610801404]),
+        rtol=1e-9,
+    )
+    assert payload["lyap_c"].shape == (2,)
+    assert np.all(np.isfinite(payload["lyap_c"]))
+
+    with np.load(output_path) as saved:
+        np.testing.assert_allclose(saved["lyap_c"], payload["lyap_c"], rtol=1e-9)
+
+
+# params: n_grid=4, n_transient=2, reference_transient=2, period=2, seed=N/A
+def test_compute_coupled_basins_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "basins_golden.npz"
+    payload = compute_coupled_basins(
+        n_grid=4,
+        n_transient=2,
+        reference_transient=2,
+        period=2,
+        output_path=output_path,
+    )
+
+    np.testing.assert_allclose(
+        payload["x"],
+        np.array([-1.0, -0.33333333333333337, 0.33333333333333326, 1.0]),
+        rtol=1e-9,
+    )
+    np.testing.assert_allclose(
+        payload["y"],
+        np.array([-1.0, -0.33333333333333337, 0.33333333333333326, 1.0]),
+        rtol=1e-9,
+    )
+    np.testing.assert_array_equal(
+        payload["basin"],
+        np.array(
+            [[0, 1, 1, 1], [2, 0, 1, 1], [2, 2, 0, 1], [2, 2, 2, 0]],
+            dtype=np.int8,
+        ),
+    )
+
+    with np.load(output_path) as saved:
+        np.testing.assert_array_equal(saved["basin"], payload["basin"])
+
+
+# params: A_values=[0.8, 1.0, 1.2], D_values=[0.0, 0.1], n_transient=5, seed=N/A
+def test_compute_coupled_phase_diagram_golden_values(tmp_path):
+    """Pin CURRENT aggregate output; catches silent numeric drift."""
+    output_path = tmp_path / "phase_golden.npz"
+    payload = compute_coupled_phase_diagram(
+        A_values=np.array([0.8, 1.0, 1.2]),
+        D_values=np.array([0.0, 0.1]),
+        n_transient=5,
+        n_sample=5,
+        output_path=output_path,
+        progress_interval=0,
+    )
+
+    np.testing.assert_allclose(
+        payload["asym"],
+        np.array(
+            [
+                [
+                    8.2293861882232425e-03,
+                    5.9876141248649259e-05,
+                    3.0112671401466472e-02,
+                ],
+                [
+                    8.0161532921512221e-02,
+                    1.3210878773309020e-02,
+                    4.5589216524537955e-03,
+                ],
+            ]
+        ),
+        rtol=1e-9,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        payload["lyap"],
+        np.array(
+            [
+                [-0.0575617156373394, -4.103877162577709, 0.07108327581839047],
+                [-0.04912671322212415, -0.5509515979462181, 0.08136671975106122],
+            ]
+        ),
+        rtol=1e-9,
+    )
+
+    with np.load(output_path) as saved:
+        np.testing.assert_allclose(saved["asym"], payload["asym"], rtol=1e-9)
+        np.testing.assert_allclose(saved["lyap"], payload["lyap"], rtol=1e-9)
