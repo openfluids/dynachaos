@@ -3,9 +3,15 @@ import pytest
 
 from dynachaos.diagnostics.correlation import fit_power_law_loglog
 from dynachaos.diagnostics.intermittency import (
+    compare_powerlaw_exponential,
+    DiagnosticLogLogFit,
+    fit_exponential,
+    fit_power_law_loglog as fit_intermittency_power_law_loglog,
+    fit_power_law_mle,
     LaminarLengthDistribution,
     detect_laminar_phases,
     laminar_length_distribution,
+    powerlaw_gof,
 )
 from dynachaos.maps.intermittency import logistic_type_i_oracle
 
@@ -25,7 +31,7 @@ def test_period_laminar_detection_estimates_period_and_threshold():
     mask, lengths = detect_laminar_phases(signal, method="period", percentile=50)
 
     assert mask.dtype == np.bool_
-    assert mask.shape == signal.shape
+    np.testing.assert_equal(mask.shape, signal.shape)
     assert lengths.size > 0
     assert np.all(lengths >= 1)
 
@@ -36,7 +42,7 @@ def test_variance_laminar_detection_estimates_window_and_threshold():
     mask, lengths = detect_laminar_phases(signal, method="variance", percentile=40)
 
     assert mask.dtype == np.bool_
-    assert mask.shape == signal.shape
+    np.testing.assert_equal(mask.shape, signal.shape)
     assert lengths.size > 0
     assert np.all(lengths >= 1)
 
@@ -60,7 +66,7 @@ def test_type_i_logistic_period_lengths_have_negative_loglog_tail():
     dist = laminar_length_distribution(lengths)
     slope, _, _, _, scaling = fit_power_law_loglog(dist.values, dist.probabilities, min_points=3)
 
-    assert mask.shape == signal.shape
+    np.testing.assert_equal(mask.shape, signal.shape)
     assert lengths.size >= 20
     assert np.count_nonzero(scaling) >= 3
     assert slope < -0.5
@@ -83,3 +89,81 @@ def test_detect_laminar_phases_rejects_invalid_inputs(kwargs, message):
 def test_laminar_length_distribution_rejects_nonpositive_lengths():
     with pytest.raises(ValueError, match="positive"):
         laminar_length_distribution([1, 0, 2])
+
+
+def test_fit_power_law_mle_recovers_continuous_type_i_exponent():
+    rng = np.random.default_rng(2028)
+    csn_alpha = 1.5
+    samples = (1.0 - rng.random(20_000)) ** (-1.0 / (csn_alpha - 1.0))
+
+    fit = fit_power_law_mle(samples, discrete=False)
+
+    np.testing.assert_equal(fit.discrete, False)
+    assert fit.alpha == pytest.approx(-1.5, abs=2.0 * fit.standard_error)
+    assert fit.csn_alpha == pytest.approx(1.5, abs=2.0 * fit.standard_error)
+    assert fit.x_min >= 1.0
+    assert fit.n_tail > 10_000
+
+
+def test_fit_power_law_mle_discrete_hurwitz_zeta_path_is_finite():
+    rng = np.random.default_rng(2029)
+    samples = rng.zipf(2.2, size=5000)
+
+    fit = fit_power_law_mle(samples, discrete=True, min_tail=1000)
+
+    np.testing.assert_equal(fit.discrete, True)
+    assert fit.csn_alpha > 1.0
+    assert fit.alpha < -1.0
+    assert fit.n_tail >= 1000
+    assert np.isfinite(fit.ks_distance)
+
+
+def test_powerlaw_gof_does_not_reject_true_power_law():
+    rng = np.random.default_rng(2030)
+    csn_alpha = 1.5
+    samples = (1.0 - rng.random(800)) ** (-1.0 / (csn_alpha - 1.0))
+    fit = fit_power_law_mle(samples, discrete=False)
+
+    gof = powerlaw_gof(samples, fit=fit, n_bootstrap=20, rng=2031)
+
+    assert gof.fit == fit
+    assert gof.n_bootstrap == 20
+    assert 0.0 <= gof.p_value <= 1.0
+    assert gof.p_value >= 0.1
+
+
+def test_fit_exponential_recovers_known_rate():
+    rng = np.random.default_rng(2032)
+    samples = 1.0 + rng.exponential(scale=2.0, size=5000)
+
+    fit = fit_exponential(samples, x_min=1.0)
+
+    assert fit.rate == pytest.approx(0.5, rel=0.06)
+    assert fit.scale == pytest.approx(2.0, rel=0.06)
+    assert fit.n_tail == samples.size
+    assert np.isfinite(fit.log_likelihood)
+
+
+def test_vuong_comparison_selects_power_law_and_exponential_signs():
+    rng = np.random.default_rng(2033)
+    power_law = (1.0 - rng.random(8000)) ** (-1.0 / (1.5 - 1.0))
+    exponential = 1.0 + rng.exponential(scale=1.5, size=20_000)
+
+    power_law_cmp = compare_powerlaw_exponential(power_law, discrete=False)
+    exponential_cmp = compare_powerlaw_exponential(exponential, discrete=False)
+
+    assert power_law_cmp.z > 0.0
+    assert power_law_cmp.log_likelihood_ratio > 0.0
+    assert exponential_cmp.z < 0.0
+    assert exponential_cmp.log_likelihood_ratio < 0.0
+
+
+def test_intermittency_loglog_fit_is_marked_diagnostic_only():
+    x = np.logspace(0.0, 2.0, 40)
+    y = x**-1.5
+
+    fit = fit_intermittency_power_law_loglog(x, y, min_points=5)
+
+    assert isinstance(fit, DiagnosticLogLogFit)
+    np.testing.assert_equal(fit.diagnostic_only, True)
+    assert fit.slope == pytest.approx(-1.5)
