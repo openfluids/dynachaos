@@ -1,8 +1,9 @@
-"""Figure pipeline for the intermittency diagnostics toolkit.
+"""Type-I intermittency proof-triad figure pipeline.
 
-This module is an original dynachaos contribution: it composes the package's
-intermittency building blocks on canonical Type-I, on-off, and Lorenz-166.2
-signals without returning a mechanism label.
+This module supersedes the former mixed intermittency diagnostics summary.  It
+now builds the FIG A Type-I demonstration: logistic period-3 tangent-channel
+geometry, the laminar-length tail, the normal-form mean-laminar scaling law,
+and the Lorenz rho=166.2 near-diagonal return-map channel.
 """
 
 import warnings
@@ -11,52 +12,49 @@ from pathlib import Path
 import numpy as np
 
 from dynachaos.diagnostics.intermittency import (
-    burst_amplitude_distribution,
     compare_powerlaw_exponential,
     detect_laminar_phases,
-    fit_power_law_mle,
-    laminar_burst_symmetry,
+    mean_laminar_scaling,
     return_map_reconstruction,
 )
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.intermittency import (
+    LOGISTIC_TYPE_I_ONSET,
+    LORENZ_INTERMITTENCY_RHO,
     logistic_type_i_oracle,
     lorenz_1662_oracle,
-    on_off_oracle,
 )
 
 SECTION_ID = "sec12_intermittency"
 FIG_DIR = section_dir(SECTION_ID)
-OUTPUT_NPZ = FIG_DIR / "intermittency_diagnostics.npz"
-OUTPUT_PNG = FIG_DIR / "intermittency_diagnostics.png"
+OUTPUT_NPZ = FIG_DIR / "type_i_intermittency.npz"
+OUTPUT_PNG = FIG_DIR / "type_i_intermittency.png"
 _THIS_FILE = Path(__file__).resolve()
 
 REQUIRED_KEYS = (
     "schema_version",
     "source_file",
     "seed",
-    "type_i_series",
-    "type_i_laminar_mask",
-    "type_i_laminar_lengths",
-    "type_i_laminar_percentile",
-    "type_i_period",
-    "type_i_return_points",
-    "type_i_channel_points",
+    "logistic_mechanism_r",
+    "logistic_tail_r",
+    "logistic_period",
+    "logistic_series",
+    "logistic_laminar_mask",
+    "logistic_laminar_lengths",
+    "logistic_laminar_percentile",
+    "logistic_f3_return_points",
+    "logistic_f3_channel_points",
+    "logistic_f3_channel_slope",
     "type_i_tail_alpha",
     "type_i_vuong_z",
-    "type_i_channel_slope",
-    "on_off_series",
-    "on_off_laminar_mask",
-    "on_off_laminar_lengths",
-    "on_off_burst_lengths",
-    "on_off_amplitudes",
-    "on_off_transverse_lyapunov",
-    "on_off_threshold_percentile",
-    "on_off_laminar_alpha",
-    "on_off_burst_alpha",
-    "on_off_symmetry_p",
-    "lorenz_section_points",
+    "normal_form_eps",
+    "normal_form_mean_lengths",
+    "normal_form_beta",
+    "lorenz_rho",
+    "lorenz_time",
+    "lorenz_observable",
     "lorenz_return_points",
+    "lorenz_channel_points",
     "lorenz_channel_slope",
 )
 
@@ -65,87 +63,73 @@ def compute(
     output_path=OUTPUT_NPZ,
     *,
     seed=20260601,
-    n_type_i=200_000,
-    n_on_off=60_000,
+    n_logistic=200_000,
 ):
-    """Compute deterministic intermittency diagnostics and optionally cache them.
-
-    The on-off showcase uses a slightly sub-critical transverse Lyapunov exponent
-    so one deterministic run has resolved off-time statistics instead of the
-    exactly-critical single-off-phase collapse.
-    """
-    rng = np.random.default_rng(seed)
-    on_off_seed = int(rng.integers(0, np.iinfo(np.uint32).max))
-
-    type_i = logistic_type_i_oracle(n_type_i, x0=0.2)
-    type_i_mask, type_i_lengths = detect_laminar_phases(
-        type_i,
+    """Compute deterministic FIG A Type-I diagnostics and optionally cache them."""
+    logistic_tail = logistic_type_i_oracle(n_logistic, x0=0.2)
+    logistic_mask, logistic_lengths = detect_laminar_phases(
+        logistic_tail,
         method="period",
         period=3,
         percentile=70.0,
     )
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
-        type_i_comparison = compare_powerlaw_exponential(type_i_lengths)
-    type_i_return = return_map_reconstruction(type_i, fs=1.0)
+        comparison = compare_powerlaw_exponential(logistic_lengths)
 
-    on_off = on_off_oracle(
-        n_on_off,
-        x0=1e-4,
-        transverse_lyapunov=-0.025,
-        noise_scale=0.8,
-        seed=on_off_seed,
+    f3_return_points, f3_derivative = _logistic_f3_grid()
+    f3_channel_points = _logistic_f3_tangent_channels(
+        f3_return_points,
+        f3_derivative,
     )
-    on_off_threshold = np.percentile(np.abs(on_off), 70.0)
-    on_off_mask = np.abs(on_off) <= on_off_threshold
-    on_off_symmetry = laminar_burst_symmetry(on_off, on_off_mask)
-    on_off_burst = burst_amplitude_distribution(on_off, on_off_mask)
-    on_off_laminar_tail = fit_power_law_mle(
-        on_off_symmetry.laminar_lengths,
-        discrete=False,
-    )
+    f3_channel_slope = np.polyfit(
+        f3_channel_points[:, 0],
+        f3_channel_points[:, 1],
+        deg=1,
+    )[0]
 
-    lorenz = lorenz_1662_oracle(t_span=(0.0, 5.0), dt=0.01, t_transient=0.0)
-    lorenz_return = return_map_reconstruction(lorenz[:, 0], fs=100.0)
+    eps_values = np.geomspace(1e-5, 1e-3, 8)
+    mean_lengths = _normal_form_escape_lengths(eps_values)
+    scaling = mean_laminar_scaling(eps_values, mean_lengths, min_points=3)
+
+    lorenz = lorenz_1662_oracle(t_span=(0.0, 80.0), dt=0.01, t_transient=20.0)
+    lorenz_observable = lorenz[:, 1].astype(np.float64)
+    lorenz_time = np.arange(lorenz_observable.size, dtype=np.float64) * 0.01 + 20.0
+    lorenz_return = return_map_reconstruction(
+        lorenz_observable,
+        fs=100.0,
+        channel_percentile=30.0,
+        min_channel_points=5,
+    )
+    lorenz_return_points = lorenz_return.extrema.points.astype(np.float64)
 
     payload = {
-        "schema_version": np.array([1], dtype=np.int64),
+        "schema_version": np.array([5], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
-        "type_i_series": type_i.astype(np.float64),
-        "type_i_laminar_mask": type_i_mask.astype(np.bool_),
-        "type_i_laminar_lengths": type_i_lengths.astype(np.int64),
-        "type_i_laminar_percentile": np.array([70.0], dtype=np.float64),
-        "type_i_period": np.array([3], dtype=np.int64),
-        "type_i_return_points": type_i_return.extrema.points.astype(np.float64),
-        "type_i_channel_points": type_i_return.tangent_channel.points.astype(np.float64),
+        "logistic_mechanism_r": np.array([LOGISTIC_TYPE_I_ONSET], dtype=np.float64),
+        "logistic_tail_r": np.array([LOGISTIC_TYPE_I_ONSET - 1e-4], dtype=np.float64),
+        "logistic_period": np.array([3], dtype=np.int64),
+        "logistic_series": logistic_tail.astype(np.float64),
+        "logistic_laminar_mask": logistic_mask.astype(np.bool_),
+        "logistic_laminar_lengths": logistic_lengths.astype(np.int64),
+        "logistic_laminar_percentile": np.array([70.0], dtype=np.float64),
+        "logistic_f3_return_points": f3_return_points,
+        "logistic_f3_channel_points": f3_channel_points,
+        "logistic_f3_channel_slope": np.array([f3_channel_slope], dtype=np.float64),
         "type_i_tail_alpha": np.array(
-            [type_i_comparison.power_law.alpha],
+            [comparison.power_law.alpha],
             dtype=np.float64,
         ),
-        "type_i_vuong_z": np.array([type_i_comparison.z], dtype=np.float64),
-        "type_i_channel_slope": np.array(
-            [type_i_return.tangent_channel.slope],
-            dtype=np.float64,
-        ),
-        "on_off_series": on_off.astype(np.float64),
-        "on_off_laminar_mask": on_off_mask.astype(np.bool_),
-        "on_off_laminar_lengths": on_off_symmetry.laminar_lengths.astype(np.int64),
-        "on_off_burst_lengths": on_off_symmetry.burst_lengths.astype(np.int64),
-        "on_off_amplitudes": on_off_burst.amplitudes.astype(np.float64),
-        "on_off_transverse_lyapunov": np.array([-0.025], dtype=np.float64),
-        "on_off_threshold_percentile": np.array([70.0], dtype=np.float64),
-        "on_off_laminar_alpha": np.array(
-            [on_off_laminar_tail.alpha],
-            dtype=np.float64,
-        ),
-        "on_off_burst_alpha": np.array(
-            [on_off_burst.power_law.alpha],
-            dtype=np.float64,
-        ),
-        "on_off_symmetry_p": np.array([on_off_symmetry.p_value], dtype=np.float64),
-        "lorenz_section_points": lorenz_return.poincare["section_points"].astype(np.float64),
-        "lorenz_return_points": lorenz_return.extrema.points.astype(np.float64),
+        "type_i_vuong_z": np.array([comparison.z], dtype=np.float64),
+        "normal_form_eps": eps_values.astype(np.float64),
+        "normal_form_mean_lengths": mean_lengths.astype(np.float64),
+        "normal_form_beta": np.array([scaling.beta], dtype=np.float64),
+        "lorenz_rho": np.array([LORENZ_INTERMITTENCY_RHO], dtype=np.float64),
+        "lorenz_time": lorenz_time,
+        "lorenz_observable": lorenz_observable,
+        "lorenz_return_points": lorenz_return_points,
+        "lorenz_channel_points": lorenz_return.tangent_channel.points.astype(np.float64),
         "lorenz_channel_slope": np.array(
             [lorenz_return.tangent_channel.slope],
             dtype=np.float64,
@@ -161,7 +145,7 @@ def compute(
 
 
 def plot(data, output_path=OUTPUT_PNG):
-    """Render the cached diagnostics summary figure."""
+    """Render the Type-I proof-triad figure."""
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
@@ -169,89 +153,123 @@ def plot(data, output_path=OUTPUT_PNG):
         apply_axes_polish,
         color_for,
         figure_spec,
-        finalize_legend,
         setup,
     )
 
     setup()
 
-    type_i_lengths = np.asarray(data["type_i_laminar_lengths"], dtype=np.float64)
-    on_off_laminar = np.asarray(data["on_off_laminar_lengths"], dtype=np.float64)
-    on_off_burst = np.asarray(data["on_off_burst_lengths"], dtype=np.float64)
-    lorenz_section = np.asarray(data["lorenz_section_points"], dtype=np.float64)
+    f3_points = np.asarray(data["logistic_f3_return_points"], dtype=np.float64)
+    f3_channel = np.asarray(data["logistic_f3_channel_points"], dtype=np.float64)
+    lengths = np.asarray(data["logistic_laminar_lengths"], dtype=np.float64)
+    eps = np.asarray(data["normal_form_eps"], dtype=np.float64)
+    mean_lengths = np.asarray(data["normal_form_mean_lengths"], dtype=np.float64)
+    lorenz_time = np.asarray(data["lorenz_time"], dtype=np.float64)
+    lorenz_observable = np.asarray(data["lorenz_observable"], dtype=np.float64)
+    lorenz_return = np.asarray(data["lorenz_return_points"], dtype=np.float64)
+    lorenz_channel = np.asarray(data["lorenz_channel_points"], dtype=np.float64)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    spec = figure_spec("double")
-    fig, axes = plt.subplots(1, 3, figsize=spec.figsize, constrained_layout=True)
+    spec = figure_spec("grid")
+    fig, axes = plt.subplots(2, 2, figsize=spec.figsize, constrained_layout=True)
+    ax_return, ax_tail, ax_scaling, ax_lorenz = axes.ravel()
 
-    values, counts = np.unique(type_i_lengths, return_counts=True)
-    probabilities = counts / np.sum(counts)
-    axes[0].loglog(
-        values,
-        probabilities,
-        marker="o",
-        ms=3,
-        lw=0,
+    sample = _even_sample(f3_points, 20_000)
+    ax_return.scatter(
+        sample[:, 0],
+        sample[:, 1],
+        s=2.0,
         color=color_for(0),
-        alpha=0.8,
+        alpha=0.18,
+        linewidths=0,
     )
-    reference_x = np.array([values[values >= 3][0], np.max(values)], dtype=np.float64)
-    reference_y = probabilities[values >= 3][0] * (reference_x / reference_x[0]) ** -1.5
-    axes[0].loglog(
-        reference_x,
-        reference_y,
-        ls="--",
-        lw=0.9,
-        color=COLORS["black"],
-    )
-    axes[0].axvline(np.max(values), color=COLORS["grey"], lw=0.8, ls=":")
-    axes[0].set_title("Type-I laminar tail")
-    axes[0].set_xlabel("laminar length $\\ell$")
-    axes[0].set_ylabel("$P(\\ell)$")
-
-    bins = np.histogram_bin_edges(
-        np.r_[on_off_laminar, on_off_burst],
-        bins="fd",
-    )
-    axes[1].hist(
-        on_off_laminar,
-        bins=bins,
-        density=True,
-        alpha=0.55,
+    ax_return.scatter(
+        f3_channel[:, 0],
+        f3_channel[:, 1],
+        s=5.0,
         color=color_for(1),
-        label="laminar",
-    )
-    axes[1].hist(
-        on_off_burst,
-        bins=bins,
-        density=True,
-        alpha=0.45,
-        color=color_for(2),
-        label="burst",
-    )
-    axes[1].set_title("On-off durations")
-    axes[1].set_xlabel("run length")
-    axes[1].set_ylabel("density")
-    finalize_legend(axes[1], kind="double")
-
-    axes[2].scatter(
-        lorenz_section[:, 0],
-        lorenz_section[:, 1],
-        s=14,
-        color=color_for(3),
         alpha=0.8,
         linewidths=0,
     )
-    axes[2].set_title("Lorenz $\\rho=166.2$")
-    axes[2].set_xlabel("$x(t)$")
-    axes[2].set_ylabel("$x(t+\\tau)$")
+    bounds = np.array([np.min(f3_points), np.max(f3_points)], dtype=np.float64)
+    ax_return.plot(bounds, bounds, color=COLORS["black"], lw=0.8, ls="--")
+    ax_return.set_title("Logistic $f^3$ tangent channels")
+    ax_return.set_xlabel("$x_n$")
+    ax_return.set_ylabel("$x_{n+3}$")
 
-    for ax in axes:
+    values, counts = np.unique(lengths.astype(np.int64), return_counts=True)
+    probabilities = counts / np.sum(counts)
+    ax_tail.loglog(
+        values,
+        probabilities,
+        marker="o",
+        ms=3.0,
+        lw=0,
+        color=color_for(2),
+        alpha=0.8,
+    )
+    tail = values >= 3
+    reference_x = np.array([values[tail][0], np.max(values)], dtype=np.float64)
+    reference_y = probabilities[tail][0] * (reference_x / reference_x[0]) ** -1.5
+    ax_tail.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
+    ax_tail.set_title("Laminar tail $P(\\ell) \\sim \\ell^{-3/2}$")
+    ax_tail.set_xlabel("laminar length $\\ell$")
+    ax_tail.set_ylabel("$P(\\ell)$")
+
+    ax_scaling.loglog(
+        eps,
+        mean_lengths,
+        marker="o",
+        ms=4.0,
+        color=color_for(3),
+        lw=1.0,
+    )
+    scale_x = np.array([np.min(eps), np.max(eps)], dtype=np.float64)
+    scale_y = mean_lengths[0] * (scale_x / eps[0]) ** -0.5
+    ax_scaling.loglog(scale_x, scale_y, color=COLORS["black"], lw=1.0, ls="--")
+    ax_scaling.set_title("Normal-form $\\langle \\ell \\rangle \\sim \\epsilon^{-1/2}$")
+    ax_scaling.set_xlabel("$\\epsilon$")
+    ax_scaling.set_ylabel("$\\langle \\ell \\rangle$")
+
+    lorenz_sample = _even_sample(lorenz_return, 4_000)
+    ax_lorenz.scatter(
+        lorenz_sample[:, 0],
+        lorenz_sample[:, 1],
+        s=5.0,
+        color=color_for(4),
+        alpha=0.45,
+        linewidths=0,
+    )
+    ax_lorenz.scatter(
+        lorenz_channel[:, 0],
+        lorenz_channel[:, 1],
+        s=12.0,
+        color=color_for(5),
+        alpha=0.9,
+        linewidths=0,
+    )
+    lorenz_bounds = np.array([np.min(lorenz_return), np.max(lorenz_return)], dtype=np.float64)
+    ax_lorenz.plot(lorenz_bounds, lorenz_bounds, color=COLORS["black"], lw=0.8, ls="--")
+    inset = ax_lorenz.inset_axes([0.08, 0.58, 0.38, 0.34])
+    inset.plot(
+        lorenz_time[:1_200],
+        lorenz_observable[:1_200],
+        color=color_for(4),
+        lw=0.6,
+    )
+    inset.set_xticks([])
+    inset.set_yticks([])
+    inset.spines["top"].set_visible(False)
+    inset.spines["right"].set_visible(False)
+    ax_lorenz.set_title("Lorenz $\\rho=166.2$ $y$-return channel")
+    ax_lorenz.set_xlabel("$y_k$")
+    ax_lorenz.set_ylabel("$y_{k+1}$")
+
+    for ax in axes.ravel():
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        apply_axes_polish(ax, kind="double")
+        apply_axes_polish(ax, kind="grid")
 
     fig.savefig(output_path, dpi=600)
     plt.close(fig)
@@ -260,19 +278,69 @@ def plot(data, output_path=OUTPUT_PNG):
 
 
 def main():
-    """Load or compute the intermittency cache, then render the figure."""
+    """Load or compute the Type-I cache, then render the figure."""
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        if missing:
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 5
+        if missing or stale_schema:
             data.close()
-            missing_text = ", ".join(missing)
-            print(f"Cache {OUTPUT_NPZ} missing keys ({missing_text}); recomputing...")
+            if missing:
+                reason = "missing keys (" + ", ".join(missing) + ")"
+            else:
+                reason = "stale schema"
+            print(f"Cache {OUTPUT_NPZ} {reason}; recomputing...")
             data = compute()
     except FileNotFoundError:
         data = compute()
 
     plot(data)
+
+
+def _normal_form_escape_lengths(eps_values):
+    lengths = []
+    for eps in eps_values:
+        x = 0.0
+        length = 0
+        while x < 1.0:
+            x = x + float(eps) + x * x
+            length += 1
+        lengths.append(length)
+    return np.asarray(lengths, dtype=np.float64)
+
+
+def _logistic_f3_grid(n_points=4_000):
+    x = np.linspace(0.0, 1.0, n_points, dtype=np.float64)
+    y = x.copy()
+    derivative = np.ones_like(x)
+    for _ in range(3):
+        derivative *= LOGISTIC_TYPE_I_ONSET * (1.0 - 2.0 * y)
+        y = LOGISTIC_TYPE_I_ONSET * y * (1.0 - y)
+    return np.column_stack((x, y)), derivative
+
+
+def _logistic_f3_tangent_channels(points, derivative):
+    points = np.asarray(points, dtype=np.float64)
+    derivative = np.asarray(derivative, dtype=np.float64)
+    diagonal_distance = np.abs(points[:, 1] - points[:, 0])
+    mask = (
+        (points[:, 0] > 0.05)
+        & (diagonal_distance <= 0.01)
+        & (np.abs(derivative - 1.0) < 1.0)
+    )
+    channel = points[mask]
+    if channel.shape[0] < 20:
+        msg = "logistic f^3 grid did not resolve the tangent channels"
+        raise RuntimeError(msg)
+    return channel
+
+
+def _even_sample(points, max_points):
+    points = np.asarray(points)
+    if points.shape[0] <= max_points:
+        return points
+    indices = np.linspace(0, points.shape[0] - 1, max_points, dtype=np.int64)
+    return points[indices]
 
 
 def _source_file_label():
