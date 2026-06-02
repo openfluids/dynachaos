@@ -6,22 +6,33 @@ acceleration is a transparent drop-in.
 
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
 from conftest import logistic_series
 
 try:
-    from dynachaos._rust import diagonal_lines  # noqa: F401
+    import dynachaos._rust  # noqa: F401
 
-    _HAS_RUST = not os.environ.get("DYNACHAOS_NO_RUST")
+    _RUST_IMPORTABLE = True
 except ImportError:
-    _HAS_RUST = False
+    _RUST_IMPORTABLE = False
 
-needs_rust = pytest.mark.skipif(not _HAS_RUST, reason="Rust extension not available")
+rust_extension = pytest.mark.skipif(not _RUST_IMPORTABLE, reason="compiled extension not built")
+_NO_RUST_ENV = bool(os.environ.get("DYNACHAOS_NO_RUST"))
+_GOLDEN_PATH = Path(__file__).with_name("data") / "rust_parity_goldens.npz"
 
 
-@needs_rust
+def _golden(name):
+    with np.load(_GOLDEN_PATH) as goldens:
+        return goldens[name]
+
+
+def _assert_golden(name, value, **kwargs):
+    np.testing.assert_allclose(np.asarray(value), _golden(name), **kwargs)
+
+
 class TestRecurrenceParity:
     """Verify Rust and Python _diagonal_lines / _vertical_lines agree."""
 
@@ -35,34 +46,48 @@ class TestRecurrenceParity:
 
     def test_diagonal_lines_parity(self):
         R = self._recurrence_matrix()
-        from dynachaos._rust import diagonal_lines as rust_diag
 
-        # Python path (bypass Rust)
         from dynachaos.diagnostics import recurrence as rec_mod
 
         old_flag = rec_mod._RUST_AVAILABLE
-        rec_mod._RUST_AVAILABLE = False
-        py_result = rec_mod._diagonal_lines(R, l_min=2)
-        rec_mod._RUST_AVAILABLE = old_flag
+        try:
+            rec_mod._RUST_AVAILABLE = False
+            py_result = rec_mod._diagonal_lines(R, l_min=2)
+        finally:
+            rec_mod._RUST_AVAILABLE = old_flag
 
-        # Rust path
-        rs_result = np.asarray(rust_diag(R, l_min=2))
+        np.testing.assert_array_equal(
+            np.asarray(sorted(py_result), dtype=np.int64),
+            _golden("diag_lines"),
+        )
 
-        np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import diagonal_lines as rust_diag
+
+            rs_result = np.asarray(sorted(rust_diag(R, l_min=2)), dtype=np.int64)
+            np.testing.assert_array_equal(rs_result, _golden("diag_lines"))
 
     def test_vertical_lines_parity(self):
         R = self._recurrence_matrix()
-        from dynachaos._rust import vertical_lines as rust_vert
         from dynachaos.diagnostics import recurrence as rec_mod
 
         old_flag = rec_mod._RUST_AVAILABLE
-        rec_mod._RUST_AVAILABLE = False
-        py_result = rec_mod._vertical_lines(R, v_min=2)
-        rec_mod._RUST_AVAILABLE = old_flag
+        try:
+            rec_mod._RUST_AVAILABLE = False
+            py_result = rec_mod._vertical_lines(R, v_min=2)
+        finally:
+            rec_mod._RUST_AVAILABLE = old_flag
 
-        rs_result = np.asarray(rust_vert(R, v_min=2))
+        np.testing.assert_array_equal(
+            np.asarray(sorted(py_result), dtype=np.int64),
+            _golden("vert_lines"),
+        )
 
-        np.testing.assert_array_equal(sorted(py_result), sorted(rs_result))
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import vertical_lines as rust_vert
+
+            rs_result = np.asarray(sorted(rust_vert(R, v_min=2)), dtype=np.int64)
+            np.testing.assert_array_equal(rs_result, _golden("vert_lines"))
 
     @pytest.mark.parametrize(
         ("mask", "min_length"),
@@ -74,8 +99,7 @@ class TestRecurrenceParity:
             ([False, True, True, True], 3),
         ],
     )
-    def test_count_line_lengths_parity(self, mask, min_length):
-        from dynachaos._rust import count_line_lengths as rust_line_lengths
+    def test_count_line_lengths_parity(self, mask, min_length, request):
         from dynachaos.diagnostics import recurrence as rec_mod
 
         mask_array = np.asarray(mask, dtype=np.bool_)
@@ -86,10 +110,19 @@ class TestRecurrenceParity:
             python_result = rec_mod._line_lengths(mask_array, min_length)
         finally:
             rec_mod._RUST_AVAILABLE = old_flag
-        rust_result = np.asarray(rust_line_lengths(mask_array, min_length))
+        golden_name = f"line_lengths_{request.node.callspec.indices['mask']}"
+        np.testing.assert_array_equal(
+            np.asarray(python_result, dtype=np.int64),
+            _golden(golden_name),
+        )
 
-        np.testing.assert_array_equal(rust_result, np.asarray(python_result, dtype=np.int64))
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import count_line_lengths as rust_line_lengths
 
+            rust_result = np.asarray(rust_line_lengths(mask_array, min_length))
+            np.testing.assert_array_equal(rust_result, _golden(golden_name))
+
+    @rust_extension
     def test_count_line_lengths_rejects_invalid_min_length(self):
         from dynachaos._rust import count_line_lengths as rust_line_lengths
 
@@ -104,11 +137,6 @@ class TestRecurrenceParity:
 
         old_flag = rec_mod._RUST_AVAILABLE
         try:
-            rec_mod._RUST_AVAILABLE = True
-            rust_stats = rec_mod.rqa_from_trajectory(
-                traj, percentile=7, metric="chebyshev", l_min=2, v_min=3
-            )
-
             rec_mod._RUST_AVAILABLE = False
             python_stats = rec_mod.rqa_from_trajectory(
                 traj, percentile=7, metric="chebyshev", l_min=2, v_min=3
@@ -116,10 +144,38 @@ class TestRecurrenceParity:
         finally:
             rec_mod._RUST_AVAILABLE = old_flag
 
-        assert rust_stats.keys() == python_stats.keys()
-        for key, value in python_stats.items():
-            assert rust_stats[key] == pytest.approx(value)
+        np.testing.assert_array_equal(
+            np.asarray(sorted(python_stats)),
+            _golden("streaming_rqa_keys"),
+        )
+        _assert_golden(
+            "streaming_rqa_values",
+            [python_stats[k] for k in sorted(python_stats)],
+            atol=0.0,
+            rtol=0.0,
+        )
 
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            try:
+                rec_mod._RUST_AVAILABLE = True
+                rust_stats = rec_mod.rqa_from_trajectory(
+                    traj, percentile=7, metric="chebyshev", l_min=2, v_min=3
+                )
+            finally:
+                rec_mod._RUST_AVAILABLE = old_flag
+
+            np.testing.assert_array_equal(
+                np.asarray(sorted(rust_stats)),
+                _golden("streaming_rqa_keys"),
+            )
+            _assert_golden(
+                "streaming_rqa_values",
+                [rust_stats[k] for k in sorted(rust_stats)],
+                atol=0.0,
+                rtol=0.0,
+            )
+
+    @rust_extension
     @pytest.mark.parametrize(
         ("function_name", "kwargs", "message"),
         [
@@ -144,58 +200,89 @@ class TestRecurrenceParity:
         R = self._recurrence_matrix()
         from dynachaos.diagnostics import recurrence as rec_mod
 
-        # Rust path (only works when Rust is loaded)
-        rqa_rust = rec_mod.rqa(R)
-
-        # Python path
         old_flag = rec_mod._RUST_AVAILABLE
-        rec_mod._RUST_AVAILABLE = False
-        rqa_python = rec_mod.rqa(R)
-        rec_mod._RUST_AVAILABLE = old_flag
+        try:
+            rec_mod._RUST_AVAILABLE = False
+            rqa_python = rec_mod.rqa(R)
+        finally:
+            rec_mod._RUST_AVAILABLE = old_flag
 
-        for key in rqa_rust:
-            assert rqa_rust[key] == pytest.approx(rqa_python[key], abs=1e-12), (
-                f"RQA[{key}] mismatch: rust={rqa_rust[key]}, python={rqa_python[key]}"
+        np.testing.assert_array_equal(np.asarray(sorted(rqa_python)), _golden("rqa_keys"))
+        _assert_golden(
+            "rqa_values",
+            [rqa_python[k] for k in sorted(rqa_python)],
+            atol=1e-12,
+            rtol=0.0,
+        )
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            rqa_rust = rec_mod.rqa(R)
+            _assert_golden(
+                "rqa_values",
+                [rqa_rust[k] for k in sorted(rqa_rust)],
+                atol=1e-12,
+                rtol=0.0,
             )
 
 
-@needs_rust
 class TestPermutationParity:
     """Verify Rust and Python ordinal_distribution agree."""
 
     def test_ordinal_distribution_parity(self):
         series = logistic_series(n=5000)
-        from dynachaos._rust import ordinal_distribution as rust_ord
 
-        # Python path
         from dynachaos.diagnostics import permutation as perm_mod
 
         old_flag = perm_mod._RUST_AVAILABLE
-        perm_mod._RUST_AVAILABLE = False
-        py_probs, py_total = perm_mod.ordinal_distribution(series, d=5, tau=1)
-        perm_mod._RUST_AVAILABLE = old_flag
+        try:
+            perm_mod._RUST_AVAILABLE = False
+            py_probs, py_total = perm_mod.ordinal_distribution(series, d=5, tau=1)
+        finally:
+            perm_mod._RUST_AVAILABLE = old_flag
 
-        # Rust path
-        rs_counts, rs_total = rust_ord(series, d=5, tau=1)
-        rs_counts = np.asarray(rs_counts)
+        np.testing.assert_array_equal(
+            np.asarray([py_total], dtype=np.int64),
+            _golden("ordinal_total"),
+        )
+        np.testing.assert_array_equal(
+            np.asarray(sorted(py_probs), dtype=np.int64),
+            _golden("ordinal_indices"),
+        )
+        _assert_golden(
+            "ordinal_probs",
+            [py_probs[k] for k in sorted(py_probs)],
+            atol=1e-12,
+            rtol=0.0,
+        )
 
-        assert py_total == rs_total
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import ordinal_distribution as rust_ord
+            from dynachaos.diagnostics.permutation import _lehmer_to_permutation
 
-        # Compare: reconstruct probabilities from Rust counts
-        from dynachaos.diagnostics.permutation import _lehmer_to_permutation
+            rs_counts, rs_total = rust_ord(series, d=5, tau=1)
+            rs_counts = np.asarray(rs_counts)
+            np.testing.assert_array_equal(
+                np.asarray([rs_total], dtype=np.int64),
+                _golden("ordinal_total"),
+            )
 
-        rs_probs = {}
-        for idx in np.nonzero(rs_counts)[0]:
-            perm = _lehmer_to_permutation(int(idx), 5)
-            rs_probs[perm] = int(rs_counts[idx]) / rs_total
+            rs_probs = {}
+            for idx in np.nonzero(rs_counts)[0]:
+                perm = _lehmer_to_permutation(int(idx), 5)
+                rs_probs[perm] = int(rs_counts[idx]) / rs_total
 
-        # Same set of patterns
-        assert set(py_probs.keys()) == set(rs_probs.keys())
+            np.testing.assert_array_equal(
+                np.asarray(sorted(rs_probs), dtype=np.int64),
+                _golden("ordinal_indices"),
+            )
+            _assert_golden(
+                "ordinal_probs",
+                [rs_probs[k] for k in sorted(rs_probs)],
+                atol=1e-12,
+                rtol=0.0,
+            )
 
-        # Same probabilities
-        for perm in py_probs:
-            assert py_probs[perm] == pytest.approx(rs_probs[perm], abs=1e-12)
-
+    @rust_extension
     @pytest.mark.parametrize(
         ("d", "tau", "message"),
         [
@@ -217,36 +304,38 @@ class TestPermutationParity:
         series = logistic_series(n=5000)
         from dynachaos.diagnostics import permutation as perm_mod
 
-        # Rust path (Rust is loaded, flag is True)
-        h_rust = perm_mod.permutation_entropy(series, d=5)
-
-        # Python path
         old_flag = perm_mod._RUST_AVAILABLE
-        perm_mod._RUST_AVAILABLE = False
-        h_python = perm_mod.permutation_entropy(series, d=5)
-        perm_mod._RUST_AVAILABLE = old_flag
+        try:
+            perm_mod._RUST_AVAILABLE = False
+            h_python = perm_mod.permutation_entropy(series, d=5)
+        finally:
+            perm_mod._RUST_AVAILABLE = old_flag
 
-        assert h_rust == pytest.approx(h_python, abs=1e-10)
+        _assert_golden("permutation_entropy", [h_python], atol=1e-10, rtol=0.0)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            h_rust = perm_mod.permutation_entropy(series, d=5)
+            _assert_golden("permutation_entropy", [h_rust], atol=1e-10, rtol=0.0)
 
     def test_complexity_entropy_parity(self):
         """Complexity-entropy plane should agree regardless of backend."""
         series = logistic_series(n=5000)
         from dynachaos.diagnostics import permutation as perm_mod
 
-        # Rust path (Rust is loaded, flag is True)
-        h_rust, c_rust = perm_mod.complexity_entropy(series, d=5)
-
-        # Python path
         old_flag = perm_mod._RUST_AVAILABLE
-        perm_mod._RUST_AVAILABLE = False
-        h_python, c_python = perm_mod.complexity_entropy(series, d=5)
-        perm_mod._RUST_AVAILABLE = old_flag
+        try:
+            perm_mod._RUST_AVAILABLE = False
+            h_python, c_python = perm_mod.complexity_entropy(series, d=5)
+        finally:
+            perm_mod._RUST_AVAILABLE = old_flag
 
-        assert h_rust == pytest.approx(h_python, abs=1e-10)
-        assert c_rust == pytest.approx(c_python, abs=1e-10)
+        _assert_golden("complexity_entropy", [h_python, c_python], atol=1e-10, rtol=0.0)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            h_rust, c_rust = perm_mod.complexity_entropy(series, d=5)
+            _assert_golden("complexity_entropy", [h_rust, c_rust], atol=1e-10, rtol=0.0)
 
 
-@needs_rust
 class TestAMIParity:
     """Verify Rust and Python AMI agree."""
 
@@ -254,19 +343,20 @@ class TestAMIParity:
         series = logistic_series(n=3000)
         from dynachaos.diagnostics import embedding as emb_mod
 
-        # Rust path
-        old_flag = emb_mod._RUST_AVAILABLE
-        emb_mod._RUST_AVAILABLE = True
-        _, I_rust = emb_mod.average_mutual_information(series, tau_max=30, n_bins=32)
-        emb_mod._RUST_AVAILABLE = old_flag
-
-        # Python path
         I_python = emb_mod._ami_python(series, tau_max=30, n_bins=32)
 
-        np.testing.assert_allclose(
-            I_rust, I_python, atol=1e-10, err_msg="AMI Rust vs Python mismatch"
-        )
+        _assert_golden("ami", I_python, atol=1e-10, rtol=0.0)
 
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            old_flag = emb_mod._RUST_AVAILABLE
+            try:
+                emb_mod._RUST_AVAILABLE = True
+                _, I_rust = emb_mod.average_mutual_information(series, tau_max=30, n_bins=32)
+            finally:
+                emb_mod._RUST_AVAILABLE = old_flag
+            _assert_golden("ami", I_rust, atol=1e-10, rtol=0.0)
+
+    @rust_extension
     def test_ami_direct_rust_rejects_invalid_inputs(self):
         from dynachaos._rust import ami_histogram
 
@@ -275,6 +365,7 @@ class TestAMIParity:
         with pytest.raises(ValueError, match="finite values"):
             ami_histogram(np.array([1.0, np.nan, 2.0]), tau_max=3, n_bins=4)
 
+    @rust_extension
     def test_ami_direct_rust_constant_series_returns_zero(self):
         from dynachaos._rust import ami_histogram
 
@@ -286,7 +377,7 @@ class TestAMIParity:
 # TestCaoParity omitted: Cao statistics remain in Python/SciPy.
 
 
-@needs_rust
+@rust_extension
 def test_disabled_embedding_statistics_are_not_exported():
     import dynachaos._rust as rust_mod
 
@@ -295,7 +386,6 @@ def test_disabled_embedding_statistics_are_not_exported():
     assert hasattr(rust_mod, "select_dimension_cao")
 
 
-@needs_rust
 class TestCaoSelectorParity:
     """Verify Rust and Python Cao selector agree."""
 
@@ -371,12 +461,9 @@ class TestCaoSelectorParity:
         ],
     )
     def test_select_dimension_cao_parity(self, e1, kwargs, expected):
-        from dynachaos._rust import select_dimension_cao as rust_selector
         from dynachaos.diagnostics import embedding as emb_mod
 
         e1 = np.asarray(e1, dtype=np.float64)
-
-        d_rust = int(rust_selector(e1, **kwargs))
 
         old_selector = emb_mod._select_dimension_cao_rs
         emb_mod._select_dimension_cao_rs = None
@@ -385,13 +472,17 @@ class TestCaoSelectorParity:
         finally:
             emb_mod._select_dimension_cao_rs = old_selector
 
-        assert d_rust == d_python == expected
+        assert d_python == expected
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import select_dimension_cao as rust_selector
+
+            assert int(rust_selector(e1, **kwargs)) == expected
 
 
 # TestFNNParity omitted: FNN statistics remain in Python/SciPy.
 
 
-@needs_rust
 class TestCorrelationCountsParity:
     """Verify Rust and Python correlation integral agree."""
 
@@ -402,21 +493,26 @@ class TestCorrelationCountsParity:
 
         from dynachaos.diagnostics import correlation as corr_mod
 
-        # Rust path
         old_flag = corr_mod._RUST_AVAILABLE
-        corr_mod._RUST_AVAILABLE = True
-        C_rust = corr_mod.correlation_integral(traj, r_values, theiler_window=5, norm="chebyshev")
-        corr_mod._RUST_AVAILABLE = old_flag
+        try:
+            corr_mod._RUST_AVAILABLE = False
+            C_py = corr_mod.correlation_integral(traj, r_values, theiler_window=5, norm="chebyshev")
+        finally:
+            corr_mod._RUST_AVAILABLE = old_flag
 
-        # Python path
-        corr_mod._RUST_AVAILABLE = False
-        C_py = corr_mod.correlation_integral(traj, r_values, theiler_window=5, norm="chebyshev")
-        corr_mod._RUST_AVAILABLE = old_flag
+        _assert_golden("correlation_counts", C_py, atol=1e-10, rtol=0.0)
 
-        np.testing.assert_allclose(
-            C_rust, C_py, atol=1e-10, err_msg="Correlation integral Rust vs Python mismatch"
-        )
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            try:
+                corr_mod._RUST_AVAILABLE = True
+                C_rust = corr_mod.correlation_integral(
+                    traj, r_values, theiler_window=5, norm="chebyshev"
+                )
+            finally:
+                corr_mod._RUST_AVAILABLE = old_flag
+            _assert_golden("correlation_counts", C_rust, atol=1e-10, rtol=0.0)
 
+    @rust_extension
     def test_correlation_counts_huge_theiler_window_has_no_pairs(self):
         from dynachaos._rust import correlation_counts
 
@@ -428,7 +524,7 @@ class TestCorrelationCountsParity:
         np.testing.assert_array_equal(counts, np.zeros_like(r_values, dtype=np.int64))
 
 
-@needs_rust
+@rust_extension
 class TestEntropyRustBoundaries:
     def test_apen_counts_uses_inclusive_self_matches(self):
         from dynachaos._rust import apen_counts
@@ -461,11 +557,9 @@ class TestEntropyRustBoundaries:
         assert fuzzy_entropy_sum(traj, 1.0, 2, sys.maxsize) == 0.0
 
 
-@needs_rust
 class TestCMLJacobianParity:
     @pytest.mark.parametrize("L", [1, 3, 5])
     def test_cml_jacobian_logistic_direct_rust_matches_python_path(self, L):
-        from dynachaos._rust import cml_jacobian_logistic as rust_jacobian
         from dynachaos.cml import primitives as cml_mod
 
         x = np.array([0.125, -0.25, 0.375, -0.5, 0.625], dtype=np.float64)
@@ -479,10 +573,14 @@ class TestCMLJacobianParity:
         finally:
             cml_mod._RUST_AVAILABLE = old_flag
 
-        rust_jacobian_flat = np.asarray(rust_jacobian(x, a=a, eps=eps, L=L))
-        rust_jacobian_matrix = rust_jacobian_flat.reshape((L, L))
+        _assert_golden(f"cml_jacobian_direct_{L}", py_jacobian, atol=0.0, rtol=0.0)
 
-        np.testing.assert_allclose(rust_jacobian_matrix, py_jacobian, atol=0.0, rtol=0.0)
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import cml_jacobian_logistic as rust_jacobian
+
+            rust_jacobian_flat = np.asarray(rust_jacobian(x, a=a, eps=eps, L=L))
+            rust_jacobian_matrix = rust_jacobian_flat.reshape((L, L))
+            _assert_golden(f"cml_jacobian_direct_{L}", rust_jacobian_matrix, atol=0.0, rtol=0.0)
 
     def test_cml_jacobian_public_dispatcher_matches_python_path(self):
         from dynachaos.cml import primitives as cml_mod
@@ -494,16 +592,22 @@ class TestCMLJacobianParity:
 
         old_flag = cml_mod._RUST_AVAILABLE
         try:
-            cml_mod._RUST_AVAILABLE = True
-            rust_path = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
-
             cml_mod._RUST_AVAILABLE = False
             python_path = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
         finally:
             cml_mod._RUST_AVAILABLE = old_flag
 
-        np.testing.assert_allclose(rust_path, python_path, atol=0.0, rtol=0.0)
+        _assert_golden("cml_jacobian_public", python_path, atol=0.0, rtol=0.0)
 
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            try:
+                cml_mod._RUST_AVAILABLE = True
+                rust_path = cml_mod.cml_jacobian_subblock_logistic(x, a, eps, L)
+            finally:
+                cml_mod._RUST_AVAILABLE = old_flag
+            _assert_golden("cml_jacobian_public", rust_path, atol=0.0, rtol=0.0)
+
+    @rust_extension
     def test_cml_jacobian_logistic_rejects_invalid_l(self):
         from dynachaos._rust import cml_jacobian_logistic as rust_jacobian
 
@@ -516,10 +620,13 @@ class TestCMLJacobianParity:
             rust_jacobian(x, 1.5, 0.2, len(x) + 1)
 
     def test_cml_lyapunov_density_inner_loop_parity(self):
-        rust_density = self._small_lyapunov_density(use_rust=True)
         python_density = self._small_lyapunov_density(use_rust=False)
 
-        np.testing.assert_allclose(rust_density, python_density, atol=1e-14, rtol=1e-14)
+        _assert_golden("cml_lyapunov_density", python_density, atol=1e-14, rtol=1e-14)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            rust_density = self._small_lyapunov_density(use_rust=True)
+            _assert_golden("cml_lyapunov_density", rust_density, atol=1e-14, rtol=1e-14)
 
     def _small_lyapunov_density(self, use_rust):
         from dynachaos.cml import primitives as cml_mod
@@ -567,12 +674,10 @@ class TestCMLJacobianParity:
         return density
 
 
-@needs_rust
 class TestComovingLyapunovParity:
     """Verify specialized Rust and Python co-moving Lyapunov paths agree."""
 
     def test_comoving_lyapunov_logistic_kernel_parity(self):
-        from dynachaos._rust import comoving_lyapunov_logistic
         from dynachaos.diagnostics.comoving_lyapunov import _comoving_lyapunov_spectrum_python
         from dynachaos.maps.primitives import logistic, logistic_derivative
 
@@ -594,18 +699,22 @@ class TestComovingLyapunovParity:
             n_iter,
             n_transient,
         )
-        rust_result = np.asarray(
-            comoving_lyapunov_logistic(
-                x_init,
-                v_values,
-                a,
-                eps,
-                n_iter,
-                n_transient,
-            )
-        )
+        _assert_golden("comoving_kernel", python_result, rtol=1e-12, atol=1e-12)
 
-        np.testing.assert_allclose(rust_result, python_result, rtol=1e-12, atol=1e-12)
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import comoving_lyapunov_logistic
+
+            rust_result = np.asarray(
+                comoving_lyapunov_logistic(
+                    x_init,
+                    v_values,
+                    a,
+                    eps,
+                    n_iter,
+                    n_transient,
+                )
+            )
+            _assert_golden("comoving_kernel", rust_result, rtol=1e-12, atol=1e-12)
 
     def test_comoving_lyapunov_logistic_public_dispatch_parity(self):
         import importlib
@@ -623,23 +732,26 @@ class TestComovingLyapunovParity:
         }
         old_flag = comoving_mod._RUST_AVAILABLE
         try:
-            comoving_mod._RUST_AVAILABLE = True
-            rust_result = comoving_mod.comoving_lyapunov_spectrum_logistic(**kwargs)
-
             comoving_mod._RUST_AVAILABLE = False
             python_result = comoving_mod.comoving_lyapunov_spectrum_logistic(**kwargs)
         finally:
             comoving_mod._RUST_AVAILABLE = old_flag
 
-        np.testing.assert_allclose(rust_result, python_result, rtol=1e-12, atol=1e-12)
+        _assert_golden("comoving_public", python_result, rtol=1e-12, atol=1e-12)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            try:
+                comoving_mod._RUST_AVAILABLE = True
+                rust_result = comoving_mod.comoving_lyapunov_spectrum_logistic(**kwargs)
+            finally:
+                comoving_mod._RUST_AVAILABLE = old_flag
+            _assert_golden("comoving_public", rust_result, rtol=1e-12, atol=1e-12)
 
 
-@needs_rust
 class TestCoupledLogisticBasinsParity:
     """Verify Rust and Python coupled-logistic basin grids agree."""
 
     def test_coupled_logistic_basin_grid_parity(self):
-        from dynachaos._rust import coupled_logistic_basin_grid
         from dynachaos.maps.coupled_logistic import _basin_grid_python, _find_reference_orbit
 
         A = 1.35344
@@ -662,19 +774,24 @@ class TestCoupledLogisticBasinsParity:
 
         python_basin = _basin_grid_python(A, D, x_range, y_range, n_transient, ref_a)
 
-        rust_basin = np.asarray(
-            coupled_logistic_basin_grid(
-                x_range,
-                y_range,
-                A,
-                D,
-                n_transient,
-                ref_a,
+        np.testing.assert_array_equal(python_basin, _golden("basin_grid"))
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import coupled_logistic_basin_grid
+
+            rust_basin = np.asarray(
+                coupled_logistic_basin_grid(
+                    x_range,
+                    y_range,
+                    A,
+                    D,
+                    n_transient,
+                    ref_a,
+                )
             )
-        )
+            np.testing.assert_array_equal(rust_basin, _golden("basin_grid"))
 
-        np.testing.assert_array_equal(rust_basin, python_basin)
-
+    @rust_extension
     def test_coupled_logistic_basin_grid_divergence_and_tie_cases(self):
         from dynachaos._rust import coupled_logistic_basin_grid
 
@@ -717,12 +834,6 @@ class TestCoupledLogisticBasinsParity:
         }
         old_flag = basin_mod._RUST_AVAILABLE
         try:
-            basin_mod._RUST_AVAILABLE = True
-            rust_payload = basin_mod.compute_basins(
-                **kwargs,
-                output_path=tmp_path / "basins_rust.npz",
-            )
-
             basin_mod._RUST_AVAILABLE = False
             python_payload = basin_mod.compute_basins(
                 **kwargs,
@@ -731,87 +842,135 @@ class TestCoupledLogisticBasinsParity:
         finally:
             basin_mod._RUST_AVAILABLE = old_flag
 
-        assert rust_payload.keys() == python_payload.keys()
-        np.testing.assert_allclose(rust_payload["x"], python_payload["x"])
-        np.testing.assert_allclose(rust_payload["y"], python_payload["y"])
-        np.testing.assert_array_equal(rust_payload["basin"], python_payload["basin"])
-        np.testing.assert_allclose(rust_payload["A"], python_payload["A"])
-        np.testing.assert_allclose(rust_payload["D"], python_payload["D"])
+        expected_keys = {"x", "y", "basin", "A", "D"}
+        assert set(python_payload) == expected_keys
+        for key in python_payload:
+            expected = _golden(f"compute_basins_{key}")
+            if key == "basin":
+                np.testing.assert_array_equal(python_payload[key], expected)
+            else:
+                np.testing.assert_allclose(python_payload[key], expected)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            try:
+                basin_mod._RUST_AVAILABLE = True
+                rust_payload = basin_mod.compute_basins(
+                    **kwargs,
+                    output_path=tmp_path / "basins_rust.npz",
+                )
+            finally:
+                basin_mod._RUST_AVAILABLE = old_flag
+
+            assert set(rust_payload) == expected_keys
+            for key in rust_payload:
+                expected = _golden(f"compute_basins_{key}")
+                if key == "basin":
+                    np.testing.assert_array_equal(rust_payload[key], expected)
+                else:
+                    np.testing.assert_allclose(rust_payload[key], expected)
 
 
-@needs_rust
 class TestIntermittencyOracleParity:
     """Verify Rust intermittency oracle kernels match Python fallbacks."""
 
     def test_direct_pm_type_i_parity(self):
-        from dynachaos._rust import pm_type_i_oracle
         from dynachaos.maps.intermittency import _pm_type_i_oracle_python
 
         kwargs = dict(n=80, x0=0.012, eps=2e-4, a=0.8, modulo=True)
-        rust_result = np.asarray(pm_type_i_oracle(**kwargs))
         python_result = _pm_type_i_oracle_python(**kwargs)
 
-        np.testing.assert_allclose(rust_result, python_result)
+        _assert_golden("pm_type_i_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import pm_type_i_oracle
+
+            _assert_golden("pm_type_i_direct", pm_type_i_oracle(**kwargs))
 
     def test_direct_pm_type_ii_parity(self):
-        from dynachaos._rust import pm_type_ii_oracle
         from dynachaos.maps.intermittency import _pm_type_ii_oracle_python
 
         kwargs = dict(n=80, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0, theta=0.37)
-        rust_result = np.asarray(pm_type_ii_oracle(**kwargs))
         python_result = _pm_type_ii_oracle_python(**kwargs)
 
-        np.testing.assert_allclose(rust_result, python_result)
+        _assert_golden("pm_type_ii_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import pm_type_ii_oracle
+
+            _assert_golden("pm_type_ii_direct", pm_type_ii_oracle(**kwargs))
 
     def test_direct_pm_type_iii_parity(self):
-        from dynachaos._rust import pm_type_iii_oracle
         from dynachaos.maps.intermittency import _pm_type_iii_oracle_python
 
         kwargs = dict(n=80, x0=1e-3, eps=1e-3, a=1.0)
-        rust_result = np.asarray(pm_type_iii_oracle(**kwargs))
         python_result = _pm_type_iii_oracle_python(**kwargs)
 
-        np.testing.assert_allclose(rust_result, python_result)
+        _assert_golden("pm_type_iii_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import pm_type_iii_oracle
+
+            _assert_golden("pm_type_iii_direct", pm_type_iii_oracle(**kwargs))
 
     def test_direct_on_off_parity(self):
-        from dynachaos._rust import on_off_oracle
         from dynachaos.maps.intermittency import _on_off_oracle_python
 
         driver = np.random.default_rng(2026).normal(size=80)
-        rust_result = np.asarray(on_off_oracle(driver, 1e-6, 0.0, 0.25))
         python_result = _on_off_oracle_python(driver, 1e-6, 0.0, 0.25)
 
-        np.testing.assert_allclose(rust_result, python_result)
+        _assert_golden("on_off_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import on_off_oracle
+
+            _assert_golden("on_off_direct", on_off_oracle(driver, 1e-6, 0.0, 0.25))
 
     def test_direct_logistic_type_i_parity(self):
-        from dynachaos._rust import logistic_type_i_oracle
-        from dynachaos.maps.intermittency import LOGISTIC_TYPE_I_ONSET, _logistic_type_i_oracle_python
+        from dynachaos.maps.intermittency import (
+            LOGISTIC_TYPE_I_ONSET,
+            _logistic_type_i_oracle_python,
+        )
 
         kwargs = dict(n=80, x0=0.2, r=LOGISTIC_TYPE_I_ONSET - 1e-4)
-        rust_result = np.asarray(logistic_type_i_oracle(**kwargs))
         python_result = _logistic_type_i_oracle_python(**kwargs)
 
-        np.testing.assert_allclose(rust_result, python_result)
+        _assert_golden("logistic_type_i_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import logistic_type_i_oracle
+
+            _assert_golden("logistic_type_i_direct", logistic_type_i_oracle(**kwargs))
 
     def test_public_dispatch_parity(self):
         from dynachaos.maps import intermittency as int_mod
 
         calls = [
-            (int_mod.pm_type_i_oracle, dict(n=50, x0=0.01, eps=1e-4, a=1.0)),
-            (int_mod.pm_type_ii_oracle, dict(n=50, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0)),
-            (int_mod.pm_type_iii_oracle, dict(n=50, x0=1e-3, eps=1e-3, a=1.0)),
-            (int_mod.logistic_type_i_oracle, dict(n=50, x0=0.2)),
-            (int_mod.on_off_oracle, dict(n=50, seed=2027)),
+            ("dispatch_pm_type_i", int_mod.pm_type_i_oracle, dict(n=50, x0=0.01, eps=1e-4, a=1.0)),
+            (
+                "dispatch_pm_type_ii",
+                int_mod.pm_type_ii_oracle,
+                dict(n=50, x0=1e-3, y0=2e-3, eps=1e-3, a=-1.0),
+            ),
+            (
+                "dispatch_pm_type_iii",
+                int_mod.pm_type_iii_oracle,
+                dict(n=50, x0=1e-3, eps=1e-3, a=1.0),
+            ),
+            ("dispatch_logistic_type_i", int_mod.logistic_type_i_oracle, dict(n=50, x0=0.2)),
+            ("dispatch_on_off", int_mod.on_off_oracle, dict(n=50, seed=2027)),
         ]
 
         old_flag = int_mod._RUST_AVAILABLE
         try:
-            for func, kwargs in calls:
-                int_mod._RUST_AVAILABLE = True
-                rust_result = func(**kwargs)
+            for golden_name, func, kwargs in calls:
                 int_mod._RUST_AVAILABLE = False
                 python_result = func(**kwargs)
-                np.testing.assert_allclose(rust_result, python_result)
+                _assert_golden(golden_name, python_result)
+
+                if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+                    int_mod._RUST_AVAILABLE = True
+                    rust_result = func(**kwargs)
+                    _assert_golden(golden_name, rust_result)
         finally:
             int_mod._RUST_AVAILABLE = old_flag
 

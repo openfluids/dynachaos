@@ -1,6 +1,7 @@
 """Tests for multifractal diagnostics."""
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -8,13 +9,19 @@ import pytest
 from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 
 try:
-    from dynachaos._rust import multifractal_moments as _mf_moments  # noqa: F401
+    import dynachaos._rust  # noqa: F401
 
-    _HAS_RUST = not os.environ.get("DYNACHAOS_NO_RUST")
+    _RUST_IMPORTABLE = True
 except ImportError:
-    _HAS_RUST = False
+    _RUST_IMPORTABLE = False
 
-needs_rust = pytest.mark.skipif(not _HAS_RUST, reason="Rust extension not available")
+_NO_RUST_ENV = bool(os.environ.get("DYNACHAOS_NO_RUST"))
+_GOLDEN_PATH = Path(__file__).with_name("data") / "rust_parity_goldens.npz"
+
+
+def _golden(name):
+    with np.load(_GOLDEN_PATH) as goldens:
+        return goldens[name]
 
 
 def test_uniform_field_is_monofractal():
@@ -87,7 +94,6 @@ def test_local_multifractality_skips_zero_mass_tiles():
     assert delta[0, 0] == pytest.approx(0.0)
 
 
-@needs_rust
 def test_multifractal_rust_python_parity(monkeypatch):
     import dynachaos.diagnostics.multifractal as mf_mod
 
@@ -98,27 +104,58 @@ def test_multifractal_rust_python_parity(monkeypatch):
 
     old_flag = mf_mod._RUST_AVAILABLE
 
-    monkeypatch.setattr(mf_mod, "_RUST_AVAILABLE", True)
-    rust_out = mf_mod.multifractal_spectrum(field, box_sizes=box, q_values=q)
-
     monkeypatch.setattr(mf_mod, "_RUST_AVAILABLE", False)
     py_out = mf_mod.multifractal_spectrum(field, box_sizes=box, q_values=q)
 
     monkeypatch.setattr(mf_mod, "_RUST_AVAILABLE", old_flag)
 
-    np.testing.assert_allclose(rust_out["tau"], py_out["tau"], atol=1e-11, rtol=1e-11)
     np.testing.assert_allclose(
-        rust_out["Dq"],
+        py_out["tau"],
+        _golden("multifractal_tau"),
+        atol=1e-11,
+        rtol=1e-11,
+    )
+    np.testing.assert_allclose(
         py_out["Dq"],
+        _golden("multifractal_Dq"),
         atol=1e-11,
         rtol=1e-11,
         equal_nan=True,
     )
     np.testing.assert_allclose(
-        rust_out["alpha_legendre"],
         py_out["alpha_legendre"],
+        _golden("multifractal_alpha_legendre"),
         atol=1e-11,
         rtol=1e-11,
         equal_nan=True,
     )
-    assert float(rust_out["phi"]) == pytest.approx(float(py_out["phi"]), abs=1e-11)
+    assert float(py_out["phi"]) == pytest.approx(float(_golden("multifractal_phi")[0]), abs=1e-11)
+
+    if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+        monkeypatch.setattr(mf_mod, "_RUST_AVAILABLE", True)
+        rust_out = mf_mod.multifractal_spectrum(field, box_sizes=box, q_values=q)
+        monkeypatch.setattr(mf_mod, "_RUST_AVAILABLE", old_flag)
+
+        np.testing.assert_allclose(
+            rust_out["tau"],
+            _golden("multifractal_tau"),
+            atol=1e-11,
+            rtol=1e-11,
+        )
+        np.testing.assert_allclose(
+            rust_out["Dq"],
+            _golden("multifractal_Dq"),
+            atol=1e-11,
+            rtol=1e-11,
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            rust_out["alpha_legendre"],
+            _golden("multifractal_alpha_legendre"),
+            atol=1e-11,
+            rtol=1e-11,
+            equal_nan=True,
+        )
+        assert float(rust_out["phi"]) == pytest.approx(
+            float(_golden("multifractal_phi")[0]), abs=1e-11
+        )
