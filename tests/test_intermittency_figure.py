@@ -59,12 +59,10 @@ def test_intermittency_figure_registry_contract_matches_module_keys():
     spec = get_section("sec12_intermittency")
     contract_keys = spec.required_npz_keys("type_i_intermittency.npz")
 
-    assert spec.modules == ("dynachaos.diagnostics.intermittency_figure",)
-    assert spec.cache_files == ("type_i_intermittency.npz",)
-    assert spec.output_files == (
-        "type_i_intermittency.npz",
-        "type_i_intermittency.png",
-    )
+    assert "dynachaos.diagnostics.intermittency_figure" in spec.modules
+    assert "type_i_intermittency.npz" in spec.cache_files
+    assert "type_i_intermittency.npz" in spec.output_files
+    assert "type_i_intermittency.png" in spec.output_files
     assert set(contract_keys).issubset(intermittency_figure.REQUIRED_KEYS)
 
 

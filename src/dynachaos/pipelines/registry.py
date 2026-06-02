@@ -280,11 +280,19 @@ SECTION_SPECS = {
     ),
     "sec12_intermittency": SectionSpec(
         section_id="sec12_intermittency",
-        modules=("dynachaos.diagnostics.intermittency_figure",),
-        cache_files=("type_i_intermittency.npz",),
+        modules=(
+            "dynachaos.diagnostics.intermittency_figure",
+            "dynachaos.diagnostics.on_off_intermittency_figure",
+        ),
+        cache_files=(
+            "type_i_intermittency.npz",
+            "on_off_intermittency.npz",
+        ),
         output_files=(
             "type_i_intermittency.npz",
             "type_i_intermittency.png",
+            "on_off_intermittency.npz",
+            "on_off_intermittency.png",
         ),
         npz_contracts=(
             NpzContract(
@@ -305,6 +313,30 @@ SECTION_SPECS = {
                     "logistic_f3_channel_slope",
                     "lorenz_return_points",
                     "lorenz_channel_slope",
+                ),
+            ),
+            NpzContract(
+                "on_off_intermittency.npz",
+                (
+                    "schema_version",
+                    "source_file",
+                    "seed",
+                    "benchmark_eps",
+                    "benchmark_lambda_perp",
+                    "benchmark_series",
+                    "benchmark_laminar_mask",
+                    "benchmark_laminar_lengths",
+                    "benchmark_burst_lengths",
+                    "benchmark_burst_amplitudes",
+                    "benchmark_threshold_percentile",
+                    "off_time_alpha",
+                    "burst_amplitude_alpha",
+                    "scaling_eps_values",
+                    "lambda_abs_values",
+                    "mean_off_lengths",
+                    "mean_off_beta",
+                    "skew_driver_series",
+                    "skew_transverse_series",
                 ),
             ),
         ),
