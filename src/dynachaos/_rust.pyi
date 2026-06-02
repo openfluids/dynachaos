@@ -110,6 +110,12 @@ def on_off_oracle(
     transverse_lyapunov: float,
     noise_scale: float,
 ) -> npt.NDArray[np.float64]: ...
+def on_off_skew_logistic_oracle(
+    n: int,
+    x0: float,
+    y0: float,
+    eps: float,
+) -> npt.NDArray[np.float64]: ...
 def logistic_type_i_oracle(
     n: int,
     x0: float,

@@ -38,6 +38,10 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(intermittency::pm_type_ii_oracle, m)?)?;
     m.add_function(wrap_pyfunction!(intermittency::pm_type_iii_oracle, m)?)?;
     m.add_function(wrap_pyfunction!(intermittency::on_off_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        intermittency::on_off_skew_logistic_oracle,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(intermittency::logistic_type_i_oracle, m)?)?;
     Ok(())
 }

@@ -15,6 +15,7 @@ try:
         raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
     from dynachaos._rust import logistic_type_i_oracle as _logistic_type_i_oracle_rs
     from dynachaos._rust import on_off_oracle as _on_off_oracle_rs
+    from dynachaos._rust import on_off_skew_logistic_oracle as _on_off_skew_logistic_oracle_rs
     from dynachaos._rust import pm_type_i_oracle as _pm_type_i_oracle_rs
     from dynachaos._rust import pm_type_ii_oracle as _pm_type_ii_oracle_rs
     from dynachaos._rust import pm_type_iii_oracle as _pm_type_iii_oracle_rs
@@ -24,12 +25,14 @@ except ImportError:
     _RUST_AVAILABLE = False
     _logistic_type_i_oracle_rs = None
     _on_off_oracle_rs = None
+    _on_off_skew_logistic_oracle_rs = None
     _pm_type_i_oracle_rs = None
     _pm_type_ii_oracle_rs = None
     _pm_type_iii_oracle_rs = None
 
 
 LOGISTIC_TYPE_I_ONSET = 1.0 + np.sqrt(8.0)
+ON_OFF_SKEW_LOGISTIC_ONSET = 0.5
 LORENZ_INTERMITTENCY_RHO = 166.2
 
 
@@ -153,6 +156,38 @@ def _on_off_oracle_python(driver, x0, transverse_lyapunov, noise_scale):
     return out
 
 
+def on_off_skew_logistic_oracle(n, x0=0.217, y0=1e-2, eps=0.499):
+    """Canonical logistic-driver on-off intermittency skew-product.
+
+    The driver is the fully chaotic logistic map ``x -> 4*x*(1-x)``. The
+    transverse variable follows ``y -> eps * f'(x) * y`` with bounded nonlinear
+    saturation, so the transverse Lyapunov exponent is
+    ``lambda_perp = log(eps) + log(2)`` and the blowout onset is
+    ``ON_OFF_SKEW_LOGISTIC_ONSET = 1/2``. Values just below onset, roughly
+    ``eps in [0.45, 0.499]``, produce on-off bursting from small nonzero ``y0``.
+    """
+    n = _positive_int(n, "n")
+    x0 = _finite_float(x0, "x0")
+    y0 = _finite_float(y0, "y0")
+    eps = _finite_float(eps, "eps")
+    if _RUST_AVAILABLE and _on_off_skew_logistic_oracle_rs is not None:
+        return np.asarray(_on_off_skew_logistic_oracle_rs(n, x0, y0, eps), dtype=np.float64)
+    return _on_off_skew_logistic_oracle_python(n, x0, y0, eps)
+
+
+def _on_off_skew_logistic_oracle_python(n, x0, y0, eps):
+    x = x0
+    y = y0
+    out = np.empty((n, 2), dtype=np.float64)
+    for i in range(n):
+        driver = 4.0 * x * (1.0 - x)
+        multiplier = 4.0 * eps * (1.0 - 2.0 * x)
+        y = multiplier * y / (1.0 + y * y)
+        x = driver
+        out[i] = (x, y)
+    return out
+
+
 def logistic_type_i_oracle(n, x0=0.2, r=None):
     """Logistic-map Type-I intermittency oracle near ``r_c = 1 + sqrt(8)``."""
     n = _positive_int(n, "n")
@@ -186,9 +221,11 @@ def lorenz_1662_oracle(x0=(0.0, 1.0, 1.05), t_span=(0.0, 80.0), dt=0.01, t_trans
 __all__ = [
     "LOGISTIC_TYPE_I_ONSET",
     "LORENZ_INTERMITTENCY_RHO",
+    "ON_OFF_SKEW_LOGISTIC_ONSET",
     "logistic_type_i_oracle",
     "lorenz_1662_oracle",
     "on_off_oracle",
+    "on_off_skew_logistic_oracle",
     "pm_type_i_oracle",
     "pm_type_ii_oracle",
     "pm_type_iii_oracle",

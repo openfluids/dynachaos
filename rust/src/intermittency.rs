@@ -115,6 +115,35 @@ pub fn on_off_oracle<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (n, x0, y0, eps))]
+pub fn on_off_skew_logistic_oracle<'py>(
+    py: Python<'py>,
+    n: usize,
+    x0: f64,
+    y0: f64,
+    eps: f64,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    validate_n(n)?;
+    validate_finite(&[x0, y0, eps])?;
+
+    let mut x = x0;
+    let mut y = y0;
+    let mut out = Vec::with_capacity(n * 2);
+    for _ in 0..n {
+        let driver = 4.0 * x * (1.0 - x);
+        let multiplier = 4.0 * eps * (1.0 - 2.0 * x);
+        y = multiplier * y / (1.0 + y * y);
+        x = driver;
+        out.push(x);
+        out.push(y);
+    }
+
+    let arr = Array2::from_shape_vec((n, 2), out)
+        .map_err(|err| PyValueError::new_err(format!("shape error: {err}")))?;
+    Ok(PyArray2::from_owned_array(py, arr))
+}
+
+#[pyfunction]
 #[pyo3(signature = (n, x0, r))]
 pub fn logistic_type_i_oracle<'py>(
     py: Python<'py>,

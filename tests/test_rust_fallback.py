@@ -925,6 +925,34 @@ class TestIntermittencyOracleParity:
 
             _assert_golden("on_off_direct", on_off_oracle(driver, 1e-6, 0.0, 0.25))
 
+    def test_direct_on_off_skew_logistic_parity(self):
+        from dynachaos.maps.intermittency import _on_off_skew_logistic_oracle_python
+
+        kwargs = dict(n=80, x0=0.217, y0=1e-2, eps=0.499)
+        python_result = _on_off_skew_logistic_oracle_python(**kwargs)
+
+        _assert_golden("on_off_skew_logistic_direct", python_result)
+
+        if _RUST_IMPORTABLE and not _NO_RUST_ENV:
+            from dynachaos._rust import on_off_skew_logistic_oracle
+
+            _assert_golden("on_off_skew_logistic_direct", on_off_skew_logistic_oracle(**kwargs))
+
+    def test_on_off_skew_logistic_public_dispatch_and_bursting(self):
+        from dynachaos.maps import ON_OFF_SKEW_LOGISTIC_ONSET, on_off_skew_logistic_oracle
+
+        np.testing.assert_allclose(ON_OFF_SKEW_LOGISTIC_ONSET, 0.5)
+
+        out = on_off_skew_logistic_oracle(n=4_000, x0=0.217, y0=1e-2, eps=0.499)
+
+        np.testing.assert_equal(out.shape, (4_000, 2))
+        np.testing.assert_allclose(out[:, 0], np.clip(out[:, 0], 0.0, 1.0))
+        y_abs = np.abs(out[:, 1])
+        median = np.quantile(y_abs, 0.50)
+        q95 = np.quantile(y_abs, 0.95)
+        np.testing.assert_array_less(10.0 * median, q95)
+        np.testing.assert_array_less(1e-3, np.max(y_abs))
+
     def test_direct_logistic_type_i_parity(self):
         from dynachaos.maps.intermittency import (
             LOGISTIC_TYPE_I_ONSET,
@@ -958,6 +986,11 @@ class TestIntermittencyOracleParity:
             ),
             ("dispatch_logistic_type_i", int_mod.logistic_type_i_oracle, dict(n=50, x0=0.2)),
             ("dispatch_on_off", int_mod.on_off_oracle, dict(n=50, seed=2027)),
+            (
+                "dispatch_on_off_skew_logistic",
+                int_mod.on_off_skew_logistic_oracle,
+                dict(n=50, x0=0.217, y0=1e-2, eps=0.499),
+            ),
         ]
 
         old_flag = int_mod._RUST_AVAILABLE
