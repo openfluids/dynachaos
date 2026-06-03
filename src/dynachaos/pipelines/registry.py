@@ -155,7 +155,16 @@ SECTION_SPECS = {
             "double_staircase_zoom.png",
         ),
         npz_contracts=(
-            NpzContract("lyapunov_vs_DB.npz", ("DB", "eps_values")),
+            NpzContract(
+                "lyapunov_vs_DB.npz",
+                (
+                    "DB",
+                    "eps_values",
+                    "eps_0.001_spectra",
+                    "eps_0.005_spectra",
+                    "eps_0.01_spectra",
+                ),
+            ),
             NpzContract(
                 "xz_projections.npz",
                 ("DB_values", "labels", "render_modes", "schema_version"),

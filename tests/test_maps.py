@@ -516,6 +516,27 @@ def test_sec06_canonical_lyapunov_cache_replaces_duplicate_D2_file():
     assert spectra[chaos_idx, 1] > 1e-2
 
 
+def test_sec06_three_torus_cache_preserves_two_zero_exponent_signature():
+    with np.load("figures/sec06_three_torus/lyapunov_vs_DB.npz", allow_pickle=False) as data:
+        DB = data["DB"]
+        eps_values = data["eps_values"]
+        spectra = data["eps_0.005_spectra"]
+
+    torus_idx = np.argmin(np.abs(DB - 2.1))
+    torus_spectrum = spectra[torus_idx]
+    quasiperiodic_region = (2.1 <= DB) & (DB <= 2.2)
+
+    np.testing.assert_allclose(eps_values, np.array([0.001, 0.005, 0.01]))
+    assert spectra.shape == (DB.size, 4)
+    assert np.all(np.isfinite(spectra))
+    assert np.all(np.diff(spectra, axis=1) <= 1e-12)
+    assert abs(torus_spectrum[0]) < 1e-3
+    assert abs(torus_spectrum[1]) < 1e-3
+    assert torus_spectrum[2] < -1e-2
+    assert torus_spectrum[3] < -1e-2
+    assert np.max(spectra[quasiperiodic_region, 0]) < 1e-3
+
+
 def test_sec09_spatial_activity_separates_pattern_phase_samples():
     with np.load("figures/sec09_pattern/phase_diagram.npz", allow_pickle=False) as data:
         a_values = data["a"]
