@@ -537,6 +537,26 @@ def test_sec06_three_torus_cache_preserves_two_zero_exponent_signature():
     assert np.max(spectra[quasiperiodic_region, 0]) < 1e-3
 
 
+def test_sec07_correlation_dimension_cache_stays_bounded_and_rises():
+    with np.load("figures/sec07_fractalization/correlation_dimension.npz", allow_pickle=False) as data:
+        D = data["D"]
+        D2 = data["D2"]
+        A = float(data["A"][0])
+
+    low_window = D2[D <= 1.75]
+    high_window = D2[D >= 1.95]
+
+    assert A == pytest.approx(0.3)
+    assert D.shape == D2.shape
+    assert np.all(np.isfinite(D2))
+    assert np.min(D) >= 1.7
+    assert np.max(D) <= 2.0
+    assert np.all((0.0 <= D2) & (D2 < 2.0))
+    assert np.max(D2) <= 1.45
+    assert np.median(high_window) > np.median(low_window) + 0.15
+    assert np.corrcoef(D, D2)[0, 1] > 0.5
+
+
 def test_sec09_spatial_activity_separates_pattern_phase_samples():
     with np.load("figures/sec09_pattern/phase_diagram.npz", allow_pickle=False) as data:
         a_values = data["a"]
