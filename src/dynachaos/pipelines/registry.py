@@ -215,7 +215,7 @@ SECTION_SPECS = {
             "space_amplitude.png",
         ),
         npz_contracts=(
-            NpzContract("phase_diagram.npz", ("a", "eps", "lam")),
+            NpzContract("phase_diagram.npz", ("a", "eps", "lam", "spatial_activity")),
             NpzContract("space_amplitude.npz", ("params", "schema_version")),
         ),
     ),

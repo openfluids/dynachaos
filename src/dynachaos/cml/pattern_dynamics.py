@@ -32,6 +32,7 @@ PHASE_PNG = FIG_DIR / "phase_diagram.png"
 SPACE_NPZ = FIG_DIR / "space_amplitude.npz"
 SPACE_PNG = FIG_DIR / "space_amplitude.png"
 
+PHASE_SCHEMA_VERSION = 2
 SPACE_SCHEMA_VERSION = 3
 SPACE_CASES = (
     (1.50, 0.10, "Frozen\nrandom", "a"),
@@ -43,7 +44,7 @@ SPACE_CASES = (
 
 
 def compute_phase_diagram():
-    """Compute phase diagram by measuring temporal variance.
+    """Compute phase diagram with temporal and spatial activity measures.
 
     Vectorized: for each eps, all a values run in parallel as a
     (n_a, N) array.
@@ -62,6 +63,7 @@ def compute_phase_diagram():
     a_col = a_values[:, np.newaxis]  # shape (n_a, 1)
 
     lam_grid = np.empty((n_eps, n_a))
+    spatial_activity_grid = np.empty((n_eps, n_a))
     rng = np.random.default_rng(42)
 
     for j, eps in enumerate(eps_values):
@@ -74,20 +76,37 @@ def compute_phase_diagram():
         # Accumulate variance of the central site
         sum_v = np.zeros(n_a)
         sum_v2 = np.zeros(n_a)
+        sum_spatial_activity = np.zeros(n_a)
         for _ in range(n_sample):
             x = _cml_step_batch(x, a_col, eps)
             mid = x[:, N // 2]
             sum_v += mid
             sum_v2 += mid * mid
+            sum_spatial_activity += np.mean(np.abs(x - np.roll(x, 1, axis=1)), axis=1)
 
         mean_v = sum_v / n_sample
         lam_grid[j] = sum_v2 / n_sample - mean_v * mean_v
+        spatial_activity_grid[j] = sum_spatial_activity / n_sample
 
         if (j + 1) % 40 == 0:
             print(f"  Phase diagram: {j + 1}/{n_eps}")
-            np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values, lam=lam_grid)
+            np.savez_compressed(
+                PHASE_NPZ,
+                a=a_values,
+                eps=eps_values,
+                lam=lam_grid,
+                spatial_activity=spatial_activity_grid,
+                schema_version=np.array([PHASE_SCHEMA_VERSION]),
+            )
 
-    np.savez_compressed(PHASE_NPZ, a=a_values, eps=eps_values, lam=lam_grid)
+    np.savez_compressed(
+        PHASE_NPZ,
+        a=a_values,
+        eps=eps_values,
+        lam=lam_grid,
+        spatial_activity=spatial_activity_grid,
+        schema_version=np.array([PHASE_SCHEMA_VERSION]),
+    )
     print(f"Saved {PHASE_NPZ}")
 
 
@@ -148,16 +167,16 @@ def plot_phase_diagram(data):
 
     a = data["a"]
     eps = data["eps"]
-    lam = data["lam"]
+    activity = data["spatial_activity"] if "spatial_activity" in data else data["lam"]
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    im = ax.pcolormesh(a, eps, np.log10(lam + 1e-10), cmap=CMAP_SEQUENTIAL, rasterized=True)
+    im = ax.pcolormesh(a, eps, activity, cmap=CMAP_SEQUENTIAL, rasterized=True)
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"Coupling $\varepsilon$")
-    ax.set_title("Variance-based activity map", loc="left")
+    ax.set_title("Spatial activity map", loc="left")
     cb = fig.colorbar(im, ax=ax, pad=0.02)
-    cb.set_label(r"$\log_{10}(\mathrm{activity})$")
+    cb.set_label(r"$\langle |x_i - x_{i-1}| \rangle$")
     cb.ax.tick_params(labelsize=spec.tick_size)
     ax.set_xlim(float(a.min()), float(a.max()))
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
@@ -250,8 +269,15 @@ def main():
     try:
         phase_data = safe_load(PHASE_NPZ)
         print(f"Loaded {PHASE_NPZ}")
+        schema_version = int(np.atleast_1d(phase_data.get("schema_version", np.array([0])))[0])
+        if schema_version < PHASE_SCHEMA_VERSION or "spatial_activity" not in phase_data:
+            raise KeyError("stale phase-diagram cache")
     except FileNotFoundError:
         print("Computing phase diagram...")
+        compute_phase_diagram()
+        phase_data = safe_load(PHASE_NPZ)
+    except KeyError:
+        print("Recomputing phase diagram with spatial activity...")
         compute_phase_diagram()
         phase_data = safe_load(PHASE_NPZ)
     plot_phase_diagram(phase_data)

@@ -3,6 +3,7 @@ import pytest
 
 from dynachaos.cml.correlation_figure import _fit_correlation_length
 from dynachaos.cml.gcm_clusters import broad_positive_mask, compute_clusters, compute_collective
+from dynachaos.cml.pattern_dynamics import SPACE_CASES
 from dynachaos.cml.primitives import (
     cluster_labels_by_tolerance,
     cml_jacobian_subblock_logistic,
@@ -495,6 +496,26 @@ def test_sali_curves_store_measured_lambda1_regime_context():
     assert abs(lambda1_values[1]) <= 1e-3
     assert lambda1_values[2] > 1e-3
     assert lambda1_values[3] > 5e-2
+
+
+def test_sec09_spatial_activity_separates_pattern_phase_samples():
+    with np.load("figures/sec09_pattern/phase_diagram.npz", allow_pickle=False) as data:
+        a_values = data["a"]
+        eps_values = data["eps"]
+        spatial_activity = data["spatial_activity"]
+
+    phase_activity = []
+    for a, eps, _label, _tag in SPACE_CASES:
+        ia = np.argmin(np.abs(a_values - a))
+        ie = np.argmin(np.abs(eps_values - eps))
+        phase_activity.append(spatial_activity[ie, ia])
+
+    phase_activity = np.asarray(phase_activity)
+    rounded_groups = np.unique(np.round(phase_activity, 1))
+
+    assert np.all(np.isfinite(phase_activity))
+    assert np.ptp(phase_activity) > 0.25
+    assert rounded_groups.size >= 3
 
 
 # ---------------------------------------------------------------------------
