@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -496,6 +498,22 @@ def test_sali_curves_store_measured_lambda1_regime_context():
     assert abs(lambda1_values[1]) <= 1e-3
     assert lambda1_values[2] > 1e-3
     assert lambda1_values[3] > 5e-2
+
+
+def test_sec06_canonical_lyapunov_cache_replaces_duplicate_D2_file():
+    duplicate_path = Path("figures/sec06_three_torus/lyapunov_vs_D2.npz")
+    with np.load("figures/sec06_three_torus/lyapunov_vs_DB.npz", allow_pickle=False) as data:
+        DB = data["DB"]
+        spectra = data["eps_0.005_spectra"]
+
+    torus_idx = np.argmin(np.abs(DB - 2.35))
+    chaos_idx = np.argmin(np.abs(DB - 2.55))
+
+    assert not duplicate_path.exists()
+    assert abs(spectra[torus_idx, 0]) <= 1e-3
+    assert abs(spectra[torus_idx, 1]) <= 5e-3
+    assert spectra[chaos_idx, 0] > 5e-2
+    assert spectra[chaos_idx, 1] > 1e-2
 
 
 def test_sec09_spatial_activity_separates_pattern_phase_samples():
