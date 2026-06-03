@@ -1,3 +1,4 @@
+from itertools import groupby
 from pathlib import Path
 
 import numpy as np
@@ -94,6 +95,44 @@ def test_circle_map_range_and_derivative():
 
     assert 0.0 <= out < 1.0
     assert np.isfinite(deriv)
+
+
+def test_sec02_circle_map_cache_preserves_decreasing_staircase_and_tongues():
+    figure_dir = Path(__file__).resolve().parents[1] / "figures" / "sec02_circle_map"
+    with np.load(figure_dir / "devils_staircase.npz", allow_pickle=False) as data:
+        order = np.argsort(data["A"])
+        A = data["A"][order]
+        rho = data["rho"][order]
+        lam = data["lam"][order]
+
+    with np.load(figure_dir / "arnold_tongues.npz", allow_pickle=False) as data:
+        Omega = data["Omega"]
+        K = data["K"]
+        tongue_rho = data["rho"]
+
+    low_A_rho = rho[A <= 0.025]
+    high_A_rho = rho[A >= 0.24]
+    plateau_mask = np.abs(rho - 0.2) <= 1e-6
+    plateau_run = max(
+        (sum(1 for _ in group) for value, group in groupby(plateau_mask) if value),
+        default=0,
+    )
+    zero_lock_counts = np.sum(np.abs(tongue_rho) <= 1e-3, axis=1)
+
+    assert A[0] == pytest.approx(0.0)
+    assert A[-1] == pytest.approx(0.25)
+    assert rho[0] == pytest.approx(0.25, abs=1e-2)
+    assert np.all((-1e-6 <= rho) & (rho <= 0.25 + 1e-6))
+    assert np.median(low_A_rho) > 0.2
+    assert np.median(high_A_rho) < 0.1
+    assert np.median(low_A_rho) - np.median(high_A_rho) > 0.15
+    assert plateau_run >= 500
+    assert np.mean(lam <= 1e-6) > 0.5
+    assert np.max(lam) > 0.0
+    assert tongue_rho.shape == (K.size, Omega.size)
+    np.testing.assert_allclose(tongue_rho[0], Omega, atol=1e-10)
+    assert np.all((-1e-6 <= tongue_rho) & (tongue_rho <= 1.0 + 1e-6))
+    assert zero_lock_counts[-1] > zero_lock_counts[0]
 
 
 def test_coupled_logistic_shapes():
