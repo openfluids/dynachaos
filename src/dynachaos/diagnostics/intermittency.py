@@ -385,6 +385,29 @@ def powerlaw_gof(lengths, *, fit=None, n_bootstrap=100, rng=None):
     )
 
 
+def powerlaw_alpha_ci(lengths, *, fit=None, n_bootstrap=200, confidence=0.95, rng=None):
+    """Bootstrap confidence interval for the signed CSN tail exponent alpha."""
+    data = _positive_observations(lengths)
+    fit = fit_power_law_mle(data) if fit is None else fit
+    n_bootstrap = _positive_int(n_bootstrap, "n_bootstrap")
+    confidence = float(confidence)
+    if not np.isfinite(confidence) or not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    rng = np.random.default_rng(rng)
+
+    alphas = np.empty(n_bootstrap, dtype=np.float64)
+    for i in range(n_bootstrap):
+        sample = _sample_power_law_tail(fit, rng, fit.n_tail)
+        if fit.discrete:
+            csn_alpha = _discrete_power_law_alpha(sample, fit.x_min)
+        else:
+            csn_alpha = _continuous_power_law_alpha(sample, fit.x_min)
+        alphas[i] = -float(csn_alpha)
+
+    tail_probability = (1.0 - confidence) / 2.0
+    return np.quantile(alphas, [tail_probability, 1.0 - tail_probability]).astype(np.float64)
+
+
 def fit_exponential(lengths, *, x_min=None):
     """Fit a shifted exponential tail with scipy's MLE primitives."""
     data = _positive_observations(lengths)
@@ -1013,6 +1036,7 @@ __all__ = [
     "mean_laminar_scaling",
     "near_diagonal_tangent_channel",
     "pooled_laminar_lengths",
+    "powerlaw_alpha_ci",
     "powerlaw_gof",
     "reinjection_Mx",
     "return_map_reconstruction",

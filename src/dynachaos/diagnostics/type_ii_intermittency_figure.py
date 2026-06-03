@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from dynachaos.diagnostics.intermittency import fit_power_law_mle, powerlaw_alpha_ci, powerlaw_gof
 from dynachaos.io.paths import safe_load, section_dir
 
 SECTION_ID = "sec12_intermittency"
@@ -27,6 +28,9 @@ REQUIRED_KEYS = (
     "laminar_lengths",
     "laminar_histogram_edges",
     "laminar_histogram_density",
+    "laminar_tail_alpha",
+    "laminar_tail_alpha_ci",
+    "laminar_tail_gof_p",
     "exponential_rate",
     "exponential_intercept",
     "exponential_rvalue",
@@ -43,6 +47,8 @@ def compute(
     *,
     seed=20260602,
     n_reinjections=1_200,
+    powerlaw_gof_bootstrap=100,
+    alpha_ci_bootstrap=200,
 ):
     """Compute deterministic FIG D Type-II diagnostics and optionally cache them."""
     eps = 2e-3
@@ -75,9 +81,22 @@ def compute(
     centers = 0.5 * (edges[:-1] + edges[1:])
     slope, intercept = np.polyfit(centers[fit_mask], np.log(density[fit_mask]), deg=1)
     rvalue = np.corrcoef(centers[fit_mask], np.log(density[fit_mask]))[0, 1]
+    tail_fit = fit_power_law_mle(laminar_lengths, discrete=False)
+    tail_gof = powerlaw_gof(
+        laminar_lengths,
+        fit=tail_fit,
+        n_bootstrap=powerlaw_gof_bootstrap,
+        rng=seed,
+    )
+    tail_ci = powerlaw_alpha_ci(
+        laminar_lengths,
+        fit=tail_fit,
+        n_bootstrap=alpha_ci_bootstrap,
+        rng=seed + 1,
+    )
 
     payload = {
-        "schema_version": np.array([1], dtype=np.int64),
+        "schema_version": np.array([2], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
         "eps": np.array([eps], dtype=np.float64),
@@ -91,6 +110,9 @@ def compute(
         "laminar_lengths": laminar_lengths.astype(np.int64),
         "laminar_histogram_edges": edges.astype(np.float64),
         "laminar_histogram_density": density.astype(np.float64),
+        "laminar_tail_alpha": np.array([tail_fit.alpha], dtype=np.float64),
+        "laminar_tail_alpha_ci": tail_ci.astype(np.float64),
+        "laminar_tail_gof_p": np.array([tail_gof.p_value], dtype=np.float64),
         "exponential_rate": np.array([-slope], dtype=np.float64),
         "exponential_intercept": np.array([intercept], dtype=np.float64),
         "exponential_rvalue": np.array([rvalue], dtype=np.float64),
@@ -125,6 +147,9 @@ def plot(data, output_path=OUTPUT_PNG):
     density = np.asarray(data["laminar_histogram_density"], dtype=np.float64)
     exp_rate = float(np.asarray(data["exponential_rate"], dtype=np.float64)[0])
     exp_intercept = float(np.asarray(data["exponential_intercept"], dtype=np.float64)[0])
+    tail_alpha = float(np.asarray(data["laminar_tail_alpha"], dtype=np.float64)[0])
+    tail_ci = np.asarray(data["laminar_tail_alpha_ci"], dtype=np.float64)
+    tail_gof_p = float(np.asarray(data["laminar_tail_gof_p"], dtype=np.float64)[0])
     escape_threshold = float(np.asarray(data["escape_threshold"], dtype=np.float64)[0])
 
     output_path = Path(output_path)
@@ -177,7 +202,10 @@ def plot(data, output_path=OUTPUT_PNG):
     sorted_lengths = np.sort(lengths)
     survival = 1.0 - np.arange(sorted_lengths.size, dtype=np.float64) / sorted_lengths.size
     ax_survival.semilogy(sorted_lengths, survival, color=color_for(4), lw=1.1)
-    ax_survival.set_title("Empirical survival of laminar episodes")
+    ax_survival.set_title(
+        f"Power-law check $\\alpha$={tail_alpha:.2f}, "
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+    )
     ax_survival.set_xlabel("laminar length $\\ell$")
     ax_survival.set_ylabel("$P(L \\geq \\ell)$")
 
@@ -207,7 +235,7 @@ def main():
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 1
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 2
         if missing or stale_schema:
             data.close()
             reason = "missing keys (" + ", ".join(missing) + ")" if missing else "stale schema"

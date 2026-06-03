@@ -9,6 +9,8 @@ from dynachaos.diagnostics.intermittency import (
     fit_power_law_mle,
     laminar_burst_symmetry,
     mean_laminar_scaling,
+    powerlaw_alpha_ci,
+    powerlaw_gof,
 )
 from dynachaos.io.paths import safe_load, section_dir
 from dynachaos.maps.intermittency import (
@@ -35,7 +37,11 @@ REQUIRED_KEYS = (
     "benchmark_burst_amplitudes",
     "benchmark_threshold_percentile",
     "off_time_alpha",
+    "off_time_alpha_ci",
+    "off_time_gof_p",
     "burst_amplitude_alpha",
+    "burst_amplitude_alpha_ci",
+    "burst_amplitude_gof_p",
     "scaling_eps_values",
     "lambda_abs_values",
     "mean_off_lengths",
@@ -50,6 +56,8 @@ def compute(
     *,
     seed=20260602,
     n_benchmark=40_000,
+    powerlaw_gof_bootstrap=100,
+    alpha_ci_bootstrap=200,
 ):
     """Compute deterministic FIG B on-off diagnostics and optionally cache them."""
     threshold_percentile = 90.0
@@ -70,6 +78,31 @@ def compute(
         laminar_mask,
         min_tail=np.count_nonzero(~laminar_mask),
     )
+    off_time_fit = fit_power_law_mle(symmetry.laminar_lengths)
+    off_time_gof = powerlaw_gof(
+        symmetry.laminar_lengths,
+        fit=off_time_fit,
+        n_bootstrap=powerlaw_gof_bootstrap,
+        rng=seed,
+    )
+    off_time_ci = powerlaw_alpha_ci(
+        symmetry.laminar_lengths,
+        fit=off_time_fit,
+        n_bootstrap=alpha_ci_bootstrap,
+        rng=seed + 1,
+    )
+    burst_gof = powerlaw_gof(
+        burst_distribution.amplitudes,
+        fit=burst_distribution.power_law,
+        n_bootstrap=powerlaw_gof_bootstrap,
+        rng=seed + 2,
+    )
+    burst_ci = powerlaw_alpha_ci(
+        burst_distribution.amplitudes,
+        fit=burst_distribution.power_law,
+        n_bootstrap=alpha_ci_bootstrap,
+        rng=seed + 3,
+    )
 
     scaling_eps_values = np.array([0.45, 0.46, 0.47, 0.48, 0.49, 0.495])
     lambda_abs_values = np.abs(np.log(2.0 * scaling_eps_values))
@@ -81,7 +114,7 @@ def compute(
     scaling = mean_laminar_scaling(lambda_abs_values, mean_lengths, min_points=3)
 
     payload = {
-        "schema_version": np.array([1], dtype=np.int64),
+        "schema_version": np.array([2], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
         "benchmark_eps": np.array([benchmark_eps], dtype=np.float64),
@@ -92,14 +125,15 @@ def compute(
         "benchmark_burst_lengths": symmetry.burst_lengths.astype(np.int64),
         "benchmark_burst_amplitudes": burst_distribution.amplitudes.astype(np.float64),
         "benchmark_threshold_percentile": np.array([threshold_percentile], dtype=np.float64),
-        "off_time_alpha": np.array(
-            [fit_power_law_mle(symmetry.laminar_lengths).alpha],
-            dtype=np.float64,
-        ),
+        "off_time_alpha": np.array([off_time_fit.alpha], dtype=np.float64),
+        "off_time_alpha_ci": off_time_ci.astype(np.float64),
+        "off_time_gof_p": np.array([off_time_gof.p_value], dtype=np.float64),
         "burst_amplitude_alpha": np.array(
             [burst_distribution.power_law.alpha],
             dtype=np.float64,
         ),
+        "burst_amplitude_alpha_ci": burst_ci.astype(np.float64),
+        "burst_amplitude_gof_p": np.array([burst_gof.p_value], dtype=np.float64),
         "scaling_eps_values": scaling_eps_values.astype(np.float64),
         "lambda_abs_values": lambda_abs_values.astype(np.float64),
         "mean_off_lengths": mean_lengths.astype(np.float64),
@@ -134,6 +168,12 @@ def plot(data, output_path=OUTPUT_PNG):
     laminar_mask = np.asarray(data["benchmark_laminar_mask"], dtype=np.bool_)
     off_lengths = np.asarray(data["benchmark_laminar_lengths"], dtype=np.float64)
     burst_amplitudes = np.asarray(data["benchmark_burst_amplitudes"], dtype=np.float64)
+    off_alpha = float(np.asarray(data["off_time_alpha"], dtype=np.float64)[0])
+    off_ci = np.asarray(data["off_time_alpha_ci"], dtype=np.float64)
+    off_gof_p = float(np.asarray(data["off_time_gof_p"], dtype=np.float64)[0])
+    burst_alpha = float(np.asarray(data["burst_amplitude_alpha"], dtype=np.float64)[0])
+    burst_ci = np.asarray(data["burst_amplitude_alpha_ci"], dtype=np.float64)
+    burst_gof_p = float(np.asarray(data["burst_amplitude_gof_p"], dtype=np.float64)[0])
     lambda_abs = np.asarray(data["lambda_abs_values"], dtype=np.float64)
     mean_lengths = np.asarray(data["mean_off_lengths"], dtype=np.float64)
     skew_transverse = np.asarray(data["skew_transverse_series"], dtype=np.float64)
@@ -172,7 +212,10 @@ def plot(data, output_path=OUTPUT_PNG):
     reference_x = np.array([values[0], np.max(values)], dtype=np.float64)
     reference_y = probabilities[0] * (reference_x / reference_x[0]) ** -1.5
     ax_off.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_off.set_title("Off-time tail $P(\\tau) \\sim \\tau^{-3/2}$")
+    ax_off.set_title(
+        f"Off-time $\\alpha$={off_alpha:.2f}, "
+        f"95% CI [{off_ci[0]:.2f}, {off_ci[1]:.2f}], GoF p={off_gof_p:.2f}"
+    )
     ax_off.set_xlabel("off time $\\tau$")
     ax_off.set_ylabel("$P(\\tau)$")
 
@@ -184,7 +227,10 @@ def plot(data, output_path=OUTPUT_PNG):
     reference_x = np.array([centers[finite][0], centers[finite][-1]], dtype=np.float64)
     reference_y = density[finite][0] * (reference_x / reference_x[0]) ** -1.0
     ax_burst.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_burst.set_title("Burst amplitudes $P(|y|) \\sim |y|^{-1}$")
+    ax_burst.set_title(
+        f"Burst $\\alpha$={burst_alpha:.2f}, "
+        f"95% CI [{burst_ci[0]:.2f}, {burst_ci[1]:.2f}], GoF p={burst_gof_p:.2f}"
+    )
     ax_burst.set_xlabel("burst amplitude $|y|$")
     ax_burst.set_ylabel("density")
 
@@ -219,7 +265,7 @@ def main():
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 1
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 2
         if missing or stale_schema:
             data.close()
             reason = "missing keys (" + ", ".join(missing) + ")" if missing else "stale schema"

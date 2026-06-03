@@ -4,7 +4,12 @@ from pathlib import Path
 
 import numpy as np
 
-from dynachaos.diagnostics.intermittency import reinjection_Mx
+from dynachaos.diagnostics.intermittency import (
+    fit_power_law_mle,
+    powerlaw_alpha_ci,
+    powerlaw_gof,
+    reinjection_Mx,
+)
 from dynachaos.io.paths import safe_load, section_dir
 
 SECTION_ID = "sec12_intermittency"
@@ -28,6 +33,9 @@ REQUIRED_KEYS = (
     "series",
     "laminar_mask",
     "laminar_lengths",
+    "laminar_tail_alpha",
+    "laminar_tail_alpha_ci",
+    "laminar_tail_gof_p",
     "rpd_thresholds",
     "rpd_conditional_means",
     "rpd_slope",
@@ -43,6 +51,8 @@ def compute(
     seed=20260602,
     n_reinjections=1_200,
     series_sample_size=25_000,
+    powerlaw_gof_bootstrap=100,
+    alpha_ci_bootstrap=200,
 ):
     """Compute deterministic FIG C Type-III flip diagnostics and optionally cache them."""
     eps = 2e-3
@@ -63,11 +73,24 @@ def compute(
         escape_threshold=escape_threshold,
     )
     rpd = reinjection_Mx(full_series, full_laminar_mask)
+    tail_fit = fit_power_law_mle(laminar_lengths, discrete=False)
+    tail_gof = powerlaw_gof(
+        laminar_lengths,
+        fit=tail_fit,
+        n_bootstrap=powerlaw_gof_bootstrap,
+        rng=seed,
+    )
+    tail_ci = powerlaw_alpha_ci(
+        laminar_lengths,
+        fit=tail_fit,
+        n_bootstrap=alpha_ci_bootstrap,
+        rng=seed + 1,
+    )
     series = full_series[:series_sample_size]
     laminar_mask = full_laminar_mask[:series_sample_size]
 
     payload = {
-        "schema_version": np.array([1], dtype=np.int64),
+        "schema_version": np.array([2], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
         "eps": np.array([eps], dtype=np.float64),
@@ -81,6 +104,9 @@ def compute(
         "series": series.astype(np.float64),
         "laminar_mask": laminar_mask.astype(np.bool_),
         "laminar_lengths": laminar_lengths.astype(np.int64),
+        "laminar_tail_alpha": np.array([tail_fit.alpha], dtype=np.float64),
+        "laminar_tail_alpha_ci": tail_ci.astype(np.float64),
+        "laminar_tail_gof_p": np.array([tail_gof.p_value], dtype=np.float64),
         "rpd_thresholds": rpd.thresholds.astype(np.float64),
         "rpd_conditional_means": rpd.conditional_means.astype(np.float64),
         "rpd_slope": np.array([rpd.slope], dtype=np.float64),
@@ -115,6 +141,9 @@ def plot(data, output_path=OUTPUT_PNG):
     series = np.asarray(data["series"], dtype=np.float64)
     laminar_mask = np.asarray(data["laminar_mask"], dtype=np.bool_)
     lengths = np.asarray(data["laminar_lengths"], dtype=np.int64)
+    tail_alpha = float(np.asarray(data["laminar_tail_alpha"], dtype=np.float64)[0])
+    tail_ci = np.asarray(data["laminar_tail_alpha_ci"], dtype=np.float64)
+    tail_gof_p = float(np.asarray(data["laminar_tail_gof_p"], dtype=np.float64)[0])
     thresholds = np.asarray(data["rpd_thresholds"], dtype=np.float64)
     conditional_means = np.asarray(data["rpd_conditional_means"], dtype=np.float64)
     rpd_slope = float(np.asarray(data["rpd_slope"], dtype=np.float64)[0])
@@ -152,7 +181,10 @@ def plot(data, output_path=OUTPUT_PNG):
 
     bins = np.arange(np.min(lengths), np.max(lengths) + 2)
     ax_lengths.hist(lengths, bins=bins, density=True, color=color_for(3), alpha=0.75)
-    ax_lengths.set_title("Laminar-length distribution")
+    ax_lengths.set_title(
+        f"Laminar tail $\\alpha$={tail_alpha:.2f}, "
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+    )
     ax_lengths.set_xlabel("laminar length $\\ell$")
     ax_lengths.set_ylabel("density")
 
@@ -179,7 +211,7 @@ def main():
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 1
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 2
         if missing or stale_schema:
             data.close()
             reason = "missing keys (" + ", ".join(missing) + ")" if missing else "stale schema"

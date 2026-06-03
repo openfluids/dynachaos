@@ -9,11 +9,15 @@ from dynachaos.pipelines.registry import get_section
 def test_type_iii_intermittency_compute_writes_golden_cache(tmp_path):
     output_path = tmp_path / "type_iii_intermittency.npz"
 
-    payload = type_iii_intermittency_figure.compute(output_path)
+    payload = type_iii_intermittency_figure.compute(
+        output_path,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
 
     assert output_path.exists()
     assert tuple(payload) == type_iii_intermittency_figure.REQUIRED_KEYS
-    np.testing.assert_array_equal(payload["schema_version"], [1])
+    np.testing.assert_array_equal(payload["schema_version"], [2])
     np.testing.assert_array_equal(payload["seed"], [20260602])
     np.testing.assert_equal(
         payload["source_file"][0],
@@ -28,6 +32,9 @@ def test_type_iii_intermittency_compute_writes_golden_cache(tmp_path):
     np.testing.assert_equal(payload["series"].shape, (25_000,))
     np.testing.assert_equal(payload["laminar_mask"].shape, (25_000,))
     np.testing.assert_equal(payload["laminar_lengths"].shape, (1_200,))
+    np.testing.assert_allclose(payload["laminar_tail_alpha"], [-5.09301742])
+    np.testing.assert_allclose(payload["laminar_tail_alpha_ci"], [-5.38442901, -4.80155101])
+    np.testing.assert_allclose(payload["laminar_tail_gof_p"], [0.0])
     np.testing.assert_equal(payload["rpd_thresholds"].shape, (1_200,))
     np.testing.assert_equal(payload["rpd_conditional_means"].shape, (1_200,))
     np.testing.assert_allclose(payload["f2_linear_slope"], [1.00397433])
@@ -40,6 +47,12 @@ def test_type_iii_intermittency_compute_writes_golden_cache(tmp_path):
     np.testing.assert_array_less(1.0, payload["f2_cubic_coefficient"])
     np.testing.assert_array_less(1_000, np.min(payload["laminar_lengths"]))
     np.testing.assert_array_less(np.max(payload["laminar_lengths"]), 4_999)
+    np.testing.assert_array_less(-6.0, payload["laminar_tail_alpha"])
+    np.testing.assert_array_less(payload["laminar_tail_alpha"], -4.0)
+    np.testing.assert_array_less(payload["laminar_tail_alpha_ci"][0], payload["laminar_tail_alpha"])
+    np.testing.assert_array_less(payload["laminar_tail_alpha"], payload["laminar_tail_alpha_ci"][1])
+    np.testing.assert_array_less(0.0, payload["laminar_tail_gof_p"] + 1e-12)
+    np.testing.assert_array_less(payload["laminar_tail_gof_p"], 1.0 + 1e-12)
     np.testing.assert_array_less(0.3, payload["rpd_slope"])
     np.testing.assert_array_less(payload["rpd_slope"], 0.7)
     np.testing.assert_array_less(0.99, payload["rpd_rvalue"])
@@ -47,7 +60,11 @@ def test_type_iii_intermittency_compute_writes_golden_cache(tmp_path):
 
 
 def test_type_iii_two_step_return_matches_oracle_at_grid_points():
-    payload = type_iii_intermittency_figure.compute(None)
+    payload = type_iii_intermittency_figure.compute(
+        None,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
     points = payload["f2_return_points"][::251]
     eps = float(payload["eps"][0])
     a = float(payload["a"][0])
@@ -60,7 +77,11 @@ def test_type_iii_two_step_return_matches_oracle_at_grid_points():
 
 
 def test_type_iii_intermittency_plot_writes_png(tmp_path):
-    payload = type_iii_intermittency_figure.compute(None)
+    payload = type_iii_intermittency_figure.compute(
+        None,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
     output_path = tmp_path / "type_iii_intermittency.png"
 
     result = type_iii_intermittency_figure.plot(payload, output_path)

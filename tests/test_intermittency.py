@@ -26,6 +26,7 @@ from dynachaos.diagnostics.intermittency import (
     mean_laminar_scaling,
     near_diagonal_tangent_channel,
     pooled_laminar_lengths,
+    powerlaw_alpha_ci,
     powerlaw_gof,
     reinjection_Mx,
     return_map_reconstruction,
@@ -166,6 +167,21 @@ def test_powerlaw_gof_does_not_reject_true_power_law():
     assert gof.n_bootstrap == 20
     assert 0.0 <= gof.p_value <= 1.0
     assert gof.p_value >= 0.1
+
+
+def test_powerlaw_alpha_ci_bootstraps_signed_exponent():
+    rng = np.random.default_rng(2039)
+    csn_alpha = 1.5
+    samples = (1.0 - rng.random(1200)) ** (-1.0 / (csn_alpha - 1.0))
+    fit = fit_power_law_mle(samples, discrete=False)
+
+    ci = powerlaw_alpha_ci(samples, fit=fit, n_bootstrap=40, rng=2040)
+
+    np.testing.assert_equal(ci.shape, (2,))
+    np.testing.assert_array_less(ci[0], fit.alpha)
+    np.testing.assert_array_less(fit.alpha, ci[1])
+    np.testing.assert_array_less(-1.8, ci[0])
+    np.testing.assert_array_less(ci[1], -1.2)
 
 
 def test_pooled_laminar_lengths_reduce_on_off_exponent_variance():

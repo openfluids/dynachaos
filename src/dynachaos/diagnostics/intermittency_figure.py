@@ -15,6 +15,8 @@ from dynachaos.diagnostics.intermittency import (
     compare_powerlaw_exponential,
     detect_laminar_phases,
     mean_laminar_scaling,
+    powerlaw_alpha_ci,
+    powerlaw_gof,
     return_map_reconstruction,
 )
 from dynachaos.io.paths import safe_load, section_dir
@@ -46,6 +48,8 @@ REQUIRED_KEYS = (
     "logistic_f3_channel_points",
     "logistic_f3_channel_slope",
     "type_i_tail_alpha",
+    "type_i_tail_alpha_ci",
+    "type_i_tail_gof_p",
     "type_i_vuong_z",
     "normal_form_eps",
     "normal_form_mean_lengths",
@@ -64,6 +68,8 @@ def compute(
     *,
     seed=20260601,
     n_logistic=200_000,
+    powerlaw_gof_bootstrap=100,
+    alpha_ci_bootstrap=200,
 ):
     """Compute deterministic FIG A Type-I diagnostics and optionally cache them."""
     logistic_tail = logistic_type_i_oracle(n_logistic, x0=0.2)
@@ -76,6 +82,18 @@ def compute(
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         comparison = compare_powerlaw_exponential(logistic_lengths)
+        tail_gof = powerlaw_gof(
+            logistic_lengths,
+            fit=comparison.power_law,
+            n_bootstrap=powerlaw_gof_bootstrap,
+            rng=seed,
+        )
+        tail_ci = powerlaw_alpha_ci(
+            logistic_lengths,
+            fit=comparison.power_law,
+            n_bootstrap=alpha_ci_bootstrap,
+            rng=seed + 1,
+        )
 
     f3_return_points, f3_derivative = _logistic_f3_grid()
     f3_channel_points = _logistic_f3_tangent_channels(
@@ -104,7 +122,7 @@ def compute(
     lorenz_return_points = lorenz_return.extrema.points.astype(np.float64)
 
     payload = {
-        "schema_version": np.array([5], dtype=np.int64),
+        "schema_version": np.array([6], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
         "logistic_mechanism_r": np.array([LOGISTIC_TYPE_I_ONSET], dtype=np.float64),
@@ -121,6 +139,8 @@ def compute(
             [comparison.power_law.alpha],
             dtype=np.float64,
         ),
+        "type_i_tail_alpha_ci": tail_ci.astype(np.float64),
+        "type_i_tail_gof_p": np.array([tail_gof.p_value], dtype=np.float64),
         "type_i_vuong_z": np.array([comparison.z], dtype=np.float64),
         "normal_form_eps": eps_values.astype(np.float64),
         "normal_form_mean_lengths": mean_lengths.astype(np.float64),
@@ -161,6 +181,9 @@ def plot(data, output_path=OUTPUT_PNG):
     f3_points = np.asarray(data["logistic_f3_return_points"], dtype=np.float64)
     f3_channel = np.asarray(data["logistic_f3_channel_points"], dtype=np.float64)
     lengths = np.asarray(data["logistic_laminar_lengths"], dtype=np.float64)
+    tail_alpha = float(np.asarray(data["type_i_tail_alpha"], dtype=np.float64)[0])
+    tail_ci = np.asarray(data["type_i_tail_alpha_ci"], dtype=np.float64)
+    tail_gof_p = float(np.asarray(data["type_i_tail_gof_p"], dtype=np.float64)[0])
     eps = np.asarray(data["normal_form_eps"], dtype=np.float64)
     mean_lengths = np.asarray(data["normal_form_mean_lengths"], dtype=np.float64)
     lorenz_time = np.asarray(data["lorenz_time"], dtype=np.float64)
@@ -213,7 +236,10 @@ def plot(data, output_path=OUTPUT_PNG):
     reference_x = np.array([values[tail][0], np.max(values)], dtype=np.float64)
     reference_y = probabilities[tail][0] * (reference_x / reference_x[0]) ** -1.5
     ax_tail.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_tail.set_title("Laminar tail $P(\\ell) \\sim \\ell^{-3/2}$")
+    ax_tail.set_title(
+        f"Laminar tail $\\alpha$={tail_alpha:.2f}, "
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+    )
     ax_tail.set_xlabel("laminar length $\\ell$")
     ax_tail.set_ylabel("$P(\\ell)$")
 
@@ -282,7 +308,7 @@ def main():
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 5
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 6
         if missing or stale_schema:
             data.close()
             if missing:

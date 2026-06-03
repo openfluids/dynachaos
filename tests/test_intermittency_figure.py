@@ -7,11 +7,15 @@ from dynachaos.pipelines.registry import get_section
 def test_intermittency_figure_compute_writes_golden_cache(tmp_path):
     output_path = tmp_path / "type_i_intermittency.npz"
 
-    payload = intermittency_figure.compute(output_path)
+    payload = intermittency_figure.compute(
+        output_path,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
 
     assert output_path.exists()
     assert tuple(payload) == intermittency_figure.REQUIRED_KEYS
-    np.testing.assert_array_equal(payload["schema_version"], [5])
+    np.testing.assert_array_equal(payload["schema_version"], [6])
     np.testing.assert_array_equal(payload["seed"], [20260601])
     np.testing.assert_equal(
         payload["source_file"][0],
@@ -32,12 +36,18 @@ def test_intermittency_figure_compute_writes_golden_cache(tmp_path):
     np.testing.assert_equal(payload["lorenz_return_points"].shape, (274, 2))
     np.testing.assert_equal(payload["lorenz_channel_points"].shape, (82, 2))
     np.testing.assert_allclose(payload["type_i_tail_alpha"], [-1.50748972])
+    np.testing.assert_allclose(payload["type_i_tail_alpha_ci"], [-1.52037343, -1.49315214])
+    np.testing.assert_allclose(payload["type_i_tail_gof_p"], [2.0 / 3.0])
     np.testing.assert_allclose(payload["type_i_vuong_z"], [1.31575131])
     np.testing.assert_allclose(payload["logistic_f3_channel_slope"], [1.00042829])
     np.testing.assert_allclose(payload["normal_form_beta"], [0.4919801])
     np.testing.assert_allclose(payload["lorenz_channel_slope"], [0.98549932])
     np.testing.assert_array_less(-1.7, payload["type_i_tail_alpha"])
     np.testing.assert_array_less(payload["type_i_tail_alpha"], -1.3)
+    np.testing.assert_array_less(payload["type_i_tail_alpha_ci"][0], payload["type_i_tail_alpha"])
+    np.testing.assert_array_less(payload["type_i_tail_alpha"], payload["type_i_tail_alpha_ci"][1])
+    np.testing.assert_array_less(0.0, payload["type_i_tail_gof_p"])
+    np.testing.assert_array_less(payload["type_i_tail_gof_p"], 1.0)
     np.testing.assert_array_less(0.0, payload["type_i_vuong_z"])
     np.testing.assert_array_less(0.35, payload["normal_form_beta"])
     np.testing.assert_array_less(payload["normal_form_beta"], 0.65)
@@ -46,7 +56,11 @@ def test_intermittency_figure_compute_writes_golden_cache(tmp_path):
 
 
 def test_intermittency_figure_plot_writes_png(tmp_path):
-    payload = intermittency_figure.compute(None)
+    payload = intermittency_figure.compute(
+        None,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
     output_path = tmp_path / "type_i_intermittency.png"
 
     result = intermittency_figure.plot(payload, output_path)

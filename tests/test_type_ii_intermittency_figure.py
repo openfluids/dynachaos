@@ -9,11 +9,15 @@ from dynachaos.pipelines.registry import get_section
 def test_type_ii_intermittency_compute_writes_golden_cache(tmp_path):
     output_path = tmp_path / "type_ii_intermittency.npz"
 
-    payload = type_ii_intermittency_figure.compute(output_path)
+    payload = type_ii_intermittency_figure.compute(
+        output_path,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
 
     assert output_path.exists()
     assert tuple(payload) == type_ii_intermittency_figure.REQUIRED_KEYS
-    np.testing.assert_array_equal(payload["schema_version"], [1])
+    np.testing.assert_array_equal(payload["schema_version"], [2])
     np.testing.assert_array_equal(payload["seed"], [20260602])
     np.testing.assert_equal(
         payload["source_file"][0],
@@ -30,11 +34,20 @@ def test_type_ii_intermittency_compute_writes_golden_cache(tmp_path):
     np.testing.assert_equal(payload["laminar_lengths"].shape, (1_200,))
     np.testing.assert_equal(payload["laminar_histogram_edges"].shape, (49,))
     np.testing.assert_equal(payload["laminar_histogram_density"].shape, (48,))
+    np.testing.assert_allclose(payload["laminar_tail_alpha"], [-3.23082964])
+    np.testing.assert_allclose(payload["laminar_tail_alpha_ci"], [-3.32929902, -3.10493551])
+    np.testing.assert_allclose(payload["laminar_tail_gof_p"], [0.0])
     np.testing.assert_allclose(payload["exponential_rate"], [0.0019453190566928037])
     np.testing.assert_allclose(payload["exponential_intercept"], [-5.345020077030128])
     np.testing.assert_allclose(payload["exponential_rvalue"], [-0.9411751253152798])
     np.testing.assert_array_less(400, np.min(payload["laminar_lengths"]))
     np.testing.assert_array_less(np.max(payload["laminar_lengths"]), 2_000)
+    np.testing.assert_array_less(-4.0, payload["laminar_tail_alpha"])
+    np.testing.assert_array_less(payload["laminar_tail_alpha"], -2.0)
+    np.testing.assert_array_less(payload["laminar_tail_alpha_ci"][0], payload["laminar_tail_alpha"])
+    np.testing.assert_array_less(payload["laminar_tail_alpha"], payload["laminar_tail_alpha_ci"][1])
+    np.testing.assert_array_less(0.0, payload["laminar_tail_gof_p"] + 1e-12)
+    np.testing.assert_array_less(payload["laminar_tail_gof_p"], 1.0 + 1e-12)
     np.testing.assert_array_less(0.0, payload["exponential_rate"])
     np.testing.assert_array_less(payload["exponential_rvalue"], -0.7)
     np.testing.assert_array_less(payload["spiral_radius"][0], payload["escape_threshold"])
@@ -42,7 +55,11 @@ def test_type_ii_intermittency_compute_writes_golden_cache(tmp_path):
 
 
 def test_type_ii_spiral_orbit_matches_oracle_prefix():
-    payload = type_ii_intermittency_figure.compute(None)
+    payload = type_ii_intermittency_figure.compute(
+        None,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
     n = int(payload["spiral_escape_index"][0])
     expected = pm_type_ii_oracle(
         n,
@@ -57,7 +74,11 @@ def test_type_ii_spiral_orbit_matches_oracle_prefix():
 
 
 def test_type_ii_intermittency_plot_writes_png(tmp_path):
-    payload = type_ii_intermittency_figure.compute(None)
+    payload = type_ii_intermittency_figure.compute(
+        None,
+        powerlaw_gof_bootstrap=3,
+        alpha_ci_bootstrap=20,
+    )
     output_path = tmp_path / "type_ii_intermittency.png"
 
     result = type_ii_intermittency_figure.plot(payload, output_path)
