@@ -117,6 +117,35 @@ def test_laminar_length_distribution_rejects_nonpositive_lengths():
         laminar_length_distribution([1, 0, 2])
 
 
+def test_laminar_length_distribution_drop_final_censored_is_opt_in():
+    lengths = np.array([2, 4, 4, 8, 16], dtype=np.int64)
+
+    default_dist = laminar_length_distribution(lengths)
+    explicit_default = laminar_length_distribution(lengths, drop_final_censored=False)
+    corrected = laminar_length_distribution(lengths, drop_final_censored=True)
+
+    np.testing.assert_array_equal(default_dist.values, explicit_default.values)
+    np.testing.assert_array_equal(default_dist.counts, explicit_default.counts)
+    np.testing.assert_array_equal(corrected.values, [2, 4, 8])
+    np.testing.assert_array_equal(corrected.counts, [1, 2, 1])
+
+
+def test_detect_laminar_phases_can_drop_terminal_censored_run():
+    signal = np.array([0.0, 1.0, 0.0, 1.02, 0.01, 1.01, 0.0, 1.0])
+
+    mask, default_lengths = detect_laminar_phases(signal, method="period", period=2, percentile=50)
+    _, corrected_lengths = detect_laminar_phases(
+        signal,
+        method="period",
+        period=2,
+        percentile=50,
+        drop_final_censored=True,
+    )
+
+    np.testing.assert_equal(mask[-1], True)
+    np.testing.assert_array_equal(corrected_lengths, default_lengths[:-1])
+
+
 def test_fit_power_law_mle_recovers_continuous_type_i_exponent():
     rng = np.random.default_rng(2028)
     csn_alpha = 1.5
@@ -129,6 +158,33 @@ def test_fit_power_law_mle_recovers_continuous_type_i_exponent():
     assert fit.csn_alpha == pytest.approx(1.5, abs=2.0 * fit.standard_error)
     assert fit.x_min >= 1.0
     assert fit.n_tail > 10_000
+
+
+def test_fit_power_law_mle_drop_final_censored_reduces_truncated_tail_bias():
+    rng = np.random.default_rng(0)
+    csn_alpha = 1.5
+    samples = (1.0 - rng.random(120)) ** (-1.0 / (csn_alpha - 1.0))
+    truncated = np.r_[samples, 120.0]
+
+    default_fit = fit_power_law_mle(truncated, discrete=False, min_tail=20)
+    explicit_default = fit_power_law_mle(
+        truncated,
+        discrete=False,
+        min_tail=20,
+        drop_final_censored=False,
+    )
+    corrected = fit_power_law_mle(
+        truncated,
+        discrete=False,
+        min_tail=20,
+        drop_final_censored=True,
+    )
+
+    np.testing.assert_equal(default_fit, explicit_default)
+    np.testing.assert_array_less(
+        abs(corrected.alpha + csn_alpha),
+        abs(default_fit.alpha + csn_alpha),
+    )
 
 
 def test_fit_power_law_mle_discrete_hurwitz_zeta_path_is_finite():

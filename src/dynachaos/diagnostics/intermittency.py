@@ -236,6 +236,7 @@ def detect_laminar_phases(
     window=None,
     percentile=5.0,
     v_min=2,
+    drop_final_censored=False,
 ):
     """Detect laminar samples and laminar-run lengths in a scalar signal.
 
@@ -246,17 +247,29 @@ def detect_laminar_phases(
     """
     series = _finite_series(x)
     if method == "recurrence":
-        return _detect_laminar_recurrence(series, eps, percentile, v_min)
-    if method == "period":
-        return _detect_laminar_period(series, eps, period, percentile)
-    if method == "variance":
-        return _detect_laminar_variance(series, eps, window, percentile)
-    raise ValueError("method must be one of: 'recurrence', 'period', 'variance'")
+        mask, lengths = _detect_laminar_recurrence(series, eps, percentile, v_min)
+    elif method == "period":
+        mask, lengths = _detect_laminar_period(series, eps, period, percentile)
+    elif method == "variance":
+        mask, lengths = _detect_laminar_variance(series, eps, window, percentile)
+    else:
+        raise ValueError("method must be one of: 'recurrence', 'period', 'variance'")
+    if drop_final_censored and mask[-1] and lengths.size:
+        lengths = lengths[:-1]
+    return mask, lengths
 
 
-def laminar_length_distribution(lengths):
-    """Return Freedman-Diaconis-binned and exact-count distributions."""
+def laminar_length_distribution(lengths, *, drop_final_censored=False):
+    """Return Freedman-Diaconis-binned and exact-count distributions.
+
+    ``drop_final_censored`` is an opt-in finite-window correction for ordered
+    laminar-run lengths: when the source series ends inside a laminar phase, the
+    final run is right-censored, so this option drops only that terminal run
+    before estimating the empirical distribution.
+    """
     lengths = _positive_lengths(lengths)
+    if drop_final_censored and lengths.size:
+        lengths = lengths[:-1]
     if lengths.size == 0:
         empty_float = np.empty(0, dtype=np.float64)
         empty_int = np.empty(0, dtype=np.int64)
@@ -309,13 +322,18 @@ def pooled_laminar_lengths(
     return np.concatenate(lengths).astype(np.int64, copy=False)
 
 
-def fit_power_law_mle(lengths, *, discrete=None, min_tail=None):
+def fit_power_law_mle(lengths, *, discrete=None, min_tail=None, drop_final_censored=False):
     """Fit a power-law tail by the Clauset-Shalizi-Newman MLE procedure.
 
     ``x_min`` is chosen by the minimum Kolmogorov-Smirnov distance over the
     observed support. Log-log fitting is intentionally not used here.
     """
-    data = _positive_observations(lengths)
+    observations = _positive_observations(lengths)
+    if drop_final_censored:
+        observations = observations[:-1]
+        if observations.size < 2:
+            raise ValueError("at least two uncensored observations are required")
+    data = observations
     if discrete is None:
         discrete = bool(np.allclose(data, np.rint(data)))
     discrete = bool(discrete)
