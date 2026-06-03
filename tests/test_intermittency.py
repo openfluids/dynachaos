@@ -25,6 +25,7 @@ from dynachaos.diagnostics.intermittency import (
     laminar_length_distribution,
     mean_laminar_scaling,
     near_diagonal_tangent_channel,
+    pooled_laminar_lengths,
     powerlaw_gof,
     reinjection_Mx,
     return_map_reconstruction,
@@ -165,6 +166,71 @@ def test_powerlaw_gof_does_not_reject_true_power_law():
     assert gof.n_bootstrap == 20
     assert 0.0 <= gof.p_value <= 1.0
     assert gof.p_value >= 0.1
+
+
+def test_pooled_laminar_lengths_reduce_on_off_exponent_variance():
+    seeds = np.arange(2040, 2056, dtype=np.uint32)
+
+    def oracle_factory(seed):
+        return on_off_oracle(
+            20_000,
+            x0=1e-4,
+            transverse_lyapunov=0.0,
+            noise_scale=0.8,
+            seed=seed,
+        )
+
+    def alpha_from_lengths(lengths):
+        return fit_power_law_mle(lengths, discrete=True).alpha
+
+    single_alphas = np.array(
+        [
+            alpha_from_lengths(
+                pooled_laminar_lengths(
+                    oracle_factory,
+                    n_runs=1,
+                    seed=int(seed),
+                    laminar_method="variance",
+                    percentile=50.0,
+                )
+            )
+            for seed in seeds
+        ],
+        dtype=np.float64,
+    )
+    pooled_alphas = np.array(
+        [
+            alpha_from_lengths(
+                pooled_laminar_lengths(
+                    oracle_factory,
+                    n_runs=8,
+                    seed=int(seed),
+                    laminar_method="variance",
+                    percentile=50.0,
+                )
+            )
+            for seed in seeds
+        ],
+        dtype=np.float64,
+    )
+    first_pool = pooled_laminar_lengths(
+        oracle_factory,
+        n_runs=8,
+        seed=int(seeds[0]),
+        laminar_method="variance",
+        percentile=50.0,
+    )
+    second_pool = pooled_laminar_lengths(
+        oracle_factory,
+        n_runs=8,
+        seed=int(seeds[0]),
+        laminar_method="variance",
+        percentile=50.0,
+    )
+
+    np.testing.assert_array_equal(first_pool, second_pool)
+    np.testing.assert_array_less(0, first_pool.size)
+    np.testing.assert_array_less(np.std(pooled_alphas, ddof=1), 0.5 * np.std(single_alphas, ddof=1))
 
 
 def test_fit_exponential_recovers_known_rate():

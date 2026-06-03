@@ -281,6 +281,34 @@ def laminar_length_distribution(lengths):
     )
 
 
+def pooled_laminar_lengths(
+    oracle_factory,
+    *,
+    n_runs,
+    seed,
+    laminar_method="recurrence",
+    **laminar_kwargs,
+):
+    """Pool laminar-run lengths across independent seeded oracle runs.
+
+    ``oracle_factory`` is called once per derived seed and must return one
+    scalar oracle series. Laminar detection itself is delegated unchanged to
+    :func:`detect_laminar_phases`.
+    """
+    n_runs = _positive_int(n_runs, "n_runs")
+    rng = np.random.default_rng(seed)
+    lengths = []
+    for run_seed in rng.integers(0, np.iinfo(np.uint32).max, size=n_runs, dtype=np.uint32):
+        series = oracle_factory(int(run_seed))
+        _, run_lengths = detect_laminar_phases(
+            series,
+            method=laminar_method,
+            **laminar_kwargs,
+        )
+        lengths.append(run_lengths)
+    return np.concatenate(lengths).astype(np.int64, copy=False)
+
+
 def fit_power_law_mle(lengths, *, discrete=None, min_tail=None):
     """Fit a power-law tail by the Clauset-Shalizi-Newman MLE procedure.
 
@@ -984,6 +1012,7 @@ __all__ = [
     "laminar_burst_symmetry",
     "mean_laminar_scaling",
     "near_diagonal_tangent_channel",
+    "pooled_laminar_lengths",
     "powerlaw_gof",
     "reinjection_Mx",
     "return_map_reconstruction",
