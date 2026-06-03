@@ -269,7 +269,7 @@ SECTION_SPECS = {
         ),
         npz_contracts=(
             NpzContract("test01_sweep.npz", ("a", "K")),
-            NpzContract("sali_comparison.npz", ("DB_values",)),
+            NpzContract("sali_comparison.npz", ("DB_values", "lambda1_values")),
             NpzContract("permutation_entropy.npz", ("a", "H_logistic", "D", "H_delayed")),
             NpzContract(
                 "complexity_entropy_plane.npz",

@@ -472,6 +472,18 @@ def test_delayed_logistic_panel_labels_match_lyapunov_signs():
                 assert abs(lam) <= 1e-3, f"{label=} at D={D} must have lambda1 near zero, got {lam}"
 
 
+def test_sali_curves_store_measured_lambda1_regime_context():
+    with np.load("figures/sec11_diagnostics/sali_comparison.npz", allow_pickle=False) as data:
+        DB_values = data["DB_values"]
+        lambda1_values = data["lambda1_values"]
+
+    np.testing.assert_allclose(DB_values, np.array([2.35, 2.37, 2.47, 2.55]))
+    assert abs(lambda1_values[0]) <= 1e-3
+    assert abs(lambda1_values[1]) <= 1e-3
+    assert lambda1_values[2] > 1e-3
+    assert lambda1_values[3] > 5e-2
+
+
 # ---------------------------------------------------------------------------
 # Torus doubling maps
 # ---------------------------------------------------------------------------

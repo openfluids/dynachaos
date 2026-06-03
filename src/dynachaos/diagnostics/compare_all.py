@@ -40,6 +40,7 @@ TEST01_NPZ = FIG_DIR / "test01_sweep.npz"
 TEST01_PNG = FIG_DIR / "test01_sweep.png"
 SALI_NPZ = FIG_DIR / "sali_comparison.npz"
 SALI_PNG = FIG_DIR / "sali_comparison.png"
+COUPLED_LYAP_NPZ = section_dir("sec06_three_torus") / "lyapunov_vs_DB.npz"
 PE_NPZ = FIG_DIR / "permutation_entropy.npz"
 PE_PNG = FIG_DIR / "permutation_entropy.png"
 CH_NPZ = FIG_DIR / "complexity_entropy_plane.npz"
@@ -77,6 +78,20 @@ def compute_01_test():
 # SALI comparison
 # ---------------------------------------------------------------------------
 
+SALI_CASES = [
+    (2.35, "3-torus"),
+    (2.37, "locking"),
+    (2.47, "onset of chaos"),
+    (2.55, "developed chaos"),
+]
+
+
+def _sali_lambda1_values(DB_values, *, eps=5e-3):
+    with np.load(COUPLED_LYAP_NPZ, allow_pickle=False) as data:
+        DB_grid = data["DB"]
+        spectra = data[f"eps_{eps:g}_spectra"]
+        return np.array([spectra[np.argmin(np.abs(DB_grid - DB)), 0] for DB in DB_values])
+
 
 def compute_sali():
     """SALI time series for coupled delayed logistic (4D) at various regimes.
@@ -90,15 +105,9 @@ def compute_sali():
 
     A = 0.4
     eps = 5e-3
-    cases = [
-        (2.35, "3-torus"),
-        (2.37, "locking"),
-        (2.47, "onset of chaos"),
-        (2.55, "developed chaos"),
-    ]
 
     results = {}
-    for DB, label in cases:
+    for DB, label in SALI_CASES:
         DA = DB + 0.1
         print(f"  SALI: DB={DB} ({label})")
         x0 = np.array([0.5, 0.5, 0.3, 0.3])
@@ -112,7 +121,9 @@ def compute_sali():
         s = sali(f, jac, x0, n_iter=10_000, n_transient=5000)
         results[f"DB_{DB}_sali"] = s
 
-    results["DB_values"] = np.array([c[0] for c in cases])
+    DB_values = np.array([case[0] for case in SALI_CASES])
+    results["DB_values"] = DB_values
+    results["lambda1_values"] = _sali_lambda1_values(DB_values, eps=eps)
     np.savez_compressed(SALI_NPZ, **results)
     print(f"Saved {SALI_NPZ}")
 
@@ -298,7 +309,8 @@ def plot_sali(data):
     setup()
 
     DB_values = data["DB_values"]
-    labels = ["3-torus", "locking", "onset of chaos", "developed chaos"]
+    labels = [case[1] for case in SALI_CASES]
+    lambda1_values = data["lambda1_values"]
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
@@ -316,7 +328,7 @@ def plot_sali(data):
             markevery=max(len(s) // 14, 1),
             markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.8,
-            label=f"$D_B={DB}$ ({labels[idx]})",
+            label=rf"$D_B={DB}$ ({labels[idx]}, $\lambda_1={lambda1_values[idx]:.3g}$)",
         )
 
     ax.set_xlabel("Iteration $n$")
@@ -484,7 +496,14 @@ def main():
             SALI_NPZ,
             compute_sali,
             plot_sali,
-            ("DB_values", "DB_2.35_sali", "DB_2.37_sali", "DB_2.47_sali", "DB_2.55_sali"),
+            (
+                "DB_values",
+                "lambda1_values",
+                "DB_2.35_sali",
+                "DB_2.37_sali",
+                "DB_2.47_sali",
+                "DB_2.55_sali",
+            ),
         ),
         (
             "Permutation entropy",
