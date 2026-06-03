@@ -142,7 +142,7 @@ def compute_map_IV(
     labels = ["4x torus", "8x torus", "chaos"]
 
     results = {}
-    x0 = np.array([0.5, 0.5, 0.5, 0.5])
+    x0 = np.array([0.5, 0.45, 0.52, 0.48])
     for idx, D in enumerate(D_values):
         label = labels[idx] if idx < len(labels) else ""
         print(f"  Map (IV): D={D} ({label})")
@@ -172,7 +172,7 @@ def compute_map_IV_lyapunov(
     n_params = len(D_values)
 
     spectra = np.empty((n_params, 4))
-    x0 = np.array([0.5, 0.5, 0.5, 0.5])
+    x0 = np.array([0.5, 0.45, 0.52, 0.48])
 
     for i, D in enumerate(D_values):
 
@@ -385,7 +385,7 @@ def compute_map_IV_animation():
     """Sweep D from 1.48 to 1.53 for Map (IV) animation at A=0.3."""
     A = 0.3
     D_sweep = np.linspace(1.48, 1.53, 200)
-    x0 = np.array([0.5, 0.5, 0.5, 0.5])
+    x0 = np.array([0.5, 0.45, 0.52, 0.48])
 
     def iterate_fn(D):
         traj = iterate_map(map_IV, x0, A, D, n_transient=20_000, n_plot=5_000)

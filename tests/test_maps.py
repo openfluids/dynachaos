@@ -621,6 +621,65 @@ def test_compute_torus_map_IV_lyapunov_returns_and_writes_explicit_payload(tmp_p
         np.testing.assert_allclose(saved["spectra"], payload["spectra"])
 
 
+
+def test_map_IV_off_symmetry_ic_and_lyapunov_physics():
+    """Physics-gated regression guard for the off-symmetry IC in Map IV.
+
+    Two assertions:
+    1. Lyapunov physics: lambda1 <= 1e-3 at torus (D~1.515) and lambda1 > 0 at
+       chaos onset (D~1.5212), confirming the torus->chaos transition is correctly
+       resolved with the off-symmetry IC.
+    2. Off-symmetry: the trajectory at D=1.515 started from x0=[0.5,0.45,0.52,0.48]
+       stays off the invariant subspace {X=Z, Y=W} after transient, i.e. max|X-Z|
+       and max|Y-W| are both > 1e-6. This is the regression guard that proves the IC
+       is not symmetric.
+    """
+    # --- Part 1: Lyapunov physics ---
+    payload_lyap = compute_map_IV_lyapunov(
+        D_values=np.linspace(1.48, 1.53, 200),
+        n_iter=5000,
+        n_transient=2000,
+        output_path=None,
+        progress_interval=0,
+    )
+    D = payload_lyap["D"]
+    lambda1 = payload_lyap["spectra"][:, 0]
+
+    idx_torus = np.argmin(np.abs(D - 1.515))
+    idx_chaos = np.argmin(np.abs(D - 1.5212))
+
+    assert lambda1[idx_torus] <= 1.0e-3, (
+        f"Expected lambda1 <= 1e-3 at D~1.515 (torus), got {lambda1[idx_torus]:.6f}. "
+        "Symmetric IC may still be in use."
+    )
+    assert lambda1[idx_chaos] > 0, (
+        f"Expected lambda1 > 0 at D~1.5212 (chaos onset), got {lambda1[idx_chaos]:.6f}. "
+        "Off-symmetry IC may not be exploring 4D dynamics."
+    )
+
+    # --- Part 2: Off-symmetry regression guard ---
+    payload_traj = compute_map_IV(
+        D_values=np.array([1.515]),
+        n_transient=2000,
+        n_plot=10000,
+        output_path=None,
+    )
+    traj = payload_traj["D_1.515_traj"]  # shape (10000, 4)
+    X, Y, Z, W = traj[:, 0], traj[:, 1], traj[:, 2], traj[:, 3]
+
+    max_xz = np.max(np.abs(X - Z))
+    max_yw = np.max(np.abs(Y - W))
+
+    assert max_xz > 1e-6, (
+        f"Orbit stayed on symmetric manifold: max|X-Z| = {max_xz:.2e}. "
+        "IC may have collapsed back onto the X=Z, Y=W subspace."
+    )
+    assert max_yw > 1e-6, (
+        f"Orbit stayed on symmetric manifold: max|Y-W| = {max_yw:.2e}. "
+        "IC may have collapsed back onto the X=Z, Y=W subspace."
+    )
+
+
 def test_run_animation_sweep_returns_and_writes_payload(tmp_path):
     output_path = tmp_path / "animation.npz"
 
@@ -1141,16 +1200,16 @@ def test_compute_map_IV_lyapunov_golden_values(tmp_path):
         np.array(
             [
                 [
-                    0.16140671993531416,
-                    0.04742302325520868,
-                    0.04219401941837471,
-                    -0.07178967726173077,
+                    0.1523415952594922,
+                    0.03859679338679587,
+                    0.014645886790399288,
+                    -0.10933648083443089,
                 ],
                 [
-                    0.16270287321983554,
-                    0.04828748938330477,
-                    0.04415935310015298,
-                    -0.07025603073637762,
+                    0.15281204945237534,
+                    0.04010023664586028,
+                    0.012345832346427799,
+                    -0.11445889859259217,
                 ],
             ]
         ),
