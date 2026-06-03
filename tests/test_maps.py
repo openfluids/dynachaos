@@ -838,6 +838,36 @@ def test_compute_collective_returns_and_writes_explicit_payload(tmp_path):
         np.testing.assert_allclose(saved["lyap_c"], payload["lyap_c"])
 
 
+def test_sec10_gcm_caches_preserve_collective_signatures():
+    with np.load("figures/sec10_gcm/gcm_results.npz", allow_pickle=False) as data:
+        N_grid = data["N_grid"]
+        msd_grid = data["msd_grid"]
+
+    with np.load("figures/sec10_gcm/gcm_clusters.npz", allow_pickle=False) as data:
+        cluster_labels = data["cluster_labels"]
+        n_sites = int(data["N"][0])
+
+    with np.load("figures/sec10_gcm/collective_lyapunov.npz", allow_pickle=False) as data:
+        a_values = data["a_values"]
+        lyap_c = data["lyap_c"]
+
+    cluster_counts = np.array([np.unique(row).size for row in cluster_labels])
+
+    assert N_grid[0] == 100
+    assert N_grid[-1] == 20000
+    assert msd_grid.shape == (5, 8)
+    assert np.all(msd_grid[:, -1] > msd_grid[:, 0] / 10.0)
+    assert cluster_labels.shape == (500, 100)
+    assert np.all((2 <= cluster_counts) & (cluster_counts <= n_sites / 10))
+    assert np.all(np.isfinite(lyap_c))
+    assert lyap_c[0] < 0.0
+    assert lyap_c[-1] > 0.0
+    assert np.min(lyap_c) < -0.25
+    assert np.max(lyap_c) > 0.4
+    assert a_values[0] == pytest.approx(1.4)
+    assert a_values[-1] == pytest.approx(2.0)
+
+
 def test_cluster_labels_by_tolerance_groups_sorted_runs():
     values = np.array([0.10, 0.1000002, 0.50, 0.5000001, 0.90])
 
