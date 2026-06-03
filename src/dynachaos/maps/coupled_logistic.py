@@ -62,7 +62,7 @@ BASIN_NPZ = FIG_DIR / "basins.npz"
 BASIN_PNG = FIG_DIR / "basins.png"
 ANIM_NPZ = FIG_DIR / "attractors_animation.npz"
 ANIM_GIF = FIG_DIR / "attractors_animation.gif"
-PHASE_SCHEMA_VERSION = 2
+PHASE_SCHEMA_VERSION = 3
 PHASE_REQUIRED_KEYS = ("A", "D", "asym", "lyap", "schema_version")
 
 
@@ -200,7 +200,7 @@ def compute_phase_diagram(
             y_new = logistic(y, A_values) + D * (x - y)
             x, y = x_new, y_new
             # Clamp divergent orbits
-            mask = (np.abs(x) > 1e10) | (np.abs(y) > 1e10)
+            mask = (np.abs(x) > 10.0) | (np.abs(y) > 10.0)
             x = np.where(mask, np.nan, x)
             y = np.where(mask, np.nan, y)
 
@@ -228,7 +228,7 @@ def compute_phase_diagram(
             x_new = logistic(x, A_values) + D * (y - x)
             y_new = logistic(y, A_values) + D * (x - y)
             x, y = x_new, y_new
-            mask = (np.abs(x) > 1e10) | (np.abs(y) > 1e10)
+            mask = (np.abs(x) > 10.0) | (np.abs(y) > 10.0)
             x = np.where(mask, np.nan, x)
             y = np.where(mask, np.nan, y)
             valid_state = np.isfinite(x) & np.isfinite(y)

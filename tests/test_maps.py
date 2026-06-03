@@ -28,6 +28,7 @@ from dynachaos.maps.circle_map import circle_map, circle_map_derivative
 from dynachaos.maps.coupled_logistic import (
     ATTRACTOR_CASES,
     PHASE_REQUIRED_KEYS,
+    PHASE_SCHEMA_VERSION,
     PhaseDiagramPayload,
     coupled_logistic,
     coupled_logistic_jac,
@@ -161,7 +162,7 @@ def test_compute_coupled_phase_diagram_returns_and_writes_explicit_payload(tmp_p
 
     assert payload["asym"].shape == (2, 3)
     assert payload["lyap"].shape == (2, 3)
-    assert int(payload["schema_version"][0]) == 2
+    assert int(payload["schema_version"][0]) == PHASE_SCHEMA_VERSION
     with np.load(output_path, allow_pickle=False) as saved:
         assert set(saved.files) == set(payload)
         np.testing.assert_allclose(saved["A"], payload["A"])
@@ -214,7 +215,7 @@ def test_coupled_phase_payload_rejects_missing_keys(tmp_path):
         A=np.array([0.8], dtype=np.float64),
         D=np.array([0.0], dtype=np.float64),
         asym=np.zeros((1, 1), dtype=np.float64),
-        schema_version=np.array([2], dtype=np.int16),
+        schema_version=np.array([PHASE_SCHEMA_VERSION], dtype=np.int16),
     )
 
     with np.load(path, allow_pickle=False) as saved:
@@ -230,7 +231,7 @@ def test_coupled_phase_payload_rejects_grid_shape_mismatch(tmp_path):
         D=np.array([0.0, 0.1], dtype=np.float64),
         asym=np.zeros((2, 1), dtype=np.float64),
         lyap=np.zeros((2, 2), dtype=np.float64),
-        schema_version=np.array([2], dtype=np.int16),
+        schema_version=np.array([PHASE_SCHEMA_VERSION], dtype=np.int16),
     )
 
     with np.load(path, allow_pickle=False) as saved:
@@ -251,6 +252,18 @@ def test_compute_coupled_phase_diagram_accepts_scalar_sweeps():
     assert payload["D"].shape == (1,)
     assert payload["asym"].shape == (1, 1)
     assert payload["lyap"].shape == (1, 1)
+
+
+def test_sec03_phase_diagram_finite_asym_stays_physical_after_divergence_mask():
+    with np.load("figures/sec03_transition/phase_diagram.npz", allow_pickle=False) as data:
+        asym = data["asym"]
+        schema_version = int(data["schema_version"][0])
+
+    finite_asym = asym[np.isfinite(asym)]
+
+    assert schema_version == PHASE_SCHEMA_VERSION
+    assert finite_asym.size > 0
+    assert np.max(finite_asym) <= 2.3
 
 
 def test_compute_coupled_attractors_returns_and_writes_explicit_payload(tmp_path):
