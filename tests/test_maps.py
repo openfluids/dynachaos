@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from dynachaos.cml.correlation_figure import _fit_correlation_length
 from dynachaos.cml.gcm_clusters import broad_positive_mask, compute_clusters, compute_collective
 from dynachaos.cml.primitives import (
     cluster_labels_by_tolerance,
@@ -749,6 +750,39 @@ def test_cml_jacobian_subblock_logistic_matches_manual_matrix():
     )
 
     np.testing.assert_allclose(J, expected)
+
+
+def test_correlation_length_fit_uses_decay_head_not_noise_floor():
+    r = np.arange(0, 80)
+    corr = np.exp(-r / 2.0)
+    corr[6:] = 2e-3 * (1.0 + 0.1 * np.sin(r[6:]))
+
+    xi = _fit_correlation_length(r, corr)
+
+    assert 1.0 < xi < 3.0
+
+
+def test_correlation_length_fit_ignores_late_tail_spikes():
+    r = np.arange(0, 80)
+    corr = np.exp(-r / 0.8)
+    corr[10] = 0.5
+
+    xi = _fit_correlation_length(r, corr)
+
+    assert 0.5 < xi < 1.0
+
+
+def test_sec08_correlation_lengths_are_physical_after_refit():
+    with np.load("figures/sec08_sti/correlation_decay.npz", allow_pickle=False) as data:
+        a_corr = data["a_corr"]
+        xi_values = data["xi_values"]
+
+    xi_by_a = dict(zip(a_corr, xi_values, strict=True))
+
+    assert np.all(np.isfinite(xi_values))
+    assert np.all((0.0 < xi_values) & (xi_values < 10.0))
+    assert xi_by_a[1.85] < xi_by_a[1.7]
+    assert xi_by_a[1.95] < xi_by_a[1.7]
 
 
 def test_gcm_step_matches_manual_formula():

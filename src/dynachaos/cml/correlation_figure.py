@@ -153,23 +153,58 @@ def compute_lyapunov_density():
 def _fit_correlation_length(r, corr_normalized):
     """Fit |C(r)| ~ exp(-r/xi) to estimate correlation length xi.
 
-    Uses a linear fit to log|C(r)| for r > 0 where |C(r)| > threshold.
+    Uses only the initial decorrelation head.  The tail of a finite lattice
+    autocorrelation is dominated by sampling noise and oscillatory remnants; if
+    included, it produces spuriously long correlation lengths.
     """
     abs_corr = np.abs(corr_normalized)
-    # Use r >= 1 and |C| above noise floor
-    mask = (r >= 1) & (abs_corr > 1e-6)
-    if mask.sum() < 3:
-        return np.inf
+    target = np.exp(-1.0)
+    noise_floor = max(1e-3, 5.0 / np.sqrt(abs_corr.size * 1000.0))
 
-    r_fit = r[mask].astype(float)
-    log_c = np.log(abs_corr[mask])
+    head_indices = []
+    previous = abs_corr[0]
+    for idx in range(1, len(abs_corr)):
+        value = abs_corr[idx]
+        head_indices.append(idx)
+        if value <= target or value <= noise_floor or value > previous:
+            break
+        previous = value
 
-    # Linear regression: log|C| = -r/xi + const
-    coeffs = np.polyfit(r_fit, log_c, 1)
-    slope = coeffs[0]
-    if slope >= 0:
-        return np.inf
-    return -1.0 / slope
+    head_indices = np.array(head_indices, dtype=int)
+    stop_idx = int(head_indices[-1]) if head_indices.size else 0
+    stopped_at_target = abs_corr[stop_idx] <= target if stop_idx else False
+    near_field = min(len(abs_corr) - 1, 8)
+    later_near_field_peaks = (
+        stop_idx + 1 <= near_field and np.any(abs_corr[stop_idx + 1 : near_field + 1] > target)
+    )
+    if stopped_at_target and not later_near_field_peaks:
+        x0, x1 = float(r[stop_idx - 1]), float(r[stop_idx])
+        y0, y1 = abs_corr[stop_idx - 1], abs_corr[stop_idx]
+        if y0 != y1:
+            return x0 + (target - y0) * (x1 - x0) / (y1 - y0)
+        return x1
+
+    if head_indices.size >= 3:
+        r_fit = r[head_indices].astype(float)
+        log_c = np.log(np.clip(abs_corr[head_indices], 1e-15, None))
+        coeffs = np.polyfit(r_fit, log_c, 1)
+        slope = coeffs[0]
+        if slope < 0:
+            return -1.0 / slope
+
+    # Oscillatory pattern-selection correlations need a near-field envelope
+    # estimate instead of a fit through the full tail.
+    envelope = np.maximum.accumulate(abs_corr[::-1])[::-1]
+    crossing = np.flatnonzero(envelope[1 : near_field + 1] <= target)
+    if crossing.size:
+        idx = int(crossing[0] + 1)
+        x0, x1 = float(r[idx - 1]), float(r[idx])
+        y0, y1 = envelope[idx - 1], envelope[idx]
+        if y0 != y1:
+            return x0 + (target - y0) * (x1 - x0) / (y1 - y0)
+        return x1
+
+    return float(near_field)
 
 
 # ---------------------------------------------------------------------------
