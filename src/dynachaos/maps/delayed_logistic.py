@@ -40,6 +40,32 @@ ANIM_GIF = FIG_DIR / "attractors_animation.gif"
 LOCK_NPZ = FIG_DIR / "locking_sequence.npz"
 LOCK_PNG = FIG_DIR / "locking_sequence.png"
 
+ATTRACTOR_LABELS_SHORT = [
+    "torus",
+    "torus",
+    "torus",
+    "torus",
+    "torus",
+    "torus",
+    "periodic window",
+    "chaos",
+    "chaos",
+    "periodic window",
+    "chaos",
+    "chaos",
+]
+
+LOCKING_LABELS_SHORT = [
+    "torus",
+    "torus",
+    "torus",
+    "torus",
+    "torus",
+    "periodic window",
+    "early chaos",
+    "chaos",
+]
+
 
 def _validate_unique_d_keys(d_values, fmt):
     keys = [format(float(value), fmt) for value in d_values]
@@ -101,24 +127,9 @@ def compute_attractors(
     else:
         D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
     _validate_unique_d_keys(D_values, ".2f")
-    labels = [
-        "(a) torus",
-        "(b) torus",
-        "(c) torus",
-        "(d) torus",
-        "(e) torus",
-        "(f) locking",
-        "(g) near-locking",
-        "(h) chaos",
-        "(i) chaos",
-        "(j) chaos",
-        "(k) chaos",
-        "(l) chaos",
-    ]
-
     results = {}
     for idx, D in enumerate(D_values):
-        label = labels[idx] if idx < len(labels) else ""
+        label = ATTRACTOR_LABELS_SHORT[idx] if idx < len(ATTRACTOR_LABELS_SHORT) else ""
         print(f"  D={D} {label}")
         traj = compute_attractor(A, D, n_transient=n_transient, n_plot=n_plot)
         results[f"D_{D:.2f}_x"] = traj[:, 0]
@@ -185,20 +196,7 @@ def plot_attractors(data):
     setup()
 
     D_values = data["D_values"]
-    labels_short = [
-        "torus",
-        "torus",
-        "torus",
-        "torus",
-        "torus",
-        "locking",
-        "near-locking",
-        "chaos",
-        "chaos",
-        "chaos",
-        "chaos",
-        "chaos",
-    ]
+    labels_short = ATTRACTOR_LABELS_SHORT
     panel_labels = list("abcdefghijkl")
 
     n_panels = len(D_values)
@@ -315,20 +313,9 @@ def compute_locking_sequence(
     else:
         D_values = list(np.atleast_1d(np.asarray(D_values, dtype=np.float64)))
     _validate_unique_d_keys(D_values, ".3f")
-    labels = [
-        "oscillating torus",
-        "near-locking",
-        "locking",
-        "locking",
-        "near-locking",
-        "fractalization onset",
-        "early chaos",
-        "chaos",
-    ]
-
     results = {}
     for idx, D in enumerate(D_values):
-        label = labels[idx] if idx < len(labels) else ""
+        label = LOCKING_LABELS_SHORT[idx] if idx < len(LOCKING_LABELS_SHORT) else ""
         print(f"  D={D} {label}")
         traj = compute_attractor(A, D, n_transient=n_transient, n_plot=n_plot)
         results[f"D_{D:.3f}_x"] = traj[:, 0]
@@ -348,16 +335,7 @@ def plot_locking_sequence(data):
     setup()
 
     D_values = data["D_values"]
-    labels = [
-        "oscillating torus",
-        "near-locking",
-        "locking",
-        "locking",
-        "near-locking",
-        "fract. onset",
-        "early chaos",
-        "chaos",
-    ]
+    labels = LOCKING_LABELS_SHORT
     panel_labels = list("abcdefgh")
 
     # Compute shared axis limits

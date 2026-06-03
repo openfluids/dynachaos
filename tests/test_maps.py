@@ -42,6 +42,8 @@ from dynachaos.maps.coupled_logistic import (
     compute_phase_diagram as compute_coupled_phase_diagram,
 )
 from dynachaos.maps.delayed_logistic import (
+    ATTRACTOR_LABELS_SHORT,
+    LOCKING_LABELS_SHORT,
     compute_attractors as compute_delayed_attractors,
 )
 from dynachaos.maps.delayed_logistic import (
@@ -436,6 +438,38 @@ def test_compute_delayed_locking_rejects_rounded_key_collisions():
             n_plot=1,
             output_path=None,
         )
+
+
+def test_delayed_logistic_panel_labels_match_lyapunov_signs():
+    with np.load("figures/sec05_oscillation/attractors.npz", allow_pickle=False) as data:
+        attractor_D = data["D_values"]
+    with np.load("figures/sec05_oscillation/locking_sequence.npz", allow_pickle=False) as data:
+        locking_D = data["D_values"]
+    with np.load("figures/sec05_oscillation/lyapunov_vs_D.npz", allow_pickle=False) as data:
+        lyap_D = data["D"]
+        lambda1 = data["spectra"][:, 0]
+
+    expected = {
+        "chaos": "positive",
+        "early chaos": "positive",
+        "periodic window": "negative",
+        "torus": "zero",
+    }
+
+    for D_values, labels in (
+        (attractor_D, ATTRACTOR_LABELS_SHORT),
+        (locking_D, LOCKING_LABELS_SHORT),
+    ):
+        assert len(D_values) == len(labels)
+        for D, label in zip(D_values, labels, strict=True):
+            idx = np.argmin(np.abs(lyap_D - D))
+            lam = lambda1[idx]
+            if expected[label] == "positive":
+                assert lam > 1e-3, f"{label=} at D={D} must have positive lambda1, got {lam}"
+            elif expected[label] == "negative":
+                assert lam < -1e-3, f"{label=} at D={D} must have negative lambda1, got {lam}"
+            else:
+                assert abs(lam) <= 1e-3, f"{label=} at D={D} must have lambda1 near zero, got {lam}"
 
 
 # ---------------------------------------------------------------------------
