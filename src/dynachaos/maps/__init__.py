@@ -6,6 +6,7 @@ from dynachaos.maps.base import (
     DiscreteMap,
     HenonMap,
     LogisticMap,
+    StandardMap,
 )
 from dynachaos.maps.circle_map import circle_map, circle_map_derivative, rotation_number
 from dynachaos.maps.coupled_delayed import coupled_delayed, coupled_delayed_jac
@@ -39,6 +40,7 @@ from dynachaos.maps.primitives import (
     logistic,
     logistic_derivative,
 )
+from dynachaos.maps.standard_map import standard_map, standard_map_jac
 from dynachaos.maps.torus_doubling import map_I, map_I_jac, map_IV, map_IV_jac
 
 __all__ = [
@@ -50,6 +52,7 @@ __all__ = [
     "LORENZ_INTERMITTENCY_RHO",
     "ON_OFF_SKEW_LOGISTIC_ONSET",
     "LogisticMap",
+    "StandardMap",
     "circle_map",
     "circle_map_derivative",
     "coupled_delayed",
@@ -83,4 +86,6 @@ __all__ = [
     "rossler_trajectory",
     "rotation_number",
     "rotation_numbers",
+    "standard_map",
+    "standard_map_jac",
 ]

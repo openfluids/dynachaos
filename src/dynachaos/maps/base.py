@@ -205,7 +205,20 @@ def _make_henon_map(a: float = 1.4, b: float = 0.3) -> DiscreteMap:
     )
 
 
+def _make_standard_map(K: float = 1.0) -> DiscreteMap:
+    """Create the area-preserving Chirikov standard map."""
+    from dynachaos.maps.standard_map import standard_map, standard_map_jac
+
+    return DiscreteMap(
+        f=lambda state: standard_map(state, K),
+        df=lambda state: standard_map_jac(state, K),
+        name=f"StandardMap(K={K})",
+        dim=2,
+    )
+
+
 # Convenience constructors
 LogisticMap = _make_logistic_map
 CircleMap = _make_circle_map
 HenonMap = _make_henon_map
+StandardMap = _make_standard_map

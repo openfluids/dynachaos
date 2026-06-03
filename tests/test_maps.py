@@ -20,6 +20,7 @@ from dynachaos.diagnostics.compare_all_helpers import (
     sweep_pair_metric,
     sweep_scalar_metric,
 )
+from dynachaos.diagnostics.sali_gali import sali
 from dynachaos.maps._iter import (
     iterate_unwrapped,
     run_animation_sweep,
@@ -74,6 +75,7 @@ from dynachaos.maps.primitives import (
     logistic,
     logistic_derivative,
 )
+from dynachaos.maps.standard_map import standard_map, standard_map_jac
 from dynachaos.maps.torus_doubling import (
     compute_map_I,
     compute_map_IV,
@@ -1158,6 +1160,35 @@ def test_henon_jac_finite_difference():
         state_minus[j] -= eps
         fd_col = (henon(state_plus, a, b) - henon(state_minus, a, b)) / (2.0 * eps)
         np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)
+
+
+def test_standard_map_sali_separates_regular_and_chaotic_conservative_orbits():
+    regular_x0 = np.array([np.pi, 0.01])
+    chaotic_x0 = np.array([0.1, 0.1])
+    probe_state = np.array([1.2, 0.4])
+
+    regular = sali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        regular_x0,
+        n_iter=1000,
+        n_transient=100,
+        rng=np.random.default_rng(123),
+    )
+    chaotic = sali(
+        lambda state: standard_map(state, K=5.0),
+        lambda state: standard_map_jac(state, K=5.0),
+        chaotic_x0,
+        n_iter=1000,
+        n_transient=100,
+        rng=np.random.default_rng(123),
+    )
+
+    assert standard_map(probe_state, K=0.5).shape == (2,)
+    assert np.linalg.det(standard_map_jac(probe_state, K=0.5)) == pytest.approx(1.0)
+    assert np.min(regular[-200:]) > 0.5
+    assert chaotic[-1] < 1e-12
+    assert chaotic[-1] < regular[-1] * 1e-12
 
 
 def test_compute_clusters_seed_controls_rng_determinism():
