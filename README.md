@@ -79,7 +79,7 @@ from dynachaos.diagnostics import lyapunov_exponent_1d, permutation_entropy
 f  = lambda x: logistic(x, 1.99)
 df = lambda x: logistic_derivative(x, 1.99)
 lam = lyapunov_exponent_1d(f, df, x0=0.1, n_iter=100_000)
-print(f"lambda = {lam:.4f}")   # ~ 0.69
+print(f"lambda = {lam:.4f}")   # ~ 0.65
 
 # Permutation entropy of a chaotic series
 series = np.empty(10_000)
@@ -87,17 +87,24 @@ series[0] = 0.1
 for i in range(1, len(series)):
     series[i] = logistic(series[i - 1], 1.99)
 H = permutation_entropy(series, d=5)
-print(f"H_PE = {H:.4f}")       # ~ 0.98 (near-random)
+print(f"H_PE = {H:.4f}")       # ~ 0.68
 ```
 
 ```python
+import numpy as np
+from dynachaos.maps import logistic
 from dynachaos.diagnostics import correlation_dimension, sample_entropy
 from dynachaos.diagnostics.recurrence import embed_time_delay
+
+series = np.empty(10_000)
+series[0] = 0.1
+for i in range(1, len(series)):
+    series[i] = logistic(series[i - 1], 1.99)
 
 # Correlation dimension of the logistic map attractor
 traj = embed_time_delay(series, d=3, tau=1)
 D2, r, C, slopes, mask = correlation_dimension(traj, theiler_window=1)
-print(f"D2 = {D2:.3f}")        # ~ 0.96
+print(f"D2 = {D2:.3f}")        # ~ 0.97
 
 # Sample entropy (regularity measure)
 se = sample_entropy(series, m=2)
@@ -235,6 +242,10 @@ uv run --extra viz ruff format src/ tests/ --check
 uv run maturin develop --release
 uv run --extra viz pytest tests/ -q
 ```
+
+## Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines. All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Citation
 
