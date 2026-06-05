@@ -7,13 +7,12 @@ from dynachaos.pipelines.registry import SECTION_SPECS, list_sections
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIGURES_ROOT = REPO_ROOT / "figures"
 PAPER_TEX = REPO_ROOT / "paper" / "main.tex"
+# sec04_doubling/map_IV_attractors.png is an alternative attractor-gallery view that
+# the manuscript intentionally does not cite. The five sec12_intermittency figures are
+# now cited in main.tex (STI spine + the temporal-intermittency spotlight), so they are
+# no longer orphans.
 ORPHAN_IMAGE_ALLOWLIST = {
     "sec04_doubling/map_IV_attractors.png",
-    "sec12_intermittency/on_off_intermittency.png",
-    "sec12_intermittency/type_i_intermittency.png",
-    "sec12_intermittency/type_ii_intermittency.png",
-    "sec12_intermittency/type_iii_intermittency.png",
-    "sec12_intermittency/sti_spine.png",
 }
 
 
