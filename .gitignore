@@ -17,6 +17,14 @@ paper/.DS_Store
 # Private session / planning files — never commit
 plan*.md
 LEDGER.md
+AUDIT.md
+
+# Local task tracker — temporary, must not ship to the public repo
+.beads/
+
+# Reference papers (copyrighted): keep parsed .md locally, never ship the sources/figures
+pdfs/*
+!pdfs/*.md
 
 # README asset generation scripts
 assets/gen_*.py
@@ -40,6 +48,11 @@ venv/
 
 # Rust build artifacts
 target/
+
+# Python build artifacts
+dist/
+build/
+*.egg-info/
 
 # Compiled extensions
 *.so
