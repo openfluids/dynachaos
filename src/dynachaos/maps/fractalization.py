@@ -119,7 +119,7 @@ def plot_attractors(data):
     """Plot attractor portraits showing fractalization."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
     setup()
 
@@ -150,6 +150,7 @@ def plot_attractors(data):
         ax = axes_flat[idx]
         traj = data[f"D_{D}_traj"]
         ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"], alpha=0.16, rasterized=True)
+        panel_label(ax, chr(ord("a") + idx))
         ax.set_title(f"$D = {D}$\n{labels[idx]}", loc="left")
         if idx // 3 == 1:
             ax.set_xlabel("$x$")
@@ -182,6 +183,7 @@ def plot_dimension(data):
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        reference_line,
         setup,
     )
 
@@ -193,8 +195,8 @@ def plot_dimension(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, D2, color=COLORS["black"], linestyle="-", lw=0.8)
-    ax.axhline(
-        1.0, color=COLORS["blue"], lw=0.6, ls="--", alpha=0.7, label="$D_2 = 1$ (smooth torus)"
+    reference_line(
+        ax, 1.0, axis="y", lw=0.6, alpha=0.7, label="$D_2 = 1$ (smooth torus)"
     )
     ax.axvspan(1.92, 1.95, color=COLORS["grey"], alpha=0.10, zorder=0)
     ax.set_xlabel(r"$D$")
