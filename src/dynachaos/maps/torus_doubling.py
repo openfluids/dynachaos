@@ -19,7 +19,8 @@ OUTPUTS: figures/sec04_doubling/*.npz, *.png
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir, write_payload as _io_write_payload
+from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir
+from dynachaos.io.paths import write_payload as _io_write_payload
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 from dynachaos.maps.primitives import logistic, logistic_derivative
 
@@ -199,7 +200,7 @@ def plot_map_I(data):
     """Plot Map (I) attractor projections onto (X, Y) plane."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
     setup()
 
@@ -222,6 +223,7 @@ def plot_map_I(data):
         if idx == 0:
             ax.set_ylabel("$Y$")
         apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
+        panel_label(ax, chr(ord("a") + idx))
 
     fig.suptitle(
         "Map (I), $\\alpha = 0.4$: projection onto $(X, Y)$",
@@ -240,7 +242,7 @@ def plot_map_IV(data):
     import matplotlib.pyplot as plt
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
     setup()
 
@@ -282,6 +284,7 @@ def plot_map_IV(data):
         ax.set_xlabel("$X$")
         ax.set_ylabel("$Y$")
         apply_axes_polish(ax, kind="grid", title_loc="left")
+        panel_label(ax, chr(ord("a") + idx))
 
     fig.suptitle(
         "Map (IV), $\\alpha = 0.3$: projection onto $(X, Y)$",
@@ -298,6 +301,7 @@ def plot_map_IV(data):
 def plot_lyapunov(data):
     """Plot Lyapunov exponents for Map (IV) vs D."""
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
     from dynachaos.utils.style import (
@@ -305,6 +309,8 @@ def plot_lyapunov(data):
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        lyap_color,
+        reference_line,
         setup,
     )
 
@@ -316,14 +322,14 @@ def plot_lyapunov(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     labels_le = [r"$\lambda_1$", r"$\lambda_2$"]
-    colors = [COLORS["black"], COLORS["blue"]]
+    colors = [COLORS["black"], lyap_color(1)]
     linewidths = [0.6, 1.0]
     # Only plot first two (3rd and 4th are large negative, as Kaneko notes)
     for k in range(2):
         ax.plot(
             D, spectra[:, k], color=colors[k], lw=linewidths[k], label=labels_le[k], zorder=3 - k
         )
-    ax.axhline(0, color=COLORS["red"], lw=0.4, ls="--", zorder=1)
+    reference_line(ax, 0, axis="y")
     ax.set_xlabel(r"$D$")
     ax.set_ylabel("Lyapunov exponent")
     ax.set_title("Map (IV), $\\alpha = 0.3$", loc="left")
@@ -331,13 +337,17 @@ def plot_lyapunov(data):
     finalize_legend(ax, kind="double", loc="upper right")
 
     axins = inset_axes(ax, width="38%", height="42%", loc="lower left", borderpad=1.0)
-    axins.plot(D, spectra[:, 1], color=COLORS["blue"], lw=0.8)
-    axins.axhline(0, color=COLORS["red"], lw=0.4, ls="--")
+    axins.plot(D, spectra[:, 1], color=lyap_color(1), lw=0.8)
+    reference_line(axins, 0, axis="y")
     axins.set_xlim(D.min(), D.max())
     axins.set_ylim(-1.8e-4, 2.0e-5)
     axins.set_title(r"$\lambda_2$ near zero", loc="left", fontsize=spec.tick_size)
     apply_axes_polish(axins, kind="grid", title_loc="left", grid=False)
-    axins.tick_params(labelsize=spec.tick_size - 0.8)
+    axins.yaxis.set_major_locator(MaxNLocator(3))
+    # Compact scientific tick labels so the tiny-magnitude values do not collide.
+    axins.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    axins.yaxis.get_offset_text().set_fontsize(spec.tick_size - 1.5)
+    axins.tick_params(labelsize=spec.tick_size - 1.5)
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
