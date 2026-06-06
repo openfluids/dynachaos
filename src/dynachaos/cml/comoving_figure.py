@@ -86,10 +86,10 @@ def plot(data):
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
-        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        reference_line,
         series_style,
         setup,
     )
@@ -136,7 +136,7 @@ def plot(data):
                 )
                 ax.axvline(v_cross, color=sty["color"], lw=0.6, ls="--", alpha=0.5)
 
-    ax.axhline(0, color=COLORS["grey"], lw=0.5, ls="-", alpha=0.5)
+    reference_line(ax, 0, axis="y", label=None)
     ax.set_xlabel(r"Velocity $v$ (sites/iteration)")
     ax.set_ylabel(r"$\lambda(v)$")
     if np.isfinite(y_min) and np.isfinite(y_max):

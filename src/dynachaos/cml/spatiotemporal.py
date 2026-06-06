@@ -127,6 +127,7 @@ def plot(data):
 
     from dynachaos.utils.style import (
         CMAP_SPACETIME,
+        add_field_colorbar,
         apply_axes_polish,
         figure_spec,
         setup,
@@ -152,12 +153,13 @@ def plot(data):
         if vmax - vmin < 1e-12:
             vmin -= 0.5
             vmax += 0.5
+        row_mappable = None
         for col, eps in enumerate(eps_vals):
             ax = axes[row, col]
             key = f"{model}_eps_{eps}"
             if key in data:
                 st = data[key]
-                ax.imshow(
+                row_mappable = ax.imshow(
                     st,
                     aspect="auto",
                     cmap=CMAP_SPACETIME,
@@ -176,6 +178,8 @@ def plot(data):
             else:
                 ax.set_xlabel("")
             apply_axes_polish(ax, kind="grid", title_loc="left", grid=False)
+        if row_mappable is not None:
+            add_field_colorbar(fig, row_mappable, axes[row, -1], label=r"$x_i^n$")
 
     fig.savefig(STI_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
