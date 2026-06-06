@@ -138,7 +138,7 @@ def plot_msd(data):
     ax.loglog(
         N_ref,
         ref_anchor / N_ref,
-        color=COLORS["black"],
+        color=COLORS["grey"],
         linestyle="--",
         lw=0.8,
         label=r"$\propto 1/N$ (anchored at $N=100$, $a=1.99$)",
@@ -158,7 +158,6 @@ def plot_msd(data):
 def plot_distribution(data):
     """Plot distribution P(h) for different N."""
     import matplotlib.pyplot as plt
-    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
     from dynachaos.utils.style import (
         COLOR_CYCLE,
@@ -193,11 +192,11 @@ def plot_distribution(data):
     apply_axes_polish(ax, kind="single", title_loc="left", grid=False)
     finalize_legend(ax, kind="single", loc="upper left")
 
-    inset = inset_axes(ax, width="34%", height="28%", loc="upper right", borderpad=1.1)
+    inset = ax.inset_axes([0.16, 0.12, 0.28, 0.22])
     msd_values = np.array([float(data[f"N_{N}_msd"][0]) for N in N_values])
     inset.loglog(N_values, msd_values, color=COLOR_CYCLE[0], marker="o", lw=1.0, ms=2.8)
-    inset.set_title(r"Var$(h)$", fontsize=spec.tick_size - 0.4, pad=2.0)
-    inset.tick_params(axis="both", which="both", labelsize=spec.tick_size - 1.0)
+    inset.set_title(r"Var$(h)$", fontsize=spec.legend_size, pad=2.0)
+    inset.tick_params(axis="both", which="both", labelsize=spec.legend_size - 1.5)
     inset.grid(False)
 
     fig.savefig(DIST_PNG, dpi=600, bbox_inches="tight")

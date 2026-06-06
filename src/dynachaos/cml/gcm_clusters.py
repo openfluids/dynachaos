@@ -226,6 +226,8 @@ def plot_clusters(data):
 
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
+        add_field_colorbar,
+        annotate_on_field,
         apply_axes_polish,
         figure_spec,
         setup,
@@ -261,10 +263,16 @@ def plot_clusters(data):
     )
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
 
-    cbar = fig.colorbar(im, ax=ax, pad=0.02, shrink=0.85)
-    cbar.set_label(r"Sorted state value $x_{(k)}$", fontsize=spec.label_size)
-    cbar.ax.tick_params(labelsize=spec.tick_size)
-    ax.text(
+    add_field_colorbar(
+        fig,
+        im,
+        ax,
+        label=r"Sorted state value $x_{(k)}$",
+        pad=0.02,
+        shrink=0.85,
+    )
+    annotate_on_field(
+        ax,
         0.02,
         0.02,
         rf"clusters per row: {n_clusters.min()} to {n_clusters.max()}",
@@ -288,6 +296,7 @@ def plot_collective(data):
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        reference_line,
         series_style,
         setup,
     )
@@ -323,7 +332,7 @@ def plot_collective(data):
             label=r"sustained $\lambda_c > 0$",
         )
 
-    ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
+    reference_line(ax, 0, axis="y", lw=0.7)
 
     ax.set_xlabel(r"$a$")
     ax.set_ylabel(r"$\lambda_c$")
