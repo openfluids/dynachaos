@@ -62,3 +62,10 @@ build/
 # Computed data — large, reproducible from scripts
 examples/*.npz
 figures/**/*.npz
+
+# Matplotlib font/render cache (created during figure runs)
+.mpl-cache/
+
+# supervisor-coder AUTO-mode dispatch scratch
+.sc-dispatch.jsonc
+.sc-out.txt
