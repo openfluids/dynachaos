@@ -150,8 +150,11 @@ def plot(data):
 
     from dynachaos.utils.style import (
         COLORS,
+        annotate_on_field,
         apply_axes_polish,
         figure_spec,
+        panel_label,
+        reference_line,
         setup,
     )
 
@@ -175,16 +178,18 @@ def plot(data):
     ax1.plot(A, rho, color=COLORS["black"], lw=0.35, rasterized=True)
     ax1.set_ylabel(r"Rotation number $\rho$")
     ax1.set_ylim(0.0, 0.255)
-    ax1.axhline(1.0 / 5.0, color=COLORS["grey"], lw=0.5, ls="--", alpha=0.7)
+    panel_label(ax1, "(a)")
+    reference_line(ax1, 1.0 / 5.0, axis="y", lw=0.5, alpha=0.7)
     ax1.text(0.004, 0.2035, r"$\rho = 1/5$", fontsize=spec.tick_size, color=COLORS["grey"])
 
     # --- Bottom panel: Lyapunov exponent vs A ---
     ax2.plot(A, lam, color=COLORS["black"], lw=0.2, linestyle="-", rasterized=True)
     ax2.fill_between(A, 0.0, lam, where=lam > 0.0, color=COLORS["red"], alpha=0.18)
-    ax2.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
+    reference_line(ax2, 0.0, axis="y", lw=0.7)
     ax2.set_xlabel(r"Nonlinearity parameter $K$")
     ax2.set_ylabel(r"Lyapunov exponent $\lambda$")
     ax2.set_xlim(0, 0.25)
+    panel_label(ax2, "(b)")
 
     # Mark the onset of 1/5 locking and the onset of chaos from Kaneko's D=0.25 scan.
     K_inf = 0.15671685
@@ -192,20 +197,25 @@ def plot(data):
     for ax in (ax1, ax2):
         ax.axvline(K_inf, color=COLORS["blue"], lw=0.7, ls=":", alpha=0.8)
         ax.axvline(K_c, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)
-    ax1.text(
+    annotate_on_field(
+        ax1,
         K_inf + 0.002,
         0.244,
         r"$K_\infty$: onset of $1/5$ locking",
         fontsize=spec.tick_size,
         color=COLORS["blue"],
+        ha="left",
+        va="center",
     )
     ax2.set_ylim(min(-2.4, lam.min() * 1.05), 0.18)
-    ax2.text(
+    annotate_on_field(
+        ax2,
         K_c + 0.002,
         0.07,
         r"$K_c$: chaos onset",
         fontsize=spec.tick_size,
         color=COLORS["red"],
+        ha="left",
         va="bottom",
     )
 
@@ -258,7 +268,14 @@ def plot_zoom(zoom_data, full_data):
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        panel_label,
+        reference_line,
+        setup,
+    )
 
     setup()
 
@@ -277,9 +294,10 @@ def plot_zoom(zoom_data, full_data):
     ax_full.plot(A_full, rho_full, color=COLORS["black"], lw=0.3, rasterized=True)
     ax_full.set_xlabel(r"Nonlinearity $K$")
     ax_full.set_ylabel(r"Rotation number $\rho$")
-    ax_full.set_title("(a) Global staircase", loc="left")
+    ax_full.set_title("Global staircase", loc="left")
     ax_full.set_xlim(0, 0.25)
     ax_full.set_ylim(0.0, 0.255)
+    panel_label(ax_full, "(a)")
 
     # Zoom box
     zoom_K = (0.125, 0.158)
@@ -301,9 +319,10 @@ def plot_zoom(zoom_data, full_data):
     ax_zoom.plot(A_zoom, rho_zoom, color=COLORS["black"], lw=0.3, rasterized=True)
     ax_zoom.set_xlabel(r"Nonlinearity $K$")
     ax_zoom.set_ylabel(r"Rotation number $\rho$")
-    ax_zoom.set_title("(b) Period-adding sequence approaching $1/5$", loc="left")
+    ax_zoom.set_title(r"Period-adding sequence approaching $1/5$", loc="left")
     ax_zoom.set_xlim(*zoom_K)
     ax_zoom.set_ylim(*zoom_rho)
+    panel_label(ax_zoom, "(b)")
 
     # Mark the dominant period-adding sequence n/(5n-1) and the 1/5 accumulation plateau.
     rationals = {
@@ -313,7 +332,7 @@ def plot_zoom(zoom_data, full_data):
         r"$1/5$": 1.0 / 5.0,
     }
     for label, val in rationals.items():
-        ax_zoom.axhline(val, color=COLORS["grey"], lw=0.3, ls="--", alpha=0.5)
+        reference_line(ax_zoom, val, axis="y", lw=0.3, alpha=0.5)
         ax_zoom.text(
             zoom_K[1] - 0.0008,
             val + 0.0006,

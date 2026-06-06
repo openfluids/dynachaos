@@ -89,8 +89,9 @@ def plot(data):
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
-        CMAP_SEQUENTIAL,
         COLORS,
+        add_field_colorbar,
+        annotate_on_field,
         apply_axes_polish,
         figure_spec,
         setup,
@@ -109,7 +110,7 @@ def plot(data):
         Omega,
         K,
         rho,
-        cmap=CMAP_SEQUENTIAL,
+        cmap="viridis",
         shading="auto",
         rasterized=True,
     )
@@ -118,13 +119,15 @@ def plot(data):
     # Critical line K_c = 1/(2π)
     K_c = 1.0 / (2.0 * np.pi)
     ax.axhline(K_c, color=COLORS["red"], lw=0.8, ls="--", alpha=0.85)
-    ax.text(
+    annotate_on_field(
+        ax,
         0.985,
         K_c + 0.005,
         r"$K_c = 1/(2\pi)$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
         ha="right",
+        va="center",
     )
 
     # Highlight the dominant primary tongues directly on the field.
@@ -153,9 +156,7 @@ def plot(data):
     )
     top.tick_params(axis="x", pad=2, length=0)
 
-    cb = fig.colorbar(pcm, ax=ax, pad=0.02, aspect=30)
-    cb.set_label(r"Rotation number $\rho$", fontsize=spec.label_size)
-    cb.ax.tick_params(labelsize=spec.tick_size)
+    add_field_colorbar(fig, pcm, ax, label=r"Rotation number $\rho$", pad=0.02, aspect=30)
 
     apply_axes_polish(ax, kind="double", grid=False)
 
