@@ -426,8 +426,11 @@ def plot_phase_diagram(data):
         CMAP_DIVERGING,
         CMAP_SEQUENTIAL,
         COLORS,
+        add_field_colorbar,
+        annotate_on_field,
         apply_axes_polish,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -458,11 +461,11 @@ def plot_phase_diagram(data):
         shading="auto",
     )
     axes[0].axhline(0.1, color=COLORS["red"], linestyle=(0, (4, 2)), lw=0.8)
-    axes[0].text(
-        0.98,
-        0.04,
+    annotate_on_field(
+        axes[0],
+        A[-1],
+        0.1 + 0.025 * (D[-1] - D[0]),
         r"$\varepsilon = 0.1$ gallery slice",
-        transform=axes[0].transAxes,
         ha="right",
         va="bottom",
         color=COLORS["red"],
@@ -470,11 +473,10 @@ def plot_phase_diagram(data):
     )
     axes[0].set_xlabel(r"$a$")
     axes[0].set_ylabel(r"$\varepsilon$")
-    axes[0].set_title(r"(a) Symmetry breaking: $\langle |x-y| \rangle$", loc="left")
+    axes[0].set_title(r"Symmetry breaking: $\langle |x-y| \rangle$", loc="left")
+    panel_label(axes[0], "(a)")
     apply_axes_polish(axes[0], kind="double", title_loc="left", grid=False)
-    cb0 = fig.colorbar(im0, ax=axes[0], pad=0.02, fraction=0.046)
-    cb0.set_label(r"$\langle |x-y| \rangle$")
-    cb0.ax.tick_params(labelsize=spec.tick_size)
+    add_field_colorbar(fig, im0, axes[0], label=r"$\langle |x-y| \rangle$", pad=0.02)
 
     lyap_cmap = plt.get_cmap(CMAP_DIVERGING).copy()
     lyap_cmap.set_bad(COLORS["offwhite"])
@@ -492,22 +494,21 @@ def plot_phase_diagram(data):
         shading="auto",
     )
     axes[1].axhline(0.1, color=COLORS["red"], linestyle=(0, (4, 2)), lw=0.8)
-    axes[1].text(
-        0.98,
-        0.04,
+    annotate_on_field(
+        axes[1],
+        A[-1],
+        0.1 + 0.025 * (D[-1] - D[0]),
         r"$\varepsilon = 0.1$ gallery slice",
-        transform=axes[1].transAxes,
         ha="right",
         va="bottom",
         color=COLORS["red"],
         fontsize=spec.legend_size,
     )
     axes[1].set_xlabel(r"$a$")
-    axes[1].set_title(r"(b) Chaos onset: $\lambda_1$ (finite-time)", loc="left")
+    axes[1].set_title(r"Chaos onset: $\lambda_1$ (finite-time)", loc="left")
+    panel_label(axes[1], "(b)")
     apply_axes_polish(axes[1], kind="double", title_loc="left", grid=False)
-    cb1 = fig.colorbar(im1, ax=axes[1], pad=0.02, fraction=0.046)
-    cb1.set_label(r"$\lambda_1$")
-    cb1.ax.tick_params(labelsize=spec.tick_size)
+    add_field_colorbar(fig, im1, axes[1], label=r"$\lambda_1$", pad=0.02)
 
     fig.savefig(PHASE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -518,7 +519,14 @@ def plot_attractors(data):
     """Plot representative attractor portraits."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        panel_label,
+        reference_line,
+        setup,
+    )
 
     setup()
 
@@ -548,13 +556,14 @@ def plot_attractors(data):
         y = data[f"y_{idx}"]
         point_size = 0.06 if "zoom" not in labels[idx] else 0.045
         ax.scatter(x, y, s=point_size, c=COLORS["black"], alpha=0.16, rasterized=True)
-        ax.axhline(0.0, color=COLORS["grid"], lw=0.55, zorder=0)
-        ax.axvline(0.0, color=COLORS["grid"], lw=0.55, zorder=0)
+        reference_line(ax, 0.0, axis="y", lw=0.55, zorder=0)
+        reference_line(ax, 0.0, axis="x", lw=0.55, zorder=0)
         ax.set_title(
-            f"({panel_labels[idx]}) $a = {float(A):.4g}$, {labels[idx]}",
+            f"$a = {float(A):.4g}$, {labels[idx]}",
             loc="left",
             usetex=False,
         )
+        panel_label(ax, panel_labels[idx], loc="upper left")
         if idx >= 3:
             ax.set_xlabel("$x$")
         else:
@@ -590,7 +599,13 @@ def plot_basins(data):
     from matplotlib.colors import BoundaryNorm, ListedColormap
     from matplotlib.patches import Patch
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        panel_label,
+        setup,
+    )
 
     setup()
 
@@ -626,7 +641,8 @@ def plot_basins(data):
     ax1.plot(x, x, color=COLORS["black"], linestyle="--", lw=0.45, alpha=0.45)
     ax1.set_xlabel("$x_0$")
     ax1.set_ylabel("$y_0$")
-    ax1.set_title(f"(a) Full basin at $a = {A_val:.5f}$", loc="left")
+    ax1.set_title(f"Full basin at $a = {A_val:.5f}$", loc="left")
+    panel_label(ax1, "(a)")
     apply_axes_polish(ax1, kind="double", title_loc="left", grid=False, equal=True)
 
     zx0, zx1, zy0, zy1 = -0.16, 0.04, -0.11, 0.09
@@ -661,7 +677,8 @@ def plot_basins(data):
     ax2.set_ylim(zy0, zy1)
     ax2.set_xlabel("$x_0$")
     ax2.set_ylabel("$y_0$")
-    ax2.set_title("(b) Zoom near the invariant diagonal", loc="left")
+    ax2.set_title("Zoom near the invariant diagonal", loc="left")
+    panel_label(ax2, "(b)")
     apply_axes_polish(ax2, kind="double", title_loc="left", grid=False, equal=True)
 
     legend_elements = [
