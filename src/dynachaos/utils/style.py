@@ -643,11 +643,13 @@ def panel_label(ax, letter, *, loc="upper left", **kwargs):
     matplotlib.text.Text
         The text object.
     """
+    # Inset slightly from the corner so an "upper" label clears a left-aligned
+    # title (which sits just above the axes) instead of colliding with it.
     loc_map = {
-        "upper left": (0.03, 0.97),
-        "upper right": (0.97, 0.97),
-        "lower left": (0.03, 0.03),
-        "lower right": (0.97, 0.03),
+        "upper left": (0.035, 0.92),
+        "upper right": (0.965, 0.92),
+        "lower left": (0.035, 0.08),
+        "lower right": (0.965, 0.08),
     }
     if loc not in loc_map:
         loc = "upper left"
@@ -661,6 +663,13 @@ def panel_label(ax, letter, *, loc="upper left", **kwargs):
         "ha": ha,
         "va": va,
         "transform": ax.transAxes,
+        # Subtle offwhite backing keeps the tag legible over data/fields.
+        "bbox": {
+            "facecolor": COLORS["offwhite"],
+            "alpha": 0.6,
+            "pad": 1.2,
+            "edgecolor": "none",
+        },
     }
     defaults.update(kwargs)
     return ax.text(xy[0], xy[1], letter, **defaults)
