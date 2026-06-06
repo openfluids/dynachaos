@@ -158,8 +158,11 @@ def plot_phase_diagram(data):
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         COLORS,
+        add_field_colorbar,
+        annotate_on_field,
         apply_axes_polish,
         figure_spec,
+        reference_line,
         setup,
     )
 
@@ -175,14 +178,12 @@ def plot_phase_diagram(data):
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"Coupling $\varepsilon$")
     ax.set_title("Spatial activity map", loc="left")
-    cb = fig.colorbar(im, ax=ax, pad=0.02)
-    cb.set_label(r"$\langle |x_i - x_{i-1}| \rangle$")
-    cb.ax.tick_params(labelsize=spec.tick_size)
+    add_field_colorbar(fig, im, ax, label=r"$\langle |x_i - x_{i-1}| \rangle$")
     ax.set_xlim(float(a.min()), float(a.max()))
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
 
     eps_slice = 0.10
-    ax.axhline(eps_slice, color=COLORS["offwhite"], lw=0.8, ls="--", alpha=0.9)
+    reference_line(ax, eps_slice, axis="y")
     for a_case, eps_case, _label, tag in SPACE_CASES:
         ax.scatter(
             [a_case],
@@ -193,12 +194,13 @@ def plot_phase_diagram(data):
             linewidths=0.6,
             zorder=3,
         )
-        ax.text(
+        annotate_on_field(
+            ax,
             a_case + 0.008,
             eps_case + 0.008,
             f"({tag})",
-            fontsize=spec.legend_size - 0.4,
-            color=COLORS["offwhite"],
+            ha="left",
+            va="bottom",
         )
 
     fig.savefig(PHASE_PNG, dpi=600, bbox_inches="tight")
@@ -210,7 +212,13 @@ def plot_space_amplitude(data):
     """Plot space-amplitude snapshots."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        apply_axes_polish,
+        figure_spec,
+        panel_label,
+        reference_line,
+        setup,
+    )
 
     setup()
 
@@ -246,12 +254,14 @@ def plot_space_amplitude(data):
             ax.plot(sites, snap, color=(shade, shade, shade), lw=0.55, alpha=0.9)
         label = str(data[label_key][0]) if label_key in data else ""
         tag = str(data[tag_key][0]) if tag_key in data else "?"
-        ax.set_title(f"({tag}) $a={a}$\n{label}", loc="left")
+        ax.set_title(f"$a={a}$\n{label}", loc="left")
+        panel_label(ax, f"({tag})")
         ax.set_xlabel("$i$")
         if idx == 0:
             ax.set_ylabel("$x(i)$")
         ax.set_ylim(y_min - 0.05, y_max + 0.05)
         apply_axes_polish(ax, kind="grid", title_loc="left", grid=False)
+        reference_line(ax, 0.0, axis="y")
 
     fig.savefig(SPACE_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
