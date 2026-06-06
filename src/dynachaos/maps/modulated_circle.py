@@ -173,6 +173,7 @@ def plot(data):
             fontsize=spec.legend_size - 0.3,
         )
 
+    # Rigid-rotation reference rho_theta = D (grey dashed diagonal).
     ax.plot(D, D, color=COLORS["grey"], linestyle="--", lw=0.75, alpha=0.7)
     ax.plot(D, rho_theta, color=COLORS["black"], linestyle="-", lw=0.9, rasterized=True)
     ax.set_xlabel(r"bare frequency $D$")
@@ -214,7 +215,14 @@ def plot_zoom(data):
     """Two-panel zoom into different D windows showing rho_theta staircase detail."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import (
+        COLORS,
+        apply_axes_polish,
+        figure_spec,
+        panel_label,
+        reference_line,
+        setup,
+    )
 
     setup()
 
@@ -241,11 +249,12 @@ def plot_zoom(data):
     mask1 = (D >= window1[0] - pad1) & (D <= window1[1] + pad1)
     rt1 = rho_theta[mask1]
     ax1.plot(D[mask1], rt1, color=COLORS["black"], lw=0.3, rasterized=True)
-    ax1.axhline(0.25, color=COLORS["blue"], lw=0.7, ls="--", alpha=0.8)
+    reference_line(ax1, 0.25, axis="y")
     ax1.axvspan(window1[0], window1[1], color=COLORS["blue"], alpha=0.10, lw=0.0)
     ax1.set_xlabel(r"$D$")
     ax1.set_ylabel(r"$\rho_\theta$")
-    ax1.set_title(r"(a) plateau near $1/4$", loc="left")
+    ax1.set_title(r"plateau near $1/4$", loc="left")
+    panel_label(ax1, "a")
     if rt1.size > 0:
         ax1.set_ylim(rt1.min() - 0.01, rt1.max() + 0.01)
 
@@ -254,10 +263,11 @@ def plot_zoom(data):
     mask2 = (D >= window2[0] - pad2) & (D <= window2[1] + pad2)
     rt2 = rho_theta[mask2]
     ax2.plot(D[mask2], rt2, color=COLORS["black"], lw=0.3, rasterized=True)
-    ax2.axhline(C_GOLDEN, color=COLORS["red"], lw=0.7, ls="--", alpha=0.8)
+    reference_line(ax2, C_GOLDEN, axis="y")
     ax2.axvspan(window2[0], window2[1], color=COLORS["red"], alpha=0.10, lw=0.0)
     ax2.set_xlabel(r"$D$")
-    ax2.set_title(r"(b) plateau near $C$", loc="left")
+    ax2.set_title(r"plateau near $C$", loc="left")
+    panel_label(ax2, "b")
     if rt2.size > 0:
         ax2.set_ylim(rt2.min() - 0.004, rt2.max() + 0.004)
 

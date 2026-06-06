@@ -165,6 +165,9 @@ def plot_lyapunov(data):
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        lyap_color,
+        panel_label,
+        reference_line,
         setup,
     )
 
@@ -185,13 +188,14 @@ def plot_lyapunov(data):
         ax = axes[idx]
         spectra = data[f"eps_{eps}_spectra"]
         for k in range(3):
-            ax.plot(DB, spectra[:, k], lw=0.9, label=rf"$\lambda_{k + 1}$")
-        ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
+            ax.plot(DB, spectra[:, k], color=lyap_color(k), lw=0.9, label=rf"$\lambda_{k + 1}$")
+        reference_line(ax, 0, axis="y")
         if np.isclose(eps, 5e-3):
             for db in gallery_db:
                 ax.axvline(db, color=COLORS["grey"], lw=0.45, alpha=0.3)
         ax.set_xlabel(r"$D_B$")
         ax.set_title(rf"$\varepsilon = {eps}$", loc="left")
+        panel_label(ax, chr(97 + idx))
         apply_axes_polish(ax, kind="grid", title_loc="left", grid=False)
         if idx == 0:
             ax.set_ylabel("Lyapunov exponent")
@@ -217,8 +221,10 @@ def plot_projections(data):
     from dynachaos.utils.style import (
         CMAP_SEQUENTIAL,
         COLORS,
+        add_field_colorbar,
         apply_axes_polish,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -260,7 +266,7 @@ def plot_projections(data):
         elif mode == "points":
             ax.scatter(xz[:, 0], xz[:, 1], s=2.1, c=COLORS["black"], alpha=0.9, linewidths=0)
         else:
-            ax.hexbin(
+            density = ax.hexbin(
                 xz[:, 0],
                 xz[:, 1],
                 gridsize=60,
@@ -270,7 +276,9 @@ def plot_projections(data):
                 linewidths=0.0,
                 rasterized=True,
             )
+            add_field_colorbar(fig, density, ax, label="visitation density")
         ax.set_title(f"$D_B = {DB:.3f}$\n{labels[idx]}", loc="left")
+        panel_label(ax, chr(97 + idx))
         if idx >= 3:
             ax.set_xlabel("$x$")
         else:
