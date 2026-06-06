@@ -41,6 +41,15 @@ class ThemeSpec:
     cmap_diverging: str
     cmap_sequential: str
     cmap_spacetime: str
+    font_family: str = "sans-serif"
+    font_list: tuple[str, ...] = (
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "Nimbus Sans",
+        "DejaVu Sans",
+    )
+    mathtext_fontset: str = "dejavusans"
 
 
 @dataclass(frozen=True)
@@ -200,6 +209,45 @@ _THEMES: dict[str, ThemeSpec] = {
         cmap_sequential="turbo",
         cmap_spacetime="rocket",
     ),
+    "signature": ThemeSpec(
+        name="signature",
+        description=(
+            "dynachaos signature: cool slate ink, single vermilion signal accent, "
+            "CB-safe per-system colours, Computer Modern paper font."
+        ),
+        colors={
+            "black": "#2E3440",
+            "offwhite": "#FFFFFF",
+            "grid": "#E3E7EC",
+            "red": "#D1495B",
+            "blue": "#3D6FB4",
+            "green": "#2A9D8F",
+            "orange": "#E9A23B",
+            "purple": "#6A4C93",
+            "brown": "#8D5A3C",
+            "pink": "#C73765",
+            "grey": "#AEB6C2",
+            "yellow": "#E9C46A",
+            "cyan": "#138086",
+        },
+        color_cycle=(
+            "#2E3440",
+            "#D1495B",
+            "#3D6FB4",
+            "#2A9D8F",
+            "#E9A23B",
+            "#6A4C93",
+            "#138086",
+            "#AEB6C2",
+        ),
+        marker_cycle=("o", "s", "^", "D", "v", "P", "X", "*"),
+        cmap_diverging="RdBu_r",
+        cmap_sequential="viridis",
+        cmap_spacetime="viridis",
+        font_family="serif",
+        font_list=("Latin Modern Roman", "CMU Serif", "DejaVu Serif"),
+        mathtext_fontset="cm",
+    ),
 }
 
 DEFAULT_THEME = DEFAULT_FIGURE_THEME
@@ -242,6 +290,59 @@ MARKER_CYCLE: list[str] = []
 CMAP_DIVERGING = "RdBu_r"
 CMAP_SEQUENTIAL = "cividis"
 CMAP_SPACETIME = "magma"
+
+
+# Semantic color mappings for common system types
+SYSTEM_COLORS = {
+    "logistic": "#3D6FB4",
+    "delayed_logistic": "#D1495B",
+    "circle": "#2A9D8F",
+    "coupled_logistic": "#E9A23B",
+    "gcm": "#6A4C93",
+    "cml": "#138086",
+}
+LYAP_COLORS = ("#2E3440", "#D1495B", "#3D6FB4")  # lambda_1, lambda_2, lambda_3
+
+
+def system_color(name: str) -> str:
+    """Return canonical color for a dynamical system by name.
+
+    Parameters
+    ----------
+    name : str
+        System type: 'logistic', 'delayed_logistic', 'circle', 'coupled_logistic', 'gcm',
+        'cml'.
+
+    Returns
+    -------
+    str
+        Hex color string.
+
+    Raises
+    ------
+    KeyError
+        If name is not in SYSTEM_COLORS.
+    """
+    if name not in SYSTEM_COLORS:
+        valid = ", ".join(sorted(SYSTEM_COLORS.keys()))
+        raise KeyError(f"Unknown system '{name}'. Valid systems: {valid}")
+    return SYSTEM_COLORS[name]
+
+
+def lyap_color(index: int) -> str:
+    """Return canonical color for a Lyapunov exponent by index.
+
+    Parameters
+    ----------
+    index : int
+        Exponent index (0, 1, 2, ...). Wraps cyclically.
+
+    Returns
+    -------
+    str
+        Hex color string.
+    """
+    return LYAP_COLORS[index % len(LYAP_COLORS)]
 
 
 def available_themes() -> tuple[str, ...]:
@@ -394,17 +495,10 @@ def setup(theme: str | None = None) -> None:
         "savefig.dpi": 600,
         "savefig.bbox": "tight",
         "savefig.pad_inches": 0.02,
-        # Typography (sans-serif, left hierarchy)
-        "font.family": "sans-serif",
-        "font.sans-serif": [
-            "Helvetica Neue",
-            "Helvetica",
-            "Arial",
-            "Nimbus Sans",
-            "DejaVu Sans",
-        ],
+        # Typography (left hierarchy)
+        "font.family": spec.font_family,
         "font.size": 9.2,
-        "mathtext.fontset": "dejavusans",
+        "mathtext.fontset": spec.mathtext_fontset,
         # Axes / structure
         "axes.linewidth": 1.0,
         "axes.labelsize": 10,
@@ -446,6 +540,16 @@ def setup(theme: str | None = None) -> None:
         "legend.fontsize": 9,
         "legend.frameon": False,
     }
+    if spec.font_family == "serif":
+        params["font.serif"] = list(spec.font_list)
+    else:
+        params["font.sans-serif"] = list(spec.font_list)
+    # Ensure fallback for the other family
+    params.setdefault("font.serif", ["CMU Serif", "DejaVu Serif"])
+    params.setdefault(
+        "font.sans-serif",
+        ["Helvetica Neue", "Helvetica", "Arial", "Nimbus Sans", "DejaVu Sans"],
+    )
     mpl.rcParams.update(params)
 
 
@@ -518,6 +622,166 @@ def save_theme_previews(output_dir: Path | str, themes: Iterable[str] | None = N
         filename = f"{spec.name}.png"
         paths.append(render_theme_preview(spec.name, output_dir / filename))
     return paths
+
+
+def panel_label(ax, letter, *, loc="upper left", **kwargs):
+    """Draw a bold panel tag like "(a)" in the given axis corner.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Target axis.
+    letter : str
+        Label text, typically a single letter or short string.
+    loc : str, default "upper left"
+        Axes-fraction location: 'upper left', 'upper right', 'lower left', 'lower right'.
+    **kwargs
+        Forwarded to ax.text() (e.g., fontsize, color, fontweight).
+
+    Returns
+    -------
+    matplotlib.text.Text
+        The text object.
+    """
+    loc_map = {
+        "upper left": (0.03, 0.97),
+        "upper right": (0.97, 0.97),
+        "lower left": (0.03, 0.03),
+        "lower right": (0.97, 0.03),
+    }
+    if loc not in loc_map:
+        loc = "upper left"
+    xy = loc_map[loc]
+    ha = "left" if "left" in loc else "right"
+    va = "top" if "upper" in loc else "bottom"
+
+    defaults = {
+        "fontsize": figure_spec().title_size,
+        "fontweight": "bold",
+        "ha": ha,
+        "va": va,
+        "transform": ax.transAxes,
+    }
+    defaults.update(kwargs)
+    return ax.text(xy[0], xy[1], letter, **defaults)
+
+
+def reference_line(ax, value=0.0, *, axis="y", label=None, **kwargs):
+    """Draw a grey dashed reference line on an axis.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Target axis.
+    value : float, default 0.0
+        Position of the line in data coordinates.
+    axis : str, default "y"
+        Axis to draw on: "x" (axvline) or "y" (axhline).
+    label : str | None
+        Optional inline annotation text.
+    **kwargs
+        Forwarded to axvline/axhline.
+
+    Returns
+    -------
+    matplotlib.lines.Line2D
+        The line object.
+    """
+    defaults = {
+        "color": COLORS["grey"],
+        "ls": "--",
+        "lw": 1.0,
+        "alpha": 0.7,
+    }
+    defaults.update(kwargs)
+
+    if axis.lower() == "x":
+        line = ax.axvline(value, **defaults)
+    else:
+        line = ax.axhline(value, **defaults)
+
+    if label:
+        if axis.lower() == "x":
+            ax.text(value, ax.get_ylim()[1], f" {label}", fontsize=6, va="top", ha="left")
+        else:
+            ax.text(
+                ax.get_xlim()[1],
+                value,
+                f" {label}",
+                fontsize=6,
+                va="bottom",
+                ha="right",
+            )
+
+    return line
+
+
+def add_field_colorbar(fig, mappable, ax, *, label=None, **kwargs):
+    """Add a consistently-sized colorbar with small tick labels.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Target figure.
+    mappable : matplotlib.cm.ScalarMappable
+        Scalar mappable (usually from an imshow/contourf).
+    ax : matplotlib.axes.Axes
+        Reference axis for colorbar placement.
+    label : str | None
+        Colorbar label.
+    **kwargs
+        Forwarded to fig.colorbar().
+
+    Returns
+    -------
+    matplotlib.colorbar.Colorbar
+        The colorbar object.
+    """
+    defaults = {
+        "ax": ax,
+        "fraction": 0.046,
+        "pad": 0.03,
+    }
+    defaults.update(kwargs)
+    cbar = fig.colorbar(mappable, **defaults)
+    cbar.ax.tick_params(labelsize=6)
+    if label:
+        cbar.set_label(label, fontsize=7)
+    return cbar
+
+
+def annotate_on_field(ax, x, y, text, **kwargs):
+    """Draw semi-opaque text on a field (e.g., image) for legibility.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Target axis.
+    x, y : float
+        Data coordinates.
+    text : str
+        Text content.
+    **kwargs
+        Forwarded to ax.text() (e.g., fontsize, color).
+
+    Returns
+    -------
+    matplotlib.text.Text
+        The text object.
+    """
+    defaults = {
+        "ha": "center",
+        "va": "center",
+        "bbox": {
+            "facecolor": COLORS["offwhite"],
+            "alpha": 0.75,
+            "pad": 2,
+            "edgecolor": "none",
+        },
+        "fontsize": 7,
+    }
+    defaults.update(kwargs)
+    return ax.text(x, y, text, **defaults)
 
 
 # Initialize exported constants with configured theme.
