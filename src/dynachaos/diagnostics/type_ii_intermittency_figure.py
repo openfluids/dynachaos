@@ -133,8 +133,8 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
-        color_for,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -168,48 +168,54 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_caption = axes["caption"]
 
     sample = _even_sample(orbit, 1_600)
-    ax_spiral.plot(sample[:, 0], sample[:, 1], color=color_for(0), lw=0.75)
+    ax_spiral.plot(sample[:, 0], sample[:, 1], color=COLORS["black"], lw=0.75)
     ax_spiral.scatter(
         sample[::32, 0],
         sample[::32, 1],
         s=6.0,
-        color=color_for(1),
+        color=COLORS["grey"],
         alpha=0.65,
         linewidths=0,
     )
     ax_spiral.set_aspect("equal", adjustable="box")
-    ax_spiral.set_title("Type-II Hopf normal-form spiral")
+    ax_spiral.set_title("Type-II Hopf normal-form spiral", loc="left")
     ax_spiral.set_xlabel("$x_n$")
     ax_spiral.set_ylabel("$y_n$")
 
     time = np.arange(radius.size)
-    ax_radius.semilogy(time, radius, color=color_for(2), lw=0.9)
+    ax_radius.semilogy(time, radius, color=COLORS["black"], lw=0.9)
     ax_radius.axhline(escape_threshold, color=COLORS["black"], lw=0.8, ls="--")
-    ax_radius.set_title("Radial escape from the fixed point")
+    ax_radius.set_title("Radial escape from the fixed point", loc="left")
     ax_radius.set_xlabel("$n$")
     ax_radius.set_ylabel("$r_n$")
 
     centers = 0.5 * (edges[:-1] + edges[1:])
     width = np.diff(edges)
-    ax_hist.bar(centers, density, width=width, color=color_for(3), alpha=0.7, align="center")
+    ax_hist.bar(centers, density, width=width, color=COLORS["black"], alpha=0.7, align="center")
     fit_x = np.linspace(np.min(centers), np.max(centers), 200)
     fit_y = np.exp(exp_intercept - exp_rate * fit_x)
-    ax_hist.plot(fit_x, fit_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_hist.set_title("Laminar lengths: exponential envelope")
+    ax_hist.plot(fit_x, fit_y, color=COLORS["grey"], lw=1.0, ls="--")
+    ax_hist.set_title("Laminar lengths: exponential envelope", loc="left")
     ax_hist.set_xlabel("laminar length $\\ell$")
     ax_hist.set_ylabel("density")
 
     sorted_lengths = np.sort(lengths)
     survival = 1.0 - np.arange(sorted_lengths.size, dtype=np.float64) / sorted_lengths.size
-    ax_survival.semilogy(sorted_lengths, survival, color=color_for(4), lw=1.1)
+    ax_survival.semilogy(sorted_lengths, survival, color=COLORS["black"], lw=1.1)
     ax_survival.set_title(
         f"Power-law check $\\alpha$={tail_alpha:.2f}, "
-        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}",
+        loc="left",
     )
     ax_survival.set_xlabel("laminar length $\\ell$")
     ax_survival.set_ylabel("$P(L \\geq \\ell)$")
 
-    for ax in (ax_spiral, ax_radius, ax_hist, ax_survival):
+    for label, ax in zip(
+        ("a", "b", "c", "d"),
+        (ax_spiral, ax_radius, ax_hist, ax_survival),
+        strict=True,
+    ):
+        panel_label(ax, f"({label})")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

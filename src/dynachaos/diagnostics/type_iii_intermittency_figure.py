@@ -130,8 +130,8 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
-        color_for,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -157,45 +157,47 @@ def plot(data, output_path=OUTPUT_PNG):
     fig, axes = plt.subplots(2, 2, figsize=spec.figsize, constrained_layout=True)
     ax_return, ax_series, ax_lengths, ax_rpd = axes.ravel()
 
-    ax_return.plot(f2_points[:, 0], f2_points[:, 1], color=color_for(0), lw=1.2)
+    ax_return.plot(f2_points[:, 0], f2_points[:, 1], color=COLORS["black"], lw=1.2)
     bounds = np.array([np.min(f2_points), np.max(f2_points)], dtype=np.float64)
     ax_return.plot(bounds, bounds, color=COLORS["black"], lw=0.8, ls="--")
-    ax_return.set_title("Type-III two-step flip return")
+    ax_return.set_title("Type-III two-step flip return", loc="left")
     ax_return.set_xlabel("$x_n$")
     ax_return.set_ylabel("$x_{n+2}$")
 
     window = slice(0, min(5_000, series.size))
     time = np.arange(series[window].size)
-    ax_series.semilogy(time, series[window], color=color_for(1), lw=0.7)
+    ax_series.semilogy(time, series[window], color=COLORS["black"], lw=0.7)
     ax_series.scatter(
         time[laminar_mask[window]],
         series[window][laminar_mask[window]],
         s=1.8,
-        color=color_for(2),
+        color=COLORS["grey"],
         alpha=0.45,
         linewidths=0,
     )
-    ax_series.set_title("Escape episodes after reinjection")
+    ax_series.set_title("Escape episodes after reinjection", loc="left")
     ax_series.set_xlabel("$n$")
     ax_series.set_ylabel("$|x_n|$")
 
     bins = np.arange(np.min(lengths), np.max(lengths) + 2)
-    ax_lengths.hist(lengths, bins=bins, density=True, color=color_for(3), alpha=0.75)
+    ax_lengths.hist(lengths, bins=bins, density=True, color=COLORS["black"], alpha=0.75)
     ax_lengths.set_title(
         f"Laminar tail $\\alpha$={tail_alpha:.2f}, "
-        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}",
+        loc="left",
     )
     ax_lengths.set_xlabel("laminar length $\\ell$")
     ax_lengths.set_ylabel("density")
 
-    ax_rpd.plot(thresholds, conditional_means, color=color_for(4), lw=1.2)
+    ax_rpd.plot(thresholds, conditional_means, color=COLORS["black"], lw=1.2)
     fit = rpd_slope * thresholds + rpd_intercept
-    ax_rpd.plot(thresholds, fit, color=COLORS["black"], lw=0.9, ls="--")
-    ax_rpd.set_title(f"$M(x)$ slope={rpd_slope:.3f}, $\\alpha$={rpd_alpha:.3f}")
+    ax_rpd.plot(thresholds, fit, color=COLORS["grey"], lw=0.9, ls="--")
+    ax_rpd.set_title(f"$M(x)$ slope={rpd_slope:.3f}, $\\alpha$={rpd_alpha:.3f}", loc="left")
     ax_rpd.set_xlabel("threshold $x$")
     ax_rpd.set_ylabel("$M(x)$")
 
-    for ax in axes.ravel():
+    for label, ax in zip(("a", "b", "c", "d"), axes.ravel(), strict=True):
+        panel_label(ax, f"({label})")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

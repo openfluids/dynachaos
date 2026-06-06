@@ -157,8 +157,8 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
-        color_for,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -187,34 +187,35 @@ def plot(data, output_path=OUTPUT_PNG):
 
     window = slice(0, 5_000)
     time = np.arange(benchmark[window].size)
-    ax_series.semilogy(time, benchmark[window], color=color_for(0), lw=0.75)
+    ax_series.semilogy(time, benchmark[window], color=COLORS["black"], lw=0.75)
     ax_series.scatter(
         time[laminar_mask[window]],
         benchmark[window][laminar_mask[window]],
         s=2.0,
-        color=color_for(1),
+        color=COLORS["grey"],
         alpha=0.45,
         linewidths=0,
     )
     inset = ax_series.inset_axes([0.58, 0.57, 0.36, 0.34])
-    inset.semilogy(skew_transverse[:2_000], color=color_for(2), lw=0.55)
+    inset.semilogy(skew_transverse[:2_000], color=COLORS["black"], lw=0.55)
     inset.set_xticks([])
     inset.set_yticks([])
     inset.spines["top"].set_visible(False)
     inset.spines["right"].set_visible(False)
-    ax_series.set_title("On-off laminar epochs and bursts")
+    ax_series.set_title("On-off laminar epochs and bursts", loc="left")
     ax_series.set_xlabel("$n$")
     ax_series.set_ylabel("$|y_n|$")
 
     values, counts = np.unique(off_lengths.astype(np.int64), return_counts=True)
     probabilities = counts / np.sum(counts)
-    ax_off.loglog(values, probabilities, marker="o", ms=3.0, lw=0, color=color_for(3))
+    ax_off.loglog(values, probabilities, marker="o", ms=3.0, lw=0, color=COLORS["black"])
     reference_x = np.array([values[0], np.max(values)], dtype=np.float64)
     reference_y = probabilities[0] * (reference_x / reference_x[0]) ** -1.5
-    ax_off.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
+    ax_off.loglog(reference_x, reference_y, color=COLORS["grey"], lw=1.0, ls="--")
     ax_off.set_title(
         f"Off-time $\\alpha$={off_alpha:.2f}, "
-        f"95% CI [{off_ci[0]:.2f}, {off_ci[1]:.2f}], GoF p={off_gof_p:.2f}"
+        f"95% CI [{off_ci[0]:.2f}, {off_ci[1]:.2f}], GoF p={off_gof_p:.2f}",
+        loc="left",
     )
     ax_off.set_xlabel("off time $\\tau$")
     ax_off.set_ylabel("$P(\\tau)$")
@@ -222,14 +223,15 @@ def plot(data, output_path=OUTPUT_PNG):
     bins = np.geomspace(np.min(burst_amplitudes), np.max(burst_amplitudes), 80)
     density, edges = np.histogram(burst_amplitudes, bins=bins, density=True)
     centers = np.sqrt(edges[:-1] * edges[1:])
-    ax_burst.loglog(centers, density, marker="o", ms=2.5, lw=0, color=color_for(4))
+    ax_burst.loglog(centers, density, marker="o", ms=2.5, lw=0, color=COLORS["black"])
     finite = density > 0.0
     reference_x = np.array([centers[finite][0], centers[finite][-1]], dtype=np.float64)
     reference_y = density[finite][0] * (reference_x / reference_x[0]) ** -1.0
-    ax_burst.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
+    ax_burst.loglog(reference_x, reference_y, color=COLORS["grey"], lw=1.0, ls="--")
     ax_burst.set_title(
         f"Burst $\\alpha$={burst_alpha:.2f}, "
-        f"95% CI [{burst_ci[0]:.2f}, {burst_ci[1]:.2f}], GoF p={burst_gof_p:.2f}"
+        f"95% CI [{burst_ci[0]:.2f}, {burst_ci[1]:.2f}], GoF p={burst_gof_p:.2f}",
+        loc="left",
     )
     ax_burst.set_xlabel("burst amplitude $|y|$")
     ax_burst.set_ylabel("density")
@@ -239,17 +241,18 @@ def plot(data, output_path=OUTPUT_PNG):
         mean_lengths,
         marker="o",
         ms=4.0,
-        color=color_for(5),
+        color=COLORS["black"],
         lw=1.0,
     )
     scale_x = np.array([np.min(lambda_abs), np.max(lambda_abs)], dtype=np.float64)
     scale_y = mean_lengths[0] * (scale_x / lambda_abs[0]) ** -1.0
-    ax_scaling.loglog(scale_x, scale_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_scaling.set_title("$\\langle \\tau \\rangle \\sim |\\lambda_\\perp|^{-1}$")
+    ax_scaling.loglog(scale_x, scale_y, color=COLORS["grey"], lw=1.0, ls="--")
+    ax_scaling.set_title("$\\langle \\tau \\rangle \\sim |\\lambda_\\perp|^{-1}$", loc="left")
     ax_scaling.set_xlabel("$|\\lambda_\\perp|$")
     ax_scaling.set_ylabel("$\\langle \\tau \\rangle$")
 
-    for ax in axes.ravel():
+    for label, ax in zip(("a", "b", "c", "d"), axes.ravel(), strict=True):
+        panel_label(ax, f"({label})")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

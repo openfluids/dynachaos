@@ -119,9 +119,11 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         CMAP_SPACETIME,
         COLORS,
+        add_field_colorbar,
+        annotate_on_field,
         apply_axes_polish,
-        color_for,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -153,7 +155,7 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_caption = axes["caption"]
 
     vmin, vmax = np.percentile(spacetime, [1.0, 99.0])
-    ax_space.imshow(
+    image = ax_space.imshow(
         spacetime,
         aspect="auto",
         cmap=CMAP_SPACETIME,
@@ -162,6 +164,7 @@ def plot(data, output_path=OUTPUT_PNG):
         vmin=vmin,
         vmax=vmax,
     )
+    add_field_colorbar(fig, image, ax_space, label="$x_i(n)$")
     ax_space.contour(
         turbulent_mask.astype(float),
         levels=[0.5],
@@ -169,26 +172,43 @@ def plot(data, output_path=OUTPUT_PNG):
         linewidths=0.25,
         alpha=0.35,
     )
-    ax_space.set_title(rf"Kaneko CML spatiotemporal intermittency, $\varepsilon={display_eps:.2f}$")
+    annotate_on_field(
+        ax_space,
+        0.86 * spacetime.shape[1],
+        0.10 * spacetime.shape[0],
+        rf"$\varepsilon={display_eps:.2f}$",
+    )
+    ax_space.set_title(
+        rf"Kaneko CML spatiotemporal intermittency, $\varepsilon={display_eps:.2f}$",
+        loc="left",
+    )
     ax_space.set_xlabel("site $i$")
     ax_space.set_ylabel("time $n$")
 
-    ax_rho.plot(eps, rho, marker="o", ms=4.0, lw=1.0, color=color_for(0))
-    ax_rho.plot(eps, dp_reference, lw=1.0, ls="--", color=COLORS["black"])
-    ax_rho.set_title(rf"Turbulent fraction with DP $\beta={dp_beta:.3f}$ guide")
+    ax_rho.plot(eps, rho, marker="o", ms=4.0, lw=1.0, color=COLORS["black"])
+    ax_rho.plot(eps, dp_reference, lw=1.0, ls="--", color=COLORS["grey"])
+    ax_rho.set_title(rf"Turbulent fraction with DP $\beta={dp_beta:.3f}$ guide", loc="left")
     ax_rho.set_xlabel(r"coupling $\varepsilon$")
     ax_rho.set_ylabel(r"$\rho$")
 
-    ax_clusters.loglog(cluster_values, cluster_prob, marker="o", ms=3.5, lw=0, color=color_for(3))
+    ax_clusters.loglog(
+        cluster_values,
+        cluster_prob,
+        marker="o",
+        ms=3.5,
+        lw=0,
+        color=COLORS["black"],
+    )
     finite = (cluster_values >= 2) & (cluster_prob > 0.0)
     ref_x = np.array([cluster_values[finite][0], cluster_values[finite][-1]], dtype=np.float64)
     ref_y = cluster_prob[finite][0] * (ref_x / ref_x[0]) ** slope
-    ax_clusters.loglog(ref_x, ref_y, lw=1.0, ls="--", color=COLORS["black"])
-    ax_clusters.set_title(rf"Laminar cluster-size tail, slope {slope:.2f}")
+    ax_clusters.loglog(ref_x, ref_y, lw=1.0, ls="--", color=COLORS["grey"])
+    ax_clusters.set_title(rf"Laminar cluster-size tail, slope {slope:.2f}", loc="left")
     ax_clusters.set_xlabel("laminar domain size")
     ax_clusters.set_ylabel("probability")
 
-    for ax in (ax_space, ax_rho, ax_clusters):
+    for label, ax in zip(("a", "b", "c"), (ax_space, ax_rho, ax_clusters), strict=True):
+        panel_label(ax, f"({label})")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

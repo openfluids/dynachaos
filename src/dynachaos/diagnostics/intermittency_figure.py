@@ -171,8 +171,8 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         COLORS,
         apply_axes_polish,
-        color_for,
         figure_spec,
+        panel_label,
         setup,
     )
 
@@ -203,7 +203,7 @@ def plot(data, output_path=OUTPUT_PNG):
         sample[:, 0],
         sample[:, 1],
         s=2.0,
-        color=color_for(0),
+        color=COLORS["black"],
         alpha=0.18,
         linewidths=0,
     )
@@ -211,13 +211,13 @@ def plot(data, output_path=OUTPUT_PNG):
         f3_channel[:, 0],
         f3_channel[:, 1],
         s=5.0,
-        color=color_for(1),
+        color=COLORS["red"],
         alpha=0.8,
         linewidths=0,
     )
     bounds = np.array([np.min(f3_points), np.max(f3_points)], dtype=np.float64)
     ax_return.plot(bounds, bounds, color=COLORS["black"], lw=0.8, ls="--")
-    ax_return.set_title("Logistic $f^3$ tangent channels")
+    ax_return.set_title("Logistic $f^3$ tangent channels", loc="left")
     ax_return.set_xlabel("$x_n$")
     ax_return.set_ylabel("$x_{n+3}$")
 
@@ -229,16 +229,17 @@ def plot(data, output_path=OUTPUT_PNG):
         marker="o",
         ms=3.0,
         lw=0,
-        color=color_for(2),
+        color=COLORS["black"],
         alpha=0.8,
     )
     tail = values >= 3
     reference_x = np.array([values[tail][0], np.max(values)], dtype=np.float64)
     reference_y = probabilities[tail][0] * (reference_x / reference_x[0]) ** -1.5
-    ax_tail.loglog(reference_x, reference_y, color=COLORS["black"], lw=1.0, ls="--")
+    ax_tail.loglog(reference_x, reference_y, color=COLORS["grey"], lw=1.0, ls="--")
     ax_tail.set_title(
         f"Laminar tail $\\alpha$={tail_alpha:.2f}, "
-        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}"
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}",
+        loc="left",
     )
     ax_tail.set_xlabel("laminar length $\\ell$")
     ax_tail.set_ylabel("$P(\\ell)$")
@@ -248,13 +249,16 @@ def plot(data, output_path=OUTPUT_PNG):
         mean_lengths,
         marker="o",
         ms=4.0,
-        color=color_for(3),
+        color=COLORS["black"],
         lw=1.0,
     )
     scale_x = np.array([np.min(eps), np.max(eps)], dtype=np.float64)
     scale_y = mean_lengths[0] * (scale_x / eps[0]) ** -0.5
-    ax_scaling.loglog(scale_x, scale_y, color=COLORS["black"], lw=1.0, ls="--")
-    ax_scaling.set_title("Normal-form $\\langle \\ell \\rangle \\sim \\epsilon^{-1/2}$")
+    ax_scaling.loglog(scale_x, scale_y, color=COLORS["grey"], lw=1.0, ls="--")
+    ax_scaling.set_title(
+        "Normal-form $\\langle \\ell \\rangle \\sim \\epsilon^{-1/2}$",
+        loc="left",
+    )
     ax_scaling.set_xlabel("$\\epsilon$")
     ax_scaling.set_ylabel("$\\langle \\ell \\rangle$")
 
@@ -263,7 +267,7 @@ def plot(data, output_path=OUTPUT_PNG):
         lorenz_sample[:, 0],
         lorenz_sample[:, 1],
         s=5.0,
-        color=color_for(4),
+        color=COLORS["black"],
         alpha=0.45,
         linewidths=0,
     )
@@ -271,7 +275,7 @@ def plot(data, output_path=OUTPUT_PNG):
         lorenz_channel[:, 0],
         lorenz_channel[:, 1],
         s=12.0,
-        color=color_for(5),
+        color=COLORS["red"],
         alpha=0.9,
         linewidths=0,
     )
@@ -281,18 +285,19 @@ def plot(data, output_path=OUTPUT_PNG):
     inset.plot(
         lorenz_time[:1_200],
         lorenz_observable[:1_200],
-        color=color_for(4),
+        color=COLORS["black"],
         lw=0.6,
     )
     inset.set_xticks([])
     inset.set_yticks([])
     inset.spines["top"].set_visible(False)
     inset.spines["right"].set_visible(False)
-    ax_lorenz.set_title("Lorenz $\\rho=166.2$ $y$-return channel")
+    ax_lorenz.set_title("Lorenz $\\rho=166.2$ $y$-return channel", loc="left")
     ax_lorenz.set_xlabel("$y_k$")
     ax_lorenz.set_ylabel("$y_{k+1}$")
 
-    for ax in axes.ravel():
+    for label, ax in zip(("a", "b", "c", "d"), axes.ravel(), strict=True):
+        panel_label(ax, f"({label})")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")
