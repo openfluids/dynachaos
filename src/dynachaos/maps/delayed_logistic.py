@@ -191,7 +191,7 @@ def plot_attractors(data):
     """Plot the twelve attractor portraits in a 3x4 grid."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
     setup()
 
@@ -224,7 +224,8 @@ def plot_attractors(data):
         x = data[f"D_{D:.2f}_x"]
         y = data[f"D_{D:.2f}_y"]
         ax.scatter(x, y, s=0.012, c=COLORS["black"], alpha=0.22, rasterized=True)
-        ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels_short[idx]}", loc="left")
+        panel_label(ax, panel_labels[idx])
+        ax.set_title(f"$D={D}$\n{labels_short[idx]}", loc="left")
         if idx // 4 == 2:
             ax.set_xlabel("$x$")
         if idx % 4 == 0:
@@ -258,6 +259,8 @@ def plot_lyapunov(data):
         apply_axes_polish,
         figure_spec,
         finalize_legend,
+        lyap_color,
+        reference_line,
         setup,
     )
 
@@ -268,9 +271,9 @@ def plot_lyapunov(data):
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    ax.plot(D, spectra[:, 0], color=COLORS["black"], linestyle="-", lw=0.8, label=r"$\lambda_1$")
-    ax.plot(D, spectra[:, 1], color=COLORS["blue"], linestyle="-", lw=0.8, label=r"$\lambda_2$")
-    ax.axhline(0, color=COLORS["red"], lw=0.7, ls="--")
+    ax.plot(D, spectra[:, 0], color=lyap_color(0), linestyle="-", lw=0.8, label=r"$\lambda_1$")
+    ax.plot(D, spectra[:, 1], color=lyap_color(1), linestyle="-", lw=0.8, label=r"$\lambda_2$")
+    reference_line(ax, 0, axis="y", lw=0.7)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Lyapunov exponent")
     ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
@@ -280,7 +283,7 @@ def plot_lyapunov(data):
     # Mark key transitions
     alpha = 0.3
     D_hopf = (3.0 - 2.0 * alpha) / (4.0 * (1.0 - alpha) ** 2)  # approx 1.2245
-    ax.axvline(D_hopf, color=COLORS["grey"], lw=0.5, ls=":", alpha=0.7)
+    reference_line(ax, D_hopf, axis="x", lw=0.5, ls=":", alpha=0.7)
     ax.text(
         D_hopf + 0.02,
         ax.get_ylim()[1] * 0.8,
@@ -330,7 +333,7 @@ def plot_locking_sequence(data):
     """Plot 2x4 grid of locking-to-chaos transition."""
     import matplotlib.pyplot as plt
 
-    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, setup
+    from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
     setup()
 
@@ -361,7 +364,8 @@ def plot_locking_sequence(data):
         x = data[f"D_{D:.3f}_x"]
         y = data[f"D_{D:.3f}_y"]
         ax.scatter(x, y, s=0.012, c=COLORS["black"], alpha=0.22, rasterized=True)
-        ax.set_title(f"({panel_labels[idx]}) $D={D}$\n{labels[idx]}", loc="left")
+        panel_label(ax, panel_labels[idx])
+        ax.set_title(f"$D={D}$\n{labels[idx]}", loc="left")
         if idx // 4 == 1:
             ax.set_xlabel("$x$")
         if idx % 4 == 0:
