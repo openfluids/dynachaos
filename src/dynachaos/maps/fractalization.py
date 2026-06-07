@@ -94,19 +94,29 @@ def compute_dimensions():
     n_params = 200
     D_values = np.linspace(1.70, 2.00, n_params)
     D2_values = np.empty(n_params)
+    D2_err_values = np.empty(n_params)
 
     for i, D in enumerate(D_values):
         traj = iterate(A, D, n_transient=50_000, n_record=100_000)
-        D2, _, _, _, _ = correlation_dimension(traj, n_r=50, max_pairs=1_000_000)
+        D2, _, _, D2_err, _, _ = correlation_dimension(
+            traj, n_r=50, max_pairs=1_000_000, return_stderr=True
+        )
         D2_values[i] = D2
+        D2_err_values[i] = D2_err
 
         if (i + 1) % 20 == 0:
             print(f"  Dimension: {i + 1}/{n_params}")
             np.savez_compressed(
-                DIM_NPZ, D=D_values[: i + 1], D2=D2_values[: i + 1], A=np.array([A])
+                DIM_NPZ,
+                D=D_values[: i + 1],
+                D2=D2_values[: i + 1],
+                D2_err=D2_err_values[: i + 1],
+                A=np.array([A]),
             )
 
-    np.savez_compressed(DIM_NPZ, D=D_values, D2=D2_values, A=np.array([A]))
+    np.savez_compressed(
+        DIM_NPZ, D=D_values, D2=D2_values, D2_err=D2_err_values, A=np.array([A])
+    )
     print(f"Saved {DIM_NPZ}")
 
 
@@ -191,10 +201,20 @@ def plot_dimension(data):
 
     D = data["D"]
     D2 = data["D2"]
+    D2_err = data["D2_err"]
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, D2, color=COLORS["black"], linestyle="-", lw=0.8)
+    ax.fill_between(
+        D,
+        D2 - D2_err,
+        D2 + D2_err,
+        alpha=0.15,
+        color=COLORS["black"],
+        linewidth=0,
+        zorder=0,
+    )
     reference_line(
         ax, 1.0, axis="y", lw=0.6, alpha=0.7, label="$D_2 = 1$ (smooth torus)"
     )

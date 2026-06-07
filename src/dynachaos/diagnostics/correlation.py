@@ -107,8 +107,10 @@ def _validate_correlation_inputs(r_values, theiler_window, norm):
     return r_values, theiler_int, norm == "chebyshev"
 
 
-def _undefined_dimension_result():
+def _undefined_dimension_result(return_stderr=False):
     empty = np.array([], dtype=np.float64)
+    if return_stderr:
+        return np.nan, empty, empty, np.nan, empty, np.array([], dtype=bool)
     return np.nan, empty, empty, empty, np.array([], dtype=bool)
 
 
@@ -250,13 +252,18 @@ def _find_scaling_region(log_r, log_C, min_points=5):
     return mask, slopes
 
 
-def fit_power_law_loglog(x, y, min_points=5):
+def fit_power_law_loglog(x, y, min_points=5, *, return_stderr=False):
     """Fit ``y ~ x**slope`` over a data-driven log-log scaling region.
 
     This regression is a diagnostic scaling fit. It preserves the
     Grassberger-Procaccia scaling-region heuristic used by
     :func:`correlation_dimension` and is factored for other diagnostics that
     need the same log-log fit without duplicating the detector.
+
+    By default returns ``(slope, intercept, rvalue, slopes, scaling)``. When
+    ``return_stderr=True`` the 1-sigma standard error on the slope (from the
+    linear regression) is inserted after ``rvalue``:
+    ``(slope, intercept, rvalue, stderr, slopes, scaling)``.
     """
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
@@ -269,6 +276,8 @@ def fit_power_law_loglog(x, y, min_points=5):
     full_slopes = np.full(len(x), np.nan)
     full_scaling = np.zeros(len(x), dtype=bool)
     if np.sum(valid) < min_points:
+        if return_stderr:
+            return np.nan, np.nan, np.nan, np.nan, full_slopes, full_scaling
         return np.nan, np.nan, np.nan, full_slopes, full_scaling
 
     log_x = np.log(x[valid])
@@ -282,14 +291,22 @@ def fit_power_law_loglog(x, y, min_points=5):
     fit_x = log_x[scaling_local]
     fit_y = log_y[scaling_local]
     if len(fit_x) < min_points:
+        if return_stderr:
+            return np.nan, np.nan, np.nan, np.nan, full_slopes, full_scaling
         return np.nan, np.nan, np.nan, full_slopes, full_scaling
 
     result = linregress(fit_x, fit_y)
+    if return_stderr:
+        return (
+            float(result.slope), float(result.intercept), float(result.rvalue),
+            float(result.stderr), full_slopes, full_scaling,
+        )
     return float(result.slope), float(result.intercept), float(result.rvalue), full_slopes, full_scaling
 
 
 def correlation_dimension(
-    traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
+    traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False,
+    return_stderr=False,
 ):
     """Estimate the correlation dimension D_2 from trajectory points.
 
@@ -321,6 +338,8 @@ def correlation_dimension(
         The r values used.
     C_values : ndarray
         Corresponding C(r).
+    D2_stderr : float
+        One-sigma standard error on D2 from the log-log scaling-region fit.
     local_slopes : ndarray
         Local slope d(log C)/d(log r) at each valid point.
     scaling_mask : ndarray of bool
@@ -334,13 +353,13 @@ def correlation_dimension(
 
     N = len(traj)
     if N < 2:
-        return _undefined_dimension_result()
+        return _undefined_dimension_result(return_stderr=return_stderr)
 
     if r_range is None:
         # Organic: attractor bounding-box diameter sets the scale
         diameter = np.max(np.ptp(traj, axis=0))
         if not np.isfinite(diameter) or diameter <= 0.0:
-            return _undefined_dimension_result()
+            return _undefined_dimension_result(return_stderr=return_stderr)
         r_min = diameter / N  # below this, pair count -> 0
         r_max = diameter  # beyond this, C(r) -> 1
         r_range = (r_min, r_max)
@@ -371,8 +390,10 @@ def correlation_dimension(
     full_slopes = np.full(len(r_values), np.nan)
     full_scaling = np.zeros(len(r_values), dtype=bool)
 
-    D2, _, _, full_slopes, full_scaling = fit_power_law_loglog(
-        r_values, fit_values, min_points=3
+    D2, _, _, D2_stderr, full_slopes, full_scaling = fit_power_law_loglog(
+        r_values, fit_values, min_points=3, return_stderr=True
     )
 
+    if return_stderr:
+        return D2, r_values, C_values, D2_stderr, full_slopes, full_scaling
     return D2, r_values, C_values, full_slopes, full_scaling
