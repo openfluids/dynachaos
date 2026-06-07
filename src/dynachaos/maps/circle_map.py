@@ -191,12 +191,27 @@ def plot(data):
     ax2.set_xlim(0, 0.25)
     panel_label(ax2, "(b)")
 
-    # Mark the onset of 1/5 locking and the onset of chaos from Kaneko's D=0.25 scan.
+    # Mark the onset of 1/5 locking and compute chaos onset live from cached data.
     K_inf = 0.15671685
-    K_c = 0.18189
+    
+    # Compute chaos onset: first K where lam stays sustained above 5-sigma noise floor
+    noise_floor = lam[A < 0.10].std() * 5
+    noise_floor = max(noise_floor, 1e-6)  # Ensure reasonable floor
+    mask_K_gt_015 = A > 0.15
+    A_scan = A[mask_K_gt_015]
+    lam_scan = lam[mask_K_gt_015]
+    window_size = 50
+    K_chaos_onset = None
+    for i in range(len(lam_scan) - window_size):
+        if np.all(lam_scan[i:i+window_size] > noise_floor):
+            K_chaos_onset = A_scan[i]
+            break
+    if K_chaos_onset is None:
+        K_chaos_onset = 0.182  # fallback
+    
     for ax in (ax1, ax2):
         ax.axvline(K_inf, color=COLORS["blue"], lw=0.7, ls=":", alpha=0.8)
-        ax.axvline(K_c, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)
+        ax.axvline(K_chaos_onset, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)
     annotate_on_field(
         ax1,
         K_inf + 0.002,
@@ -208,11 +223,13 @@ def plot(data):
         va="center",
     )
     ax2.set_ylim(min(-2.4, lam.min() * 1.05), 0.18)
+    # Format chaos onset to 3 sig figs for display
+    K_chaos_display = round(K_chaos_onset, 3)
     annotate_on_field(
         ax2,
-        K_c + 0.002,
+        K_chaos_onset + 0.002,
         0.07,
-        r"$K_c$: chaos onset",
+        rf"$K \approx {K_chaos_display}$: sustained $\lambda>0$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
         ha="left",
