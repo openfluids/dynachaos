@@ -69,7 +69,7 @@ def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
     return log_sum / n_iter
 
 
-def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_interval=1):
+def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_interval=1, return_convergence=False):
     """Compute the full Lyapunov spectrum of an N-dimensional map.
 
     Uses QR decomposition (Benettin et al. 1980) to track all N Lyapunov
@@ -90,11 +90,18 @@ def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_int
     reorth_interval : int
         QR re-orthonormalisation interval.  1 means every step (most
         accurate); larger values trade accuracy for speed.
+    return_convergence : bool
+        If True, also return a convergence-error estimate computed as the
+        population standard deviation of running exponent estimates sampled at
+        approximately ten checkpoints from halfway through the accumulation to
+        the end.
 
     Returns
     -------
-    spectrum : ndarray, shape (N,)
+    spectrum : ndarray, shape (N,), or tuple of ndarray
         Lyapunov exponents in descending order.
+        If return_convergence is True, returns ``(spectrum, conv_err)``, where
+        ``conv_err`` is reordered to match the descending spectrum.
     """
     x = np.asarray(x0, dtype=np.float64)
     dim = len(x)
@@ -107,6 +114,9 @@ def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_int
     Q = np.eye(dim, dtype=np.float64)
     log_sums = np.zeros(dim, dtype=np.float64)
     count = 0
+    checkpoint_iters = np.unique(np.linspace(n_iter // 2, n_iter, 10, dtype=int))
+    checkpoint_iters = checkpoint_iters[checkpoint_iters > 0]
+    checkpoint_values = []
 
     for i in range(n_iter):
         J = jac(x)
@@ -121,10 +131,20 @@ def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_int
             diag = np.where(diag > 0, diag, 1e-300)
             log_sums += np.log(diag)
             count += 1
+            if return_convergence and (i + 1) in checkpoint_iters:
+                checkpoint_values.append(log_sums / (count * reorth_interval))
 
     spectrum = log_sums / (count * reorth_interval)
     # Sort descending
-    return np.sort(spectrum)[::-1]
+    order = np.argsort(spectrum)[::-1]
+    spectrum_sorted = spectrum[order]
+    if not return_convergence:
+        return spectrum_sorted
+    if checkpoint_values:
+        conv_err = np.std(np.asarray(checkpoint_values), axis=0, ddof=0)
+    else:
+        conv_err = np.zeros(dim, dtype=np.float64)
+    return spectrum_sorted, conv_err[order]
 
 
 def lyapunov_max(f, jac, x0, n_iter=100_000, n_transient=10_000, rng=None):

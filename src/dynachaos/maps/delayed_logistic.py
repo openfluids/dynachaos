@@ -164,6 +164,7 @@ def compute_lyapunov_spectrum(
     n_params = len(D_values)
 
     spectra = np.empty((n_params, 2))
+    spectra_err = np.empty((n_params, 2))
     for i, D in enumerate(D_values):
         fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
         x0 = np.array([fp + 0.01, fp - 0.01])
@@ -174,12 +175,16 @@ def compute_lyapunov_spectrum(
         def jac(state, _D=D):
             return delayed_logistic_jac(state, A, _D)
 
-        spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
+        spectra[i], spectra_err[i] = lyapunov_spectrum(
+            f, jac, x0, n_iter=n_iter, n_transient=n_transient, return_convergence=True
+        )
         if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            _io_write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]}, base_dir=FIG_DIR)
+            _io_write_payload(
+                output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1], "spectra_err": spectra_err[: i + 1]}, base_dir=FIG_DIR
+            )
 
-    return _io_write_payload(output_path, {"D": D_values, "spectra": spectra}, base_dir=FIG_DIR)
+    return _io_write_payload(output_path, {"D": D_values, "spectra": spectra, "spectra_err": spectra_err}, base_dir=FIG_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -268,10 +273,12 @@ def plot_lyapunov(data):
 
     D = data["D"]
     spectra = data["spectra"]
+    spectra_err = data.get("spectra_err", np.zeros_like(spectra))
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, spectra[:, 0], color=lyap_color(0), linestyle="-", lw=0.8, label=r"$\lambda_1$")
+    ax.fill_between(D, spectra[:, 0] - spectra_err[:, 0], spectra[:, 0] + spectra_err[:, 0], alpha=0.15, color=lyap_color(0), linewidth=0)
     ax.plot(D, spectra[:, 1], color=lyap_color(1), linestyle="-", lw=0.8, label=r"$\lambda_2$")
     reference_line(ax, 0, axis="y", lw=0.7)
     ax.set_xlabel(r"$D$")
