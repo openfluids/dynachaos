@@ -26,14 +26,12 @@ REQUIRED_KEYS = (
     "laminar_cluster_sizes",
     "cluster_size_values",
     "cluster_size_probabilities",
-    "cluster_power_law_slope",
-    "dp_beta_reference",
-    "dp_reference_curve",
+    "cluster_decay_rate",
 )
 
 CAPTION_NOTE = (
-    "Kaneko Model-A CML STI spine; DP beta=0.276 shown as a reference guide, "
-    "not a fitted universality claim."
+    "Kaneko Model-A CML spatiotemporal intermittency: sharp turbulent-fraction onset "
+    "and an approximately exponential laminar cluster-size tail."
 )
 
 
@@ -73,19 +71,15 @@ def compute(
     cluster_values, cluster_counts = np.unique(laminar_clusters, return_counts=True)
     cluster_probabilities = cluster_counts / np.sum(cluster_counts)
     fit_mask = (cluster_values >= 2) & (cluster_probabilities > 0.0)
-    slope, _intercept = np.polyfit(
-        np.log(cluster_values[fit_mask]),
+    coeffs = np.polyfit(
+        cluster_values[fit_mask],
         np.log(cluster_probabilities[fit_mask]),
         deg=1,
     )
-
-    dp_beta = 0.276
-    eps0 = 0.02
-    scaled = (sweep_eps - eps0) / (sweep_eps[0] - eps0)
-    dp_reference = turbulent_fraction[0] * scaled**dp_beta
+    cluster_decay_rate = float(-coeffs[0])
 
     payload = {
-        "schema_version": np.array([1], dtype=np.int64),
+        "schema_version": np.array([2], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
         "model_a_parameter": np.array([-0.01], dtype=np.float64),
@@ -97,9 +91,7 @@ def compute(
         "laminar_cluster_sizes": laminar_clusters.astype(np.int64),
         "cluster_size_values": cluster_values.astype(np.int64),
         "cluster_size_probabilities": cluster_probabilities.astype(np.float64),
-        "cluster_power_law_slope": np.array([slope], dtype=np.float64),
-        "dp_beta_reference": np.array([dp_beta], dtype=np.float64),
-        "dp_reference_curve": dp_reference.astype(np.float64),
+        "cluster_decay_rate": np.array(cluster_decay_rate, dtype=np.float64),
     }
 
     if output_path is not None:
@@ -117,7 +109,6 @@ def plot(data, output_path=OUTPUT_PNG):
     from dynachaos.utils.style import (
         CMAP_SPACETIME,
         COLORS,
-        add_field_colorbar,
         annotate_on_field,
         apply_axes_polish,
         figure_spec,
@@ -131,12 +122,10 @@ def plot(data, output_path=OUTPUT_PNG):
     turbulent_mask = np.asarray(data["turbulent_mask"], dtype=np.bool_)
     eps = np.asarray(data["sweep_eps"], dtype=np.float64)
     rho = np.asarray(data["turbulent_fraction"], dtype=np.float64)
-    dp_reference = np.asarray(data["dp_reference_curve"], dtype=np.float64)
     cluster_values = np.asarray(data["cluster_size_values"], dtype=np.float64)
     cluster_prob = np.asarray(data["cluster_size_probabilities"], dtype=np.float64)
-    slope = float(np.asarray(data["cluster_power_law_slope"], dtype=np.float64)[0])
+    rate = float(np.asarray(data["cluster_decay_rate"], dtype=np.float64))
     display_eps = float(np.asarray(data["display_eps"], dtype=np.float64)[0])
-    dp_beta = float(np.asarray(data["dp_beta_reference"], dtype=np.float64)[0])
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,13 +133,18 @@ def plot(data, output_path=OUTPUT_PNG):
     spec = figure_spec("grid")
     fig = plt.figure(figsize=spec.figsize, constrained_layout=True)
     axes = fig.subplot_mosaic(
-        [["space", "space"], ["rho", "clusters"], ["caption", "caption"]],
-        gridspec_kw={"height_ratios": [1.15, 1.0, 0.13]},
+        [
+            ["space", "space", "space", "cbar"],
+            ["rho", ".", "clusters", "."],
+            ["caption", "caption", "caption", "caption"],
+        ],
+        gridspec_kw={"height_ratios": [1.15, 1.0, 0.13], "width_ratios": [1.0, 0.2, 1.0, 0.045]},
     )
     ax_space = axes["space"]
     ax_rho = axes["rho"]
     ax_clusters = axes["clusters"]
     ax_caption = axes["caption"]
+    ax_cbar = axes["cbar"]
 
     vmin, vmax = np.percentile(spacetime, [1.0, 99.0])
     image = ax_space.imshow(
@@ -162,7 +156,8 @@ def plot(data, output_path=OUTPUT_PNG):
         vmin=vmin,
         vmax=vmax,
     )
-    add_field_colorbar(fig, image, ax_space, label="$x_i(n)$")
+    cbar = fig.colorbar(image, cax=ax_cbar, label="$x_i(n)$")
+    cbar.ax.tick_params(labelsize=spec.tick_size)
     ax_space.contour(
         turbulent_mask.astype(float),
         levels=[0.5],
@@ -184,12 +179,11 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_space.set_ylabel("time $n$")
 
     ax_rho.plot(eps, rho, marker="o", ms=4.0, lw=1.0, color=COLORS["black"])
-    ax_rho.plot(eps, dp_reference, lw=1.0, ls="--", color=COLORS["grey"])
-    ax_rho.set_title(rf"Turbulent fraction with DP $\beta={dp_beta:.3f}$ guide", loc="left")
+    ax_rho.set_title(r"Turbulent fraction", loc="left")
     ax_rho.set_xlabel(r"coupling $\varepsilon$")
     ax_rho.set_ylabel(r"$\rho$")
 
-    ax_clusters.loglog(
+    ax_clusters.semilogy(
         cluster_values,
         cluster_prob,
         marker="o",
@@ -199,10 +193,10 @@ def plot(data, output_path=OUTPUT_PNG):
     )
     finite = (cluster_values >= 2) & (cluster_prob > 0.0)
     ref_x = np.array([cluster_values[finite][0], cluster_values[finite][-1]], dtype=np.float64)
-    ref_y = cluster_prob[finite][0] * (ref_x / ref_x[0]) ** slope
-    ax_clusters.loglog(ref_x, ref_y, lw=1.0, ls="--", color=COLORS["grey"])
-    ax_clusters.set_title(rf"Laminar cluster-size tail, slope {slope:.2f}", loc="left")
-    ax_clusters.set_xlabel("laminar domain size")
+    ref_y = cluster_prob[finite][0] * np.exp(-rate * (ref_x - ref_x[0]))
+    ax_clusters.semilogy(ref_x, ref_y, lw=1.0, ls="--", color=COLORS["grey"])
+    ax_clusters.set_title(r"Cluster-size tail", loc="left")
+    ax_clusters.set_xlabel("domain size")
     ax_clusters.set_ylabel("probability")
 
     for label, ax in zip(("a", "b", "c"), (ax_space, ax_rho, ax_clusters), strict=True):
@@ -233,7 +227,7 @@ def main():
     try:
         data = safe_load(OUTPUT_NPZ)
         missing = tuple(key for key in REQUIRED_KEYS if key not in data.files)
-        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 1
+        stale_schema = not missing and int(np.asarray(data["schema_version"])[0]) != 2
         if missing or stale_schema:
             data.close()
             reason = "missing keys (" + ", ".join(missing) + ")" if missing else "stale schema"

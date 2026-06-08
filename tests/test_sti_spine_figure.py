@@ -12,7 +12,7 @@ def test_sti_spine_compute_writes_golden_cache(tmp_path):
 
     assert output_path.exists()
     assert tuple(payload) == sti_spine_figure.REQUIRED_KEYS
-    np.testing.assert_array_equal(payload["schema_version"], [1])
+    np.testing.assert_array_equal(payload["schema_version"], [2])
     np.testing.assert_array_equal(payload["seed"], [20260602])
     np.testing.assert_equal(payload["source_file"][0], "src/dynachaos/cml/sti_spine_figure.py")
     np.testing.assert_allclose(payload["model_a_parameter"], [-0.01])
@@ -21,8 +21,6 @@ def test_sti_spine_compute_writes_golden_cache(tmp_path):
     np.testing.assert_equal(payload["turbulent_mask"].shape, (480, 512))
     np.testing.assert_equal(payload["sweep_eps"].shape, (9,))
     np.testing.assert_equal(payload["turbulent_fraction"].shape, (9,))
-    np.testing.assert_equal(payload["dp_reference_curve"].shape, (9,))
-    np.testing.assert_allclose(payload["dp_beta_reference"], [0.276])
     # Kaneko (1985) model-A STI with a=-0.01: sub-critical coupling is laminar
     # (no bursts), super-critical coupling is burst-dominated, with a sharp onset
     # in between (the eps sweep brackets the transition).
@@ -31,7 +29,7 @@ def test_sti_spine_compute_writes_golden_cache(tmp_path):
     np.testing.assert_array_less(0.5, turbulent_fraction[-1])
     np.testing.assert_array_less(0.7, turbulent_fraction.max())
     np.testing.assert_array_less(20, payload["laminar_cluster_sizes"].size)
-    np.testing.assert_array_less(payload["cluster_power_law_slope"], -0.5)
+    np.testing.assert_array_less(0.0, payload["cluster_decay_rate"])
 
 
 def test_sti_spine_plot_writes_png(tmp_path):
