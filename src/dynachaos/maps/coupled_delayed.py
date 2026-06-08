@@ -35,7 +35,7 @@ ANIM_GIF = FIG_DIR / "three_torus_animation.gif"
 
 PROJ_SCHEMA_VERSION = 2
 PROJECTION_CASES = (
-    (2.37, "near three-frequency regime", "line"),
+    (2.37, "near-$T^3$ regime", "line"),
     (2.43, "resonance web", "line"),
     (2.45, "locked invariant circle", "line"),
     (2.478, "weak chaos", "density"),
@@ -231,7 +231,7 @@ def plot_projections(data):
     setup()
 
     DB_values = data["DB_values"]
-    labels = data["labels"]
+    labels = np.array([case[1] for case in PROJECTION_CASES])
     render_modes = data["render_modes"]
 
     spec = figure_spec("grid")

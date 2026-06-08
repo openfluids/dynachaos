@@ -15,6 +15,8 @@ Phase diagram: a in [1.5, 2.0], eps in [0, 0.4]
 OUTPUTS: figures/sec09_pattern/*.npz, *.png
 """
 
+import textwrap
+
 import numpy as np
 
 from dynachaos.cml.primitives import (
@@ -253,6 +255,11 @@ def plot_space_amplitude(data):
         for shade, snap in zip(greys, snapshots, strict=False):
             ax.plot(sites, snap, color=(shade, shade, shade), lw=0.55, alpha=0.9)
         label = str(data[label_key][0]) if label_key in data else ""
+        label = (
+            "\n".join(textwrap.wrap(label.replace("\n", " "), width=12, break_long_words=False))
+            if label
+            else ""
+        )
         tag = str(data[tag_key][0]) if tag_key in data else "?"
         ax.set_title(f"$a={a}$\n{label}", loc="left")
         panel_label(ax, f"({tag})")
