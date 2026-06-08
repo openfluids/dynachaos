@@ -336,7 +336,7 @@ def plot_lyapunov(data):
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="double", loc="upper right")
 
-    axins = inset_axes(ax, width="38%", height="42%", loc="lower left", borderpad=1.0)
+    axins = inset_axes(ax, width="32%", height="34%", loc="lower right", borderpad=1.0)
     axins.plot(D, spectra[:, 1], color=lyap_color(1), lw=0.8)
     reference_line(axins, 0, axis="y")
     axins.set_xlim(D.min(), D.max())

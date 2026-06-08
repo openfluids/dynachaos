@@ -86,6 +86,7 @@ def plot(data):
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
+        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
@@ -144,7 +145,14 @@ def plot(data):
     ax.set_title(r"Co-moving Lyapunov exponent, logistic CML", loc="left")
 
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
-    finalize_legend(ax, kind="double", loc="upper right")
+    finalize_legend(
+        ax,
+        kind="double",
+        loc="lower center",
+        frameon=True,
+        framealpha=1.0,
+        facecolor=COLORS["offwhite"],
+    )
 
     fig.savefig(OUTPUT_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
