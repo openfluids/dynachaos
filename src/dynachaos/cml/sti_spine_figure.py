@@ -48,8 +48,6 @@ def compute(
     """Compute deterministic CML/STI diagnostics and optionally cache them."""
     display_eps = 0.08
     sweep_eps = np.array([0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.12])
-    branch_threshold = (np.sqrt(5.0) - 1.0) / 2.0
-
     spacetime = _simulate_model_a(
         display_eps,
         seed=seed,
@@ -57,7 +55,7 @@ def compute(
         n_transient=n_transient,
         n_record=n_record,
     )
-    turbulent_mask = spacetime >= branch_threshold
+    turbulent_mask = _burst_mask(spacetime)
     laminar_clusters = _periodic_run_lengths(~turbulent_mask)
 
     turbulent_fraction = []
@@ -69,7 +67,7 @@ def compute(
             n_transient=max(800, n_transient // 2),
             n_record=max(240, n_record // 2),
         )
-        turbulent_fraction.append(np.mean(sample >= branch_threshold))
+        turbulent_fraction.append(float(_burst_mask(sample).mean()))
     turbulent_fraction = np.asarray(turbulent_fraction, dtype=np.float64)
 
     cluster_values, cluster_counts = np.unique(laminar_clusters, return_counts=True)
@@ -90,7 +88,7 @@ def compute(
         "schema_version": np.array([1], dtype=np.int64),
         "source_file": np.array([_source_file_label()]),
         "seed": np.array([seed], dtype=np.int64),
-        "model_a_parameter": np.array([0.02], dtype=np.float64),
+        "model_a_parameter": np.array([-0.01], dtype=np.float64),
         "display_eps": np.array([display_eps], dtype=np.float64),
         "sweep_eps": sweep_eps.astype(np.float64),
         "spacetime": spacetime.astype(np.float64),
@@ -250,6 +248,11 @@ def main():
         close = getattr(data, "close", None)
         if close is not None:
             close()
+
+
+def _burst_mask(field, delta=0.05):
+    """Kaneko 1985 burst criterion: S(i)=1 if |x(i+1)-x(i)| > delta."""
+    return np.abs(field - np.roll(field, -1, axis=1)) > delta
 
 
 def _simulate_model_a(eps, *, seed, n_sites, n_transient, n_record):

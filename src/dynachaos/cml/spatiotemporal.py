@@ -39,13 +39,14 @@ STI_PNG = FIG_DIR / "spacetime_diagrams.png"
 # ---------------------------------------------------------------------------
 
 
-def model_A_f(x, a=0.02):
-    """Piecewise map for model (A).
+def model_A_f(x, a=-0.01):
+    """Piecewise map for model (A) (Kaneko 1985).
 
-    For a > 0 the laminar branch (x < c) has no stable fixed point, so
-    the local dynamics is intermittent (Pomeau--Manneville type I).
-    Kaneko (1985) uses a slightly positive a to generate spatiotemporal
-    intermittency.
+    For a <= 0 the laminar branch (x < c) has a stable fixed point
+    x* = -sqrt(-a) with slope f'(x*) = 1 - 2*sqrt(-a); a small negative
+    a makes it weakly stable, and Pomeau-Manneville intermittency occurs
+    at nearby parameters, producing the laminar/burst spatiotemporal
+    intermittency Kaneko studies. (a > 0 removes the fixed point.)
     """
     c = (np.sqrt(5) - 1.0) / 2.0
     return np.where(x < c, x + x * x + a, -3.0 * (x - c) + 1.0 + a)
