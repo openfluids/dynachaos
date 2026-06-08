@@ -39,7 +39,7 @@ def test_swiss_style_contract():
     assert matplotlib.rcParams["axes.grid"] is False
     assert matplotlib.rcParams["axes.spines.top"] is False
     assert matplotlib.rcParams["axes.spines.right"] is False
-    assert matplotlib.rcParams["font.family"][0] == "sans-serif"
+    assert matplotlib.rcParams["font.family"][0] == "serif"
 
     assert CMAP_DIVERGING
     assert CMAP_SEQUENTIAL
@@ -83,6 +83,7 @@ def test_theme_registry_contract():
         "zurich-transit",
         "alpine-modern",
         "bauhaus-pop",
+        "signature",
     }
     for theme in themes:
         assert theme_description(theme)
@@ -91,8 +92,8 @@ def test_theme_registry_contract():
         assert marker_for(0, theme=theme)
 
 
-def test_default_theme_is_editorial_grid():
-    assert DEFAULT_FIGURE_THEME == "editorial-grid"
+def test_default_theme_is_signature():
+    assert DEFAULT_FIGURE_THEME == "signature"
 
 
 def test_env_override_changes_global_theme(monkeypatch):

@@ -88,6 +88,7 @@ def plot(data):
     """Plot the Arnold tongue structure as a 2D color map."""
     import matplotlib.pyplot as plt
 
+    from dynachaos.utils import style as _style
     from dynachaos.utils.style import (
         COLORS,
         add_field_colorbar,
@@ -110,7 +111,7 @@ def plot(data):
         Omega,
         K,
         rho,
-        cmap="viridis",
+        cmap=_style.CMAP_SEQUENTIAL,
         shading="auto",
         rasterized=True,
     )
