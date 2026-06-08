@@ -4,7 +4,9 @@ from dynachaos.diagnostics.correlation import (
     correlation_dimension,
     correlation_integral,
     fit_power_law_loglog,
+    takens_theiler_dimension,
 )
+from dynachaos.diagnostics.gp_protocol import gp_dimension_robust
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -91,6 +93,8 @@ __all__ = [
     "flow_lyapunov_spectrum",
     "fuzzy_entropy",
     "gali",
+    "gp_dimension_robust",
+    "takens_theiler_dimension",
     "DiagnosticLogLogFit",
     "ExponentialFit",
     "ExtremaReturnMap",
