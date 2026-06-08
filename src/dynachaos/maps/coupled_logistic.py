@@ -421,6 +421,7 @@ def compute_basins(
 def plot_phase_diagram(data):
     """Plot a coarse parameter survey in (A, D) space."""
     import matplotlib.pyplot as plt
+    from matplotlib.colors import PowerNorm
 
     from dynachaos.utils.style import (
         CMAP_DIVERGING,
@@ -455,8 +456,7 @@ def plot_phase_diagram(data):
         D,
         asym,
         cmap=asym_cmap,
-        vmin=0.0,
-        vmax=asym_vmax,
+        norm=PowerNorm(gamma=0.5, vmin=0.0, vmax=asym_vmax),
         rasterized=True,
         shading="auto",
     )
