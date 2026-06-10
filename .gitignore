@@ -12,6 +12,7 @@ paper/compile_*.log
 paper/pdflatex_probe.log
 paper/rerun_check.log
 paper/main.pdf
+paper/joss/paper.pdf
 paper/.DS_Store
 
 # Private session / planning files — never commit
@@ -62,6 +63,9 @@ build/
 # Computed data — large, reproducible from scripts
 examples/*.npz
 figures/**/*.npz
+# heavy animation frames + rendered gifs are not shipped (regenerable from scripts)
+figures/**/*animation*.npz
+figures/**/*.gif
 
 # Matplotlib font/render cache (created during figure runs)
 .mpl-cache/

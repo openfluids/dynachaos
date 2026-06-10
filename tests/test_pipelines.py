@@ -28,7 +28,10 @@ def test_section_registry_contains_all_expected_sections():
 
 
 def test_registry_covers_all_includegraphics_targets():
-    paper_tex = Path("paper/main.tex").read_text(encoding="utf-8")
+    paper_tex_path = Path("paper/main.tex")
+    if not paper_tex_path.exists():
+        pytest.skip("paper sources are not part of the package repository")
+    paper_tex = paper_tex_path.read_text(encoding="utf-8")
     refs = re.findall(r"\\includegraphics(?:\[[^]]*\])?\{([^}]+)\}", paper_tex)
     include_targets = set(refs)
 
