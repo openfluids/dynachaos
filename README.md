@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**High-performance chaos analysis in Python.**
+**Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
 Status: private research and development repository. Public release,
 package publication, and final paper citation details are future work.
@@ -17,12 +17,12 @@ package publication, and final paper citation details are future work.
 
 ## Why dynachaos?
 
-Most chaos libraries stop at Lyapunov exponents. dynachaos collects maps,
-coupled-map lattices, recurrence analysis, entropy diagnostics,
-Grassberger-Procaccia correlation dimension, multifractal spectra, and
-paper-generation pipelines in one codebase. Performance-sensitive kernels have
-optional Rust backends, while pure-Python fallbacks keep the diagnostics usable
-without a compiler.
+dynachaos is a reusable Python/Rust package for inspecting simulated or
+measured dynamical-systems time signals. It collects maps, coupled-map
+lattices, recurrence analysis, entropy diagnostics, Grassberger-Procaccia
+correlation dimension, multifractal spectra, and reproducible analysis
+pipelines in one codebase. Performance-sensitive kernels have Rust backends,
+while pure-Python fallbacks support parity testing and portability.
 
 ## Features
 
@@ -70,7 +70,7 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 ## Benchmarks
 
-The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`.
+The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the largest common logistic case, and a dense-RQA predicted distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB).
 
 ### Reliability metadata
 
@@ -220,11 +220,12 @@ symmetric. The direct line extractors, including the Rust-accelerated helpers,
 are lower-level square-matrix scanners and do not replace that public RQA
 validation boundary.
 
-## Showcase: Kaneko Atlas
+## Flagship application: Kaneko Atlas
 
 A companion manuscript and figure
-pipeline currently driving dynachaos development. It revisits Kunihiko
-Kaneko's foundational work on chaos with reproducible Python/Rust diagnostics.
+pipeline that serves as dynachaos's flagship application and stress test. It
+revisits Kunihiko Kaneko's foundational work on chaos with the same reusable
+Python/Rust diagnostics exposed by the package.
 
 ```bash
 dynachaos list                    # list paper sections
@@ -268,7 +269,7 @@ the public release phase is explicitly completed.
 ```bibtex
 @software{dynachaos2026,
   author  = {Frantz, Ricardo},
-  title   = {dynachaos: High-performance chaos analysis in Python},
+  title   = {dynachaos: Dynamical-systems analysis for time signals with Rust-accelerated kernels},
   year    = {2026},
   version = {0.2.0},
   url     = {https://github.com/ricardofrantz/dynachaos},

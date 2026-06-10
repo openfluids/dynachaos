@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-title: "dynachaos: High-performance chaos analysis in Python"
+title: "dynachaos: Dynamical-systems analysis for time signals with Rust-accelerated kernels"
 version: 0.2.0
 date-released: "2026-02-23"
 authors:

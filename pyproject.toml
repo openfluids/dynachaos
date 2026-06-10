@@ -1,7 +1,7 @@
 [project]
 name = "dynachaos"
 version = "0.2.0"
-description = "Dynamical systems, chaos theory, and time series analysis — with Rust-accelerated backends"
+description = "Dynamical-systems analysis for time signals with Rust-accelerated kernels"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
