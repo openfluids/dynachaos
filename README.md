@@ -68,6 +68,10 @@ To verify the pure-Python fallback path:
 DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 ```
 
+## Benchmarks
+
+The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`.
+
 ## Quick Start
 
 ```python
