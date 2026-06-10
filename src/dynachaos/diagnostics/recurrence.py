@@ -46,6 +46,7 @@ from dynachaos.diagnostics._validation import (
     positive_int,
     square_bool_matrix,
 )
+from dynachaos.diagnostics.reliability import ReliabilityRecord
 
 try:
     if os.environ.get("DYNACHAOS_NO_RUST"):
@@ -317,7 +318,9 @@ def laminar_lengths(X, eps=None, metric="euclidean", percentile=5, v_min=2):
     )
 
 
-def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, v_min=2):
+def rqa_from_trajectory(
+    X, eps=None, metric="euclidean", percentile=5, l_min=2, v_min=2, *, return_metadata=False
+):
     """Compute RQA measures from a trajectory without materializing ``R``.
 
     The dense :func:`recurrence_matrix` API remains the right interface when a
@@ -350,13 +353,44 @@ def rqa_from_trajectory(X, eps=None, metric="euclidean", percentile=5, l_min=2, 
         vert_lens.extend(_line_lengths(recurrent, v_min))
 
     recurrent_all = N + 2 * recurrent_upper
-    return _rqa_from_line_lengths(
+    stats = _rqa_from_line_lengths(
         N * N,
         recurrent_all,
         recurrent_upper,
         diag_lens,
         vert_lens,
     )
+    if return_metadata:
+        warnings = []
+        unresolved = []
+        if not diag_lens:
+            warnings.append("no diagonal lines at or above l_min")
+        if not vert_lens:
+            warnings.append("no vertical lines at or above v_min")
+        metadata = ReliabilityRecord(
+            method_name="rqa_from_trajectory",
+            backend=(
+                "rust" if (_RUST_AVAILABLE and _count_line_lengths_rs is not None) else "python"
+            ),
+            parameters={
+                "eps": eps,
+                "metric": metric,
+                "percentile": percentile,
+                "l_min": l_min,
+                "v_min": v_min,
+            },
+            data_length=N,
+            data_shape=tuple(int(v) for v in X.shape),
+            sampling_downsampling_note="no sampling/downsampling; streaming trajectory scan without dense recurrence matrix",
+            validity_warnings=warnings,
+            unresolved_verdicts=unresolved,
+            scale_evidence={
+                "artifact_path": "benchmarks/results/scale_envelope.json",
+                "entry": {"kind": "dense_recurrence_rqa", "backend": "python dense reference"},
+            },
+        )
+        return stats, metadata
+    return stats
 
 
 def embed_time_delay(x, d, tau):

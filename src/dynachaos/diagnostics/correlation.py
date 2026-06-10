@@ -29,6 +29,7 @@ import numpy as np
 from scipy.stats import linregress
 
 from dynachaos.diagnostics._validation import sorted_nonnegative_radius_grid
+from dynachaos.diagnostics.reliability import ReliabilityRecord
 from dynachaos.utils.system import get_rss_mb
 
 try:
@@ -38,6 +39,7 @@ try:
 
     _RUST_AVAILABLE = True
 except ImportError:
+    _correlation_counts_rs = None
     _RUST_AVAILABLE = False
 
 
@@ -306,7 +308,7 @@ def fit_power_law_loglog(x, y, min_points=5, *, return_stderr=False):
 
 def correlation_dimension(
     traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False,
-    return_stderr=False,
+    return_stderr=False, *, return_metadata=False,
 ):
     """Estimate the correlation dimension D_2 from trajectory points.
 
@@ -352,14 +354,60 @@ def correlation_dimension(
         raise ValueError("n_r must be >= 1")
 
     N = len(traj)
+
+    def _metadata(r_range_value, warnings=None, unresolved=None, backend=None):
+        return ReliabilityRecord(
+            method_name="correlation_dimension",
+            backend=backend or ("rust" if _RUST_AVAILABLE else "python"),
+            parameters={
+                "n_r": n_r,
+                "r_range": r_range_value,
+                "max_pairs": max_pairs,
+                "theiler_window": theiler_window,
+                "norm": norm,
+                "return_stderr": return_stderr,
+            },
+            data_length=N,
+            data_shape=tuple(int(v) for v in traj.shape),
+            sampling_downsampling_note="no sampling/downsampling; exact all-pairs counting for available backend",
+            validity_warnings=list(warnings or []),
+            unresolved_verdicts=list(unresolved or []),
+            scale_evidence={
+                "artifact_path": "benchmarks/results/scale_envelope.json",
+                "entry": {"kind": "gp", "backend": "rust/python parity entries"},
+            },
+        )
+
     if N < 2:
-        return _undefined_dimension_result(return_stderr=return_stderr)
+        result = _undefined_dimension_result(return_stderr=return_stderr)
+        if return_metadata:
+            return (
+                *result,
+                _metadata(
+                    r_range,
+                    warnings=["fewer than two trajectory points"],
+                    unresolved=["scaling region not identified"],
+                    backend="n.a.",
+                ),
+            )
+        return result
 
     if r_range is None:
         # Organic: attractor bounding-box diameter sets the scale
         diameter = np.max(np.ptp(traj, axis=0))
         if not np.isfinite(diameter) or diameter <= 0.0:
-            return _undefined_dimension_result(return_stderr=return_stderr)
+            result = _undefined_dimension_result(return_stderr=return_stderr)
+            if return_metadata:
+                return (
+                    *result,
+                    _metadata(
+                        r_range,
+                        warnings=["nonpositive or nonfinite trajectory diameter"],
+                        unresolved=["scaling region not identified"],
+                        backend="n.a.",
+                    ),
+                )
+            return result
         r_min = diameter / N  # below this, pair count -> 0
         r_max = diameter  # beyond this, C(r) -> 1
         r_range = (r_min, r_max)
@@ -394,9 +442,18 @@ def correlation_dimension(
         r_values, fit_values, min_points=3, return_stderr=True
     )
 
-    if return_stderr:
-        return D2, r_values, C_values, D2_stderr, full_slopes, full_scaling
-    return D2, r_values, C_values, full_slopes, full_scaling
+    result = (D2, r_values, C_values, D2_stderr, full_slopes, full_scaling) if return_stderr else (
+        D2, r_values, C_values, full_slopes, full_scaling
+    )
+    if return_metadata:
+        warnings = []
+        unresolved = []
+        if n_valid == 0:
+            warnings.append("no valid pairs after Theiler-window exclusion")
+        if not np.any(full_scaling) or not np.isfinite(D2):
+            unresolved.append("scaling region not identified")
+        return (*result, _metadata(r_range, warnings=warnings, unresolved=unresolved))
+    return result
 
 
 def _takens_theiler_curve(r_values, C_values, c_floor):

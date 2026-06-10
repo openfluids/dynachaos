@@ -72,6 +72,14 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`.
 
+### Reliability metadata
+
+Diagnostics can opt in to compact JSON-safe reliability metadata without changing default return values.
+```python
+D2, r, C, slopes, mask, meta = correlation_dimension(traj, return_metadata=True)
+print(meta.to_json())  # backend, parameters, data shape, warnings, unresolved verdicts
+```
+
 ## Quick Start
 
 ```python

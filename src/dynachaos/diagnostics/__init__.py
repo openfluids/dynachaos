@@ -65,6 +65,7 @@ from dynachaos.diagnostics.lyapunov import (
 from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
 from dynachaos.diagnostics.poincare import poincare_section
+from dynachaos.diagnostics.reliability import ReliabilityRecord
 from dynachaos.diagnostics.recurrence import (
     LaminarLengthsResult,
     embed_time_delay,
@@ -134,6 +135,7 @@ __all__ = [
     "powerlaw_gof",
     "reinjection_Mx",
     "recurrence_matrix",
+    "ReliabilityRecord",
     "return_map_reconstruction",
     "rqa",
     "rqa_from_trajectory",
