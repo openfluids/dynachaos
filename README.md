@@ -1,8 +1,8 @@
-![dynachaos banner](assets/readme-banner-v1.png)
+![dynachaos banner](https://raw.githubusercontent.com/ricardofrantz/dynachaos/main/assets/readme-banner-v1.png)
 
 [![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
@@ -285,9 +285,9 @@ the public release phase is explicitly completed.
   author  = {Frantz, Ricardo},
   title   = {dynachaos: Dynamical-systems analysis for time signals with Rust-accelerated kernels},
   year    = {2026},
-  version = {0.2.0},
+  version = {0.3.0},
   url     = {https://github.com/ricardofrantz/dynachaos},
-  license = {MIT}
+  license = {Apache-2.0}
 }
 
 @article{removed,
@@ -301,4 +301,8 @@ the public release phase is explicitly completed.
 
 ## License
 
-MIT
+This project is licensed under Apache-2.0.
+
+Originally developed by Ricardo A S Frantz. See `LICENSE` and `NOTICE` for
+license terms and attribution notices. As of v0.3.0, this project is licensed
+under Apache-2.0; earlier (unpublished) versions were MIT.

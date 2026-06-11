@@ -1,10 +1,14 @@
 # Changelog
 
-This project currently has no git tags and no GitHub Releases. The entries
-below describe unreleased private-repository work reconstructed from git
-history.
+Versions before 0.3.0 were private and unpublished; their entries were
+reconstructed from git history.
 
-## Unreleased
+## 0.3.0 — 2026-06-11
+
+### Licensing
+
+- Relicensed the project from MIT to Apache-2.0 with a `NOTICE` file; earlier
+  unpublished versions were MIT.
 
 ### User documentation spine
 
