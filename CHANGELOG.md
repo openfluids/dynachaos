@@ -6,6 +6,14 @@ history.
 
 ## Unreleased
 
+### Long-signal RQA scaling
+
+- Added `rqa_streaming_from_trajectory`: exact matrix-free RQA (RR, DET, LAM,
+  L, TT, ENTR, Lmax and ENTR bins) with Theiler-window support and a recorded
+  interface decision plus RSS evidence in `docs/rqa-scaling-design.md`
+  (bead dynachaos-streaming-sparse-rqa-design-je6,
+  [d625980](https://github.com/ricardofrantz/dynachaos/commit/d625980)).
+
 ### Private release posture and documentation
 
 - Renamed the default branch to `main` and hardened project checks around that
