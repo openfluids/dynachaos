@@ -1,13 +1,15 @@
 # dynachaos
 
+![dynachaos banner](assets/readme-banner-v1.png)
+
 [![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
-Status: private research and development repository. Public release,
-package publication, and final paper citation details are future work.
+Status: this is a private research and development repository. Public release,
+package publication, and final paper citation details are still future work.
 
 > *"Chaos: When the present determines the future, but the approximate present*
 > *does not approximately determine the future."*
@@ -21,8 +23,9 @@ dynachaos is a reusable Python/Rust package for inspecting simulated or
 measured dynamical-systems time signals. It collects maps, coupled-map
 lattices, recurrence analysis, entropy diagnostics, Grassberger-Procaccia
 correlation dimension, multifractal spectra, and reproducible analysis
-pipelines in one codebase. Performance-sensitive kernels have Rust backends,
-while pure-Python fallbacks support parity testing and portability.
+pipelines in one codebase. Performance-sensitive kernels use Rust backends
+where they have parity tests, while pure-Python fallbacks support portability
+and reference checks.
 
 ## Features
 
@@ -70,7 +73,15 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 ## Benchmarks
 
-The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the largest common logistic case, and a dense-RQA predicted distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are documented in `docs/rust-acceleration-roadmap.md` and `benchmarks/rust_hotspot_profile.py`.
+The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity
+and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
+Run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`
+and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact
+reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the
+largest common logistic case, and a dense-RQA predicted distance-matrix envelope
+of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB). The measured Rust
+acceleration roadmap and local hotspot profiler are documented in
+`docs/rust-acceleration-roadmap.md` and `benchmarks/rust_hotspot_profile.py`.
 
 ## Config-driven signal analysis workflow
 
