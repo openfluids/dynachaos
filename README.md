@@ -70,7 +70,7 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 ## Benchmarks
 
-The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the largest common logistic case, and a dense-RQA predicted distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB).
+The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the largest common logistic case, and a dense-RQA predicted distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are documented in `docs/rust-acceleration-roadmap.md` and `benchmarks/rust_hotspot_profile.py`.
 
 ## Config-driven signal analysis workflow
 
