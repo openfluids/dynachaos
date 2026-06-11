@@ -6,6 +6,15 @@ history.
 
 ## Unreleased
 
+### Scalable analysis workflow
+
+- Added `dynachaos analyze <config.jsonc>`: config-driven workflow for external
+  `.npy`/`.npz` or generated signals writing a stable output directory
+  (`results.json`, `metadata.json` with scale/cost and reliability metadata,
+  `summary.md`), with explicit failure modes and a dense-RQA scale-envelope
+  guard (bead dynachaos-scalable-analysis-workflow-ebo,
+  [2c9d6b6](https://github.com/ricardofrantz/dynachaos/commit/2c9d6b6)).
+
 ### Long-signal RQA scaling
 
 - Added `rqa_streaming_from_trajectory`: exact matrix-free RQA (RR, DET, LAM,
