@@ -15,7 +15,8 @@ Multifractal estimate:
 
 OUTPUTS: benchmark_gp_vs_multifractal.npz, benchmark_gp_vs_multifractal.png
 USAGE:   python examples/benchmark_gp_vs_multifractal.py
-         rm examples/benchmark_gp_vs_multifractal.npz && python examples/benchmark_gp_vs_multifractal.py
+         rm examples/benchmark_gp_vs_multifractal.npz
+         python examples/benchmark_gp_vs_multifractal.py
 """
 
 import sys

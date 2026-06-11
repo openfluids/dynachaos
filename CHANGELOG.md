@@ -6,6 +6,14 @@ history.
 
 ## Unreleased
 
+### Example recipes
+
+- Added tested example recipes under `examples/recipes/`: external-signal
+  analysis with diagnostic selection and reliability metadata, and a
+  long-signal/downsampled streaming-RQA recipe that stays inside the dense
+  recurrence memory envelope; smoke-tested by new `tests/test_examples.py`
+  (bead dynachaos-example-gallery-hardening-txv).
+
 ### Rust acceleration roadmap
 
 - Added a measured Rust-kernel acceleration roadmap
