@@ -6,6 +6,15 @@ history.
 
 ## Unreleased
 
+### Rust acceleration roadmap
+
+- Added a measured Rust-kernel acceleration roadmap
+  (`docs/rust-acceleration-roadmap.md`) and the subprocess-isolated hotspot
+  profiler `benchmarks/rust_hotspot_profile.py` with checked-in artifacts;
+  streaming RQA is ranked as the next port candidate with a recorded parity
+  test plan (bead dynachaos-rust-kernel-hotspot-roadmap-8i3,
+  [66ee0e8](https://github.com/ricardofrantz/dynachaos/commit/66ee0e8)).
+
 ### Scalable analysis workflow
 
 - Added `dynachaos analyze <config.jsonc>`: config-driven workflow for external
