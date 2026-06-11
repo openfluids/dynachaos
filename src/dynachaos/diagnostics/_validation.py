@@ -38,6 +38,19 @@ def positive_int(value, name):
     return value_int
 
 
+def nonnegative_int(value, name):
+    """Return a non-negative integer, rejecting bools and lossy conversions."""
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{name} must be a non-negative integer")
+    try:
+        value_int = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a non-negative integer") from exc
+    if value_int != value or value_int < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value_int
+
+
 def finite_positive_scalar(value, *, name):
     """Return a finite positive float."""
     value = float(value)

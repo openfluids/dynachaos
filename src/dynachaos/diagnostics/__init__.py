@@ -74,6 +74,7 @@ from dynachaos.diagnostics.recurrence import (
     rqa,
     rqa_from_trajectory,
 )
+from dynachaos.diagnostics.rqa_streaming import rqa_streaming_from_trajectory
 from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
@@ -139,6 +140,7 @@ __all__ = [
     "return_map_reconstruction",
     "rqa",
     "rqa_from_trajectory",
+    "rqa_streaming_from_trajectory",
     "sali",
     "sample_entropy",
     "select_dimension_cao",
