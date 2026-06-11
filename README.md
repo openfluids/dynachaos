@@ -1,5 +1,3 @@
-# dynachaos
-
 ![dynachaos banner](assets/readme-banner-v1.png)
 
 [![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
