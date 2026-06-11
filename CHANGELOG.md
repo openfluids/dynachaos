@@ -6,6 +6,14 @@ history.
 
 ## Unreleased
 
+### RQA consolidation
+
+- Consolidated the matrix-free RQA scan into one shared core
+  (`_trajectory_rqa_scan`); `rqa_streaming_from_trajectory` now delegates to
+  it. Fixed `rqa_from_trajectory`'s `eps=None` percentile to match the dense
+  `recurrence_matrix` squareform multiset, with a pinning regression test
+  (bead dynachaos-894).
+
 ### Example recipes
 
 - Added tested example recipes under `examples/recipes/`: external-signal

@@ -202,6 +202,19 @@ def test_rqa_from_trajectory_matches_dense_with_explicit_eps():
     assert streaming_stats == pytest.approx(dense_stats)
 
 
+def test_rqa_from_trajectory_percentile_threshold_matches_dense_squareform_multiset():
+    # Interpolated percentile differs between the condensed pdist vector and
+    # the squareform multiset; this fixture exposed eps 4.6 vs 5.0 pre-fix.
+    traj = np.array([[15.0], [18.0], [23.0]])
+
+    rmat, eps = recurrence_matrix(traj, eps=None, percentile=40)
+    dense_stats = rqa(rmat, l_min=1, v_min=1)
+    streaming_stats = rqa_from_trajectory(traj, eps=None, percentile=40, l_min=1, v_min=1)
+
+    assert eps == pytest.approx(5.0)
+    assert streaming_stats == pytest.approx(dense_stats)
+
+
 def test_laminar_lengths_exposes_vertical_line_distribution_and_rqa_measures():
     traj = np.array([[0.0], [0.0], [1.0], [1.0], [1.0]])
 

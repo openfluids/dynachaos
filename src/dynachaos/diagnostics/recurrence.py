@@ -43,6 +43,7 @@ from scipy.spatial.distance import pdist, squareform
 from dynachaos.diagnostics._validation import (
     finite_nonnegative_scalar,
     finite_trajectory,
+    nonnegative_int,
     positive_int,
     square_bool_matrix,
 )
@@ -318,6 +319,64 @@ def laminar_lengths(X, eps=None, metric="euclidean", percentile=5, v_min=2):
     )
 
 
+def _threshold_from_recurrence_percentile(X, metric, percentile):
+    pdist_metric = "cityblock" if metric == "manhattan" else metric
+    condensed = pdist(X, metric=pdist_metric)
+    positive_dists = condensed[condensed > 0]
+    if positive_dists.size == 0:
+        return 0.0
+    # recurrence_matrix percentiles over the squareform matrix, where every
+    # positive pair appears twice; duplicate the condensed vector to match.
+    return float(np.percentile(np.repeat(positive_dists, 2), percentile))
+
+
+def _trajectory_rqa_scan(X, eps, metric, percentile, l_min, v_min, theiler=0):
+    X = finite_trajectory(X, name="X")
+    eps, percentile = _validate_recurrence_threshold(eps, percentile)
+    l_min = positive_int(l_min, "l_min")
+    v_min = positive_int(v_min, "v_min")
+    if theiler is None:
+        theiler = 0
+    theiler = nonnegative_int(theiler, "theiler")
+    _validate_streaming_metric(metric)
+
+    if eps is None:
+        eps = _threshold_from_recurrence_percentile(X, metric, percentile)
+
+    N = X.shape[0]
+    recurrent_upper = 0
+    diag_lens = []
+    for k in range(1, N):
+        recurrent = _paired_distances(X[:-k], X[k:], metric) <= eps
+        if k <= theiler:
+            recurrent = np.zeros_like(recurrent, dtype=bool)
+        recurrent_upper += int(np.sum(recurrent))
+        diag_lens.extend(_line_lengths(recurrent, l_min))
+
+    vert_lens = []
+    recurrent_all = 0
+    rows = np.arange(N)
+    for j in range(N):
+        recurrent = _paired_distances(X, X[j : j + 1], metric) <= eps
+        if theiler > 0:
+            recurrent = np.logical_and(recurrent, np.abs(rows - j) > theiler)
+        recurrent_all += int(np.sum(recurrent))
+        vert_lens.extend(_line_lengths(recurrent, v_min))
+
+    if theiler == 0:
+        recurrent_all = N + 2 * recurrent_upper
+    stats = _rqa_from_line_lengths(N * N, recurrent_all, recurrent_upper, diag_lens, vert_lens)
+    details = {
+        "eps": float(eps),
+        "theiler": int(theiler),
+        "diagonal_lengths": np.asarray(diag_lens, dtype=int),
+        "vertical_lengths": np.asarray(vert_lens, dtype=int),
+        "data_length": int(N),
+        "data_shape": tuple(int(v) for v in X.shape),
+    }
+    return stats, details
+
+
 def rqa_from_trajectory(
     X, eps=None, metric="euclidean", percentile=5, l_min=2, v_min=2, *, return_metadata=False
 ):
@@ -327,45 +386,13 @@ def rqa_from_trajectory(
     caller needs the recurrence matrix itself.  This function is for large-RQA
     workflows that only need the scalar measures.
     """
-    X = finite_trajectory(X, name="X")
-    eps, percentile = _validate_recurrence_threshold(eps, percentile)
-    l_min = positive_int(l_min, "l_min")
-    v_min = positive_int(v_min, "v_min")
-    _validate_streaming_metric(metric)
-
-    if eps is None:
-        pdist_metric = "cityblock" if metric == "manhattan" else metric
-        condensed = pdist(X, metric=pdist_metric)
-        positive_dists = condensed[condensed > 0]
-        eps = 0.0 if positive_dists.size == 0 else float(np.percentile(positive_dists, percentile))
-
-    N = X.shape[0]
-    recurrent_upper = 0
-    diag_lens = []
-    for k in range(1, N):
-        recurrent = _paired_distances(X[:-k], X[k:], metric) <= eps
-        recurrent_upper += int(np.sum(recurrent))
-        diag_lens.extend(_line_lengths(recurrent, l_min))
-
-    vert_lens = []
-    for j in range(N):
-        recurrent = _paired_distances(X, X[j : j + 1], metric) <= eps
-        vert_lens.extend(_line_lengths(recurrent, v_min))
-
-    recurrent_all = N + 2 * recurrent_upper
-    stats = _rqa_from_line_lengths(
-        N * N,
-        recurrent_all,
-        recurrent_upper,
-        diag_lens,
-        vert_lens,
-    )
+    stats, details = _trajectory_rqa_scan(X, eps, metric, percentile, l_min, v_min)
     if return_metadata:
         warnings = []
         unresolved = []
-        if not diag_lens:
+        if details["diagonal_lengths"].size == 0:
             warnings.append("no diagonal lines at or above l_min")
-        if not vert_lens:
+        if details["vertical_lengths"].size == 0:
             warnings.append("no vertical lines at or above v_min")
         metadata = ReliabilityRecord(
             method_name="rqa_from_trajectory",
@@ -373,15 +400,18 @@ def rqa_from_trajectory(
                 "rust" if (_RUST_AVAILABLE and _count_line_lengths_rs is not None) else "python"
             ),
             parameters={
-                "eps": eps,
+                "eps": details["eps"],
                 "metric": metric,
-                "percentile": percentile,
-                "l_min": l_min,
-                "v_min": v_min,
+                "percentile": float(percentile),
+                "l_min": positive_int(l_min, "l_min"),
+                "v_min": positive_int(v_min, "v_min"),
             },
-            data_length=N,
-            data_shape=tuple(int(v) for v in X.shape),
-            sampling_downsampling_note="no sampling/downsampling; streaming trajectory scan without dense recurrence matrix",
+            data_length=details["data_length"],
+            data_shape=details["data_shape"],
+            sampling_downsampling_note=(
+                "no sampling/downsampling; streaming trajectory scan without dense "
+                "recurrence matrix"
+            ),
             validity_warnings=warnings,
             unresolved_verdicts=unresolved,
             scale_evidence={
