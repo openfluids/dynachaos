@@ -12,24 +12,21 @@ history.
   expectations, diagnostic choice, long-signal/RQA scaling guidance,
   reliability-metadata interpretation, and positioning. README
   quickstart now runs the tested external-signal recipe; all shown commands
-  are executed in checks or explicitly marked local/full-run
-  (bead dynachaos-user-docs-real-analyses-fht).
+  are executed in checks or explicitly marked local/full-run.
 
 ### RQA consolidation
 
 - Consolidated the matrix-free RQA scan into one shared core
   (`_trajectory_rqa_scan`); `rqa_streaming_from_trajectory` now delegates to
   it. Fixed `rqa_from_trajectory`'s `eps=None` percentile to match the dense
-  `recurrence_matrix` squareform multiset, with a pinning regression test
-  (bead dynachaos-894).
+  `recurrence_matrix` squareform multiset, with a pinning regression test.
 
 ### Example recipes
 
 - Added tested example recipes under `examples/recipes/`: external-signal
   analysis with diagnostic selection and reliability metadata, and a
   long-signal/downsampled streaming-RQA recipe that stays inside the dense
-  recurrence memory envelope; smoke-tested by new `tests/test_examples.py`
-  (bead dynachaos-example-gallery-hardening-txv).
+  recurrence memory envelope; smoke-tested by new `tests/test_examples.py`.
 
 ### Rust acceleration roadmap
 
@@ -37,8 +34,7 @@ history.
   (`docs/rust-acceleration-roadmap.md`) and the subprocess-isolated hotspot
   profiler `benchmarks/rust_hotspot_profile.py` with checked-in artifacts;
   streaming RQA is ranked as the next port candidate with a recorded parity
-  test plan (bead dynachaos-rust-kernel-hotspot-roadmap-8i3,
-  [66ee0e8](https://github.com/ricardofrantz/dynachaos/commit/66ee0e8)).
+  test plan ([66ee0e8](https://github.com/ricardofrantz/dynachaos/commit/66ee0e8)).
 
 ### Scalable analysis workflow
 
@@ -46,24 +42,20 @@ history.
   `.npy`/`.npz` or generated signals writing a stable output directory
   (`results.json`, `metadata.json` with scale/cost and reliability metadata,
   `summary.md`), with explicit failure modes and a dense-RQA scale-envelope
-  guard (bead dynachaos-scalable-analysis-workflow-ebo,
-  [2c9d6b6](https://github.com/ricardofrantz/dynachaos/commit/2c9d6b6)).
+  guard ([2c9d6b6](https://github.com/ricardofrantz/dynachaos/commit/2c9d6b6)).
 
 ### Long-signal RQA scaling
 
 - Added `rqa_streaming_from_trajectory`: exact matrix-free RQA (RR, DET, LAM,
   L, TT, ENTR, Lmax and ENTR bins) with Theiler-window support and a recorded
-  interface decision plus RSS evidence in `docs/rqa-scaling-design.md`
-  (bead dynachaos-streaming-sparse-rqa-design-je6,
-  [d625980](https://github.com/ricardofrantz/dynachaos/commit/d625980)).
+  interface decision plus RSS evidence in `docs/rqa-scaling-design.md` ([d625980](https://github.com/ricardofrantz/dynachaos/commit/d625980)).
 
 ### Private release posture and documentation
 
 - Renamed the default branch to `main` and hardened project checks around that
   branch convention ([e71ed4e](https://github.com/ricardofrantz/dynachaos/commit/e71ed4e)).
-- Added and sharpened the two-loop, skill-driven improvement goal that now
-  governs agent maintenance work, including private-only pushes and per-skill
-  review/commit discipline
+- Sharpened the internal maintenance workflow, including private-only pushes
+  and per-change review/commit discipline
   ([c8da3a0](https://github.com/ricardofrantz/dynachaos/commit/c8da3a0),
   [cdda594](https://github.com/ricardofrantz/dynachaos/commit/cdda594)).
 - Clarified that the repository, package publication, benchmark numbers, and
@@ -83,7 +75,7 @@ history.
   ([0ff1cb3](https://github.com/ricardofrantz/dynachaos/commit/0ff1cb3)).
 - Rejected non-finite entropy and recurrence diagnostic inputs, invalid
   recurrence thresholds, invalid 0-1 test parameters, and zero-MSD 0-1 test
-  regressions found during loop-2 bug hunting
+  regressions found during a systematic bug hunt
   ([4ff83ad](https://github.com/ricardofrantz/dynachaos/commit/4ff83ad),
   [b473141](https://github.com/ricardofrantz/dynachaos/commit/b473141),
   [8dc0541](https://github.com/ricardofrantz/dynachaos/commit/8dc0541),
@@ -108,7 +100,7 @@ history.
   [0f58ef2](https://github.com/ricardofrantz/dynachaos/commit/0f58ef2)).
 - Avoided debug-build overflow in direct Rust calls with huge Theiler windows
   ([4735647](https://github.com/ricardofrantz/dynachaos/commit/4735647)).
-- Validated Rust AMI inputs directly and recorded the loop-2 Rust UB audit
+- Validated Rust AMI inputs directly and recorded a Rust undefined-behavior audit
   ([dd8ee6c](https://github.com/ricardofrantz/dynachaos/commit/dd8ee6c),
   [66f4d6e](https://github.com/ricardofrantz/dynachaos/commit/66f4d6e)).
 
@@ -119,13 +111,13 @@ history.
 - Adopted the cache contract in the circle-map figure pipeline
   ([eff0b34](https://github.com/ricardofrantz/dynachaos/commit/eff0b34)).
 - Added architecture, simplification, complexity, profiling, and optimization
-  decision artifacts so future agents can distinguish measured work from
+  decision artifacts so future maintainers can distinguish measured work from
   deferred ideas ([acbaa38](https://github.com/ricardofrantz/dynachaos/commit/acbaa38),
   [d0b4d4e](https://github.com/ricardofrantz/dynachaos/commit/d0b4d4e),
   [e7ef0ec](https://github.com/ricardofrantz/dynachaos/commit/e7ef0ec),
   [9ab2bb4](https://github.com/ricardofrantz/dynachaos/commit/9ab2bb4),
   [bc997b5](https://github.com/ricardofrantz/dynachaos/commit/bc997b5)).
-- Captured loop-2 architecture, simplification, complexity, profiling, and
+- Captured further architecture, simplification, complexity, profiling, and
   optimization artifacts, including an RQA count-reuse optimization measured at
   roughly 1.3--1.5x faster in the profiled range
   ([2b56ac5](https://github.com/ricardofrantz/dynachaos/commit/2b56ac5),
