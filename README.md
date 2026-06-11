@@ -51,6 +51,9 @@ curated Swiss-inspired style themes
 
 ## Private Development Setup
 
+The setup and backend-check commands in this section are local contributor
+commands for a private checkout.
+
 ```bash
 git clone https://github.com/ricardofrantz/dynachaos.git
 cd dynachaos
@@ -75,31 +78,68 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity
 and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
-Run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`
-and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact
-reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the
-largest common logistic case, and a dense-RQA predicted distance-matrix envelope
-of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB). The measured Rust
-acceleration roadmap and local hotspot profiler are documented in
-`docs/rust-acceleration-roadmap.md` and `benchmarks/rust_hotspot_profile.py`.
+The local benchmark command is
+`uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`;
+inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. The
+checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at
+N=1000 for the largest common logistic case, and a dense-RQA predicted
+distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at
+4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are
+documented in `docs/rust-acceleration-roadmap.md` and
+`benchmarks/rust_hotspot_profile.py`.
+
+## Quick Start
+
+From a fresh checkout, run the tested external-signal workflow recipe:
+
+```bash
+uv run dynachaos analyze examples/recipes/external_signal/external_signal_recipe.jsonc
+```
+
+The command writes
+`examples/recipes/external_signal/outputs/external_signal_recipe/results.json`,
+`examples/recipes/external_signal/outputs/external_signal_recipe/metadata.json`,
+and
+`examples/recipes/external_signal/outputs/external_signal_recipe/summary.md`.
+It is intentionally small so it can run as a smoke test; use the recipe gallery
+for the long-signal streaming example.
+
+## User documentation spine
+
+- [Real-analysis user guide](docs/real-analysis-guide.md): input expectations,
+  diagnostic choice, long-signal scaling, workflow outputs, reliability metadata,
+  finite-data caveats, and positioning.
+- [Example gallery](examples/README.md): tested recipe commands for external
+  signals and long-signal streaming RQA.
+- [RQA scaling design note](docs/rqa-scaling-design.md): dense recurrence memory
+  envelope and streaming RQA design.
+- [Rust acceleration roadmap](docs/rust-acceleration-roadmap.md): measured
+  acceleration claims and future kernel priorities.
+- [Claims checklist](docs/claims-checklist.md): wording boundaries for public
+  documentation and manuscripts.
 
 ## Config-driven signal analysis workflow
 
-Run a scalar/reduced time-series workflow with a JSONC config; all tuning lives in the config, not CLI flags:
-
-```bash
-uv run dynachaos analyze tests/data/workflow_fixture.jsonc
-```
+Run scalar/reduced time-series analyses with a JSONC config; all tuning lives in
+the config, not CLI flags.
 
 Config schema summary:
 - `input`: either `{ "path": "signal.npy" }` / `{ "path": "signal.npz", "npz_key": "x" }` for a 1D finite scalar/reduced signal, or `{ "generated": { "name": "logistic", "n": 1000, "seed": 0 } }` for self-contained runs.
 - `output.dir`: stable output directory, resolved relative to the config file.
-- `diagnostics`: list of `{ "name": ... }` entries. Supported names are `permutation_entropy`, `correlation_dimension`, `rqa_streaming`, and `rqa_dense`.
+- `diagnostics`: list of `{ "name": ... }` entries. Supported workflow names are `permutation_entropy`, `correlation_dimension`, `rqa_streaming`, and `rqa_dense`.
 - `scale_limits`: optional dense-RQA guard; `dense_rqa_max_bytes` defaults to 4 GiB using the `8*N^2` distance-matrix envelope, and `allow_dense_rqa_beyond_envelope: true` is required to override it.
 
-Output layout is stable and referenceable by path: `results.json` (machine-readable diagnostic values), `metadata.json` (N, shape, wall time in seconds, peak RSS in MB, and per-diagnostic `ReliabilityRecord` metadata), and `summary.md` (human-readable report with relative artifact names).
+Output layout is stable and referenceable by path: `results.json`
+(machine-readable diagnostic values), `metadata.json` (N, shape, wall time in
+seconds, peak RSS in MB, and per-diagnostic `ReliabilityRecord` metadata), and
+`summary.md` (human-readable report with relative artifact names). Reliability
+metadata records backend, parameters, data shape, sampling/downsampling notes,
+warnings, unresolved verdicts, and scale evidence. It helps you decide how much
+scientific confidence to place in a number; it is not an automatic pass/fail
+certificate.
 
-For long-signal local RQA, avoid dense recurrence matrices and set an explicit threshold in config:
+For long-signal local RQA, avoid dense recurrence matrices and set an explicit
+threshold in config:
 
 ```jsonc
 {
@@ -111,63 +151,9 @@ For long-signal local RQA, avoid dense recurrence matrices and set an explicit t
 }
 ```
 
-Run locally with `uv run dynachaos analyze long_signal_rqa.jsonc`; CI fixtures stay tiny and hermetic.
-
-### Reliability metadata
-
-Diagnostics can opt in to compact JSON-safe reliability metadata without changing default return values.
-```python
-D2, r, C, slopes, mask, meta = correlation_dimension(traj, return_metadata=True)
-print(meta.to_json())  # backend, parameters, data shape, warnings, unresolved verdicts
-```
-
-## Quick Start
-
-```python
-import numpy as np
-from dynachaos.maps import logistic, logistic_derivative
-from dynachaos.diagnostics import lyapunov_exponent_1d, permutation_entropy
-
-# Lyapunov exponent of the logistic map at the edge of chaos
-f  = lambda x: logistic(x, 1.99)
-df = lambda x: logistic_derivative(x, 1.99)
-lam = lyapunov_exponent_1d(f, df, x0=0.1, n_iter=100_000)
-print(f"lambda = {lam:.4f}")   # ~ 0.65
-
-# Permutation entropy of a chaotic series
-series = np.empty(10_000)
-series[0] = 0.1
-for i in range(1, len(series)):
-    series[i] = logistic(series[i - 1], 1.99)
-H = permutation_entropy(series, d=5)
-print(f"H_PE = {H:.4f}")       # ~ 0.68
-```
-
-```python
-import numpy as np
-from dynachaos.maps import logistic
-from dynachaos.diagnostics import correlation_dimension, sample_entropy
-from dynachaos.diagnostics.recurrence import embed_time_delay
-
-series = np.empty(10_000)
-series[0] = 0.1
-for i in range(1, len(series)):
-    series[i] = logistic(series[i - 1], 1.99)
-
-# Correlation dimension of the logistic map attractor
-traj = embed_time_delay(series, d=3, tau=1)
-D2, r, C, slopes, mask = correlation_dimension(traj, theiler_window=1)
-print(f"D2 = {D2:.3f}")        # ~ 0.97
-
-# Sample entropy (regularity measure)
-se = sample_entropy(series, m=2)
-print(f"SampEn = {se:.4f}")
-```
-
-```bash
-# Compare Grassberger-Procaccia vs multifractal D2
-uv run --extra viz python examples/benchmark_gp_vs_multifractal.py
-```
+The local/full-run command `uv run dynachaos analyze long_signal_rqa.jsonc`
+requires a local `long_signal_rqa.jsonc` file and the `long_signal.npy` input it
+names. The tested commands live in the quickstart and in `examples/README.md`.
 
 ## Rust-Accelerated Backends
 
@@ -263,28 +249,17 @@ validation boundary.
 
 ## Flagship application: Kaneko Atlas
 
-A companion manuscript and figure
-pipeline that serves as dynachaos's flagship application and stress test. It
-revisits Kunihiko Kaneko's foundational work on chaos with the same reusable
-Python/Rust diagnostics exposed by the package.
-
-```bash
-dynachaos list                    # list paper sections
-dynachaos run sec02_circle_map    # reproduce a figure
-dynachaos run all                 # full pipeline
-```
-
-To rebuild the tracked manuscript PDF:
-
-```bash
-cd paper
-pdflatex -interaction=nonstopmode -halt-on-error main.tex
-bibtex main
-pdflatex -interaction=nonstopmode -halt-on-error main.tex
-pdflatex -interaction=nonstopmode -halt-on-error main.tex
-```
+A companion manuscript and
+figure pipeline that serves as dynachaos's flagship application and stress test.
+It revisits Kunihiko Kaneko's foundational work on chaos with the same reusable
+Python/Rust diagnostics exposed by the package. The package is broader than this
+one atlas: use the tested quickstart and recipe gallery above for public,
+copyable user commands. The manuscript pipeline remains a local full-run path for
+the paper checkout rather than the general user quickstart.
 
 ## Development
+
+These are local contributor checks.
 
 ```bash
 uv sync

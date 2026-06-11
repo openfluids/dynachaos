@@ -1,5 +1,9 @@
 # dynachaos examples
 
+For input expectations, diagnostic choice, workflow outputs, reliability
+metadata, and long-signal caveats, start with the
+[real-analysis user guide](../docs/real-analysis-guide.md).
+
 The example gallery has two tiers:
 
 1. **Tested recipes** in `examples/recipes/` are copyable command-line workflows
@@ -10,6 +14,9 @@ The example gallery has two tiers:
    user-facing recipes are the tested directories below.
 
 ## Tested recipes
+
+The commands below are local recipe commands: run them from a checkout where the
+`dynachaos` command is installed or from an activated project environment.
 
 ### External signal workflow
 

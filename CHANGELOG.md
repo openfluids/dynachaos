@@ -6,6 +6,15 @@ history.
 
 ## Unreleased
 
+### User documentation spine
+
+- Added `docs/real-analysis-guide.md`, a user guide for real analyses: input
+  expectations, diagnostic choice, long-signal/RQA scaling guidance,
+  reliability-metadata interpretation, and positioning. README
+  quickstart now runs the tested external-signal recipe; all shown commands
+  are executed in checks or explicitly marked local/full-run
+  (bead dynachaos-user-docs-real-analyses-fht).
+
 ### RQA consolidation
 
 - Consolidated the matrix-free RQA scan into one shared core
