@@ -98,6 +98,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Base output directory (defaults to ./figures)",
     )
 
+    analyze = sub.add_parser("analyze", help="Run a JSONC-configured signal analysis workflow")
+    analyze.add_argument("config", type=Path, help="Path to workflow JSONC config")
+
     return parser
 
 
@@ -166,6 +169,20 @@ def main(argv: list[str] | None = None) -> int:
         for item in inspect_section_artifacts(section_id, output_root=args.output_root):
             required = ",".join(item.required_keys) if item.required_keys else "-"
             print(f"{item.role}\t{item.status}\t{item.path}\t{item.detail}\t{required}")
+        return 0
+
+    if args.command == "analyze":
+        from dynachaos.workflow import WorkflowError, run_workflow
+
+        try:
+            paths = run_workflow(args.config)
+        except (WorkflowError, ValueError) as exc:
+            print(f"dynachaos analyze: {exc}", file=sys.stderr)
+            return 2
+        print(f"output_dir\t{paths['output_dir']}")
+        print(f"results\t{paths['results']}")
+        print(f"metadata\t{paths['metadata']}")
+        print(f"summary\t{paths['summary']}")
         return 0
 
     target = args.target

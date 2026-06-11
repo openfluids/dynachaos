@@ -72,6 +72,36 @@ DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
 
 The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`; run CI mode with `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` and inspect `benchmarks/results/scale_envelope.{json,md}`. The checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at N=1000 for the largest common logistic case, and a dense-RQA predicted distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at 4 GiB).
 
+## Config-driven signal analysis workflow
+
+Run a scalar/reduced time-series workflow with a JSONC config; all tuning lives in the config, not CLI flags:
+
+```bash
+uv run dynachaos analyze tests/data/workflow_fixture.jsonc
+```
+
+Config schema summary:
+- `input`: either `{ "path": "signal.npy" }` / `{ "path": "signal.npz", "npz_key": "x" }` for a 1D finite scalar/reduced signal, or `{ "generated": { "name": "logistic", "n": 1000, "seed": 0 } }` for self-contained runs.
+- `output.dir`: stable output directory, resolved relative to the config file.
+- `diagnostics`: list of `{ "name": ... }` entries. Supported names are `permutation_entropy`, `correlation_dimension`, `rqa_streaming`, and `rqa_dense`.
+- `scale_limits`: optional dense-RQA guard; `dense_rqa_max_bytes` defaults to 4 GiB using the `8*N^2` distance-matrix envelope, and `allow_dense_rqa_beyond_envelope: true` is required to override it.
+
+Output layout is stable and referenceable by path: `results.json` (machine-readable diagnostic values), `metadata.json` (N, shape, wall time in seconds, peak RSS in MB, and per-diagnostic `ReliabilityRecord` metadata), and `summary.md` (human-readable report with relative artifact names).
+
+For long-signal local RQA, avoid dense recurrence matrices and set an explicit threshold in config:
+
+```jsonc
+{
+  "input": {"path": "long_signal.npy"},
+  "output": {"dir": "results/long_signal_rqa"},
+  "diagnostics": [
+    {"name": "rqa_streaming", "embedding": {"d": 3, "tau": 2}, "eps": 0.08, "l_min": 2, "v_min": 2}
+  ]
+}
+```
+
+Run locally with `uv run dynachaos analyze long_signal_rqa.jsonc`; CI fixtures stay tiny and hermetic.
+
 ### Reliability metadata
 
 Diagnostics can opt in to compact JSON-safe reliability metadata without changing default return values.
