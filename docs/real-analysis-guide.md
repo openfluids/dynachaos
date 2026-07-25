@@ -1,6 +1,6 @@
 # Real-analysis user guide
 
-This page is the practical spine for applying dynachaos to real simulated or measured time signals. The reproduction gallery is the flagship stress test for the package, but the workflow is general: start from a scalar or reduced observable, choose diagnostics that match the scientific question, and keep the finite-data limits visible in the output metadata.
+This page is the practical spine for applying dynachaos to real simulated or measured time signals. The reproduction gallery in `figures/` is the flagship stress test for the package, but the workflow is general: start from a scalar or reduced observable, choose diagnostics that match the scientific question, and keep the finite-data limits visible in the output metadata.
 
 ## 1. Prepare the input signal
 
@@ -92,8 +92,8 @@ Use only the tested recipe gallery for copyable public commands:
 
 Those recipes exercise the same workflow output contract described above and are covered by `tests/test_examples.py`.
 
-## 7. positioning
+## 7. Scope of the reproduction gallery
 
-The reproduction gallery is the flagship application: it stresses maps, coupled-map lattices, recurrence diagnostics, entropy diagnostics, and scaling behavior at paper resolution. The package boundary is broader. dynachaos is meant for reusable dynamical-systems analysis of external simulated or measured time signals, with the Kaneko work serving as a demanding example rather than the only supported use case.
+The section-indexed reproductions of Kaneko's published work are the flagship application: they stress maps, coupled-map lattices, recurrence diagnostics, entropy diagnostics, and scaling behavior at high resolution. The package boundary is broader. dynachaos is meant for reusable dynamical-systems analysis of external simulated or measured time signals, with the reproduction gallery serving as a demanding example rather than the only supported use case.
 
 For claim boundaries and public wording, see [claims-checklist.md](claims-checklist.md).

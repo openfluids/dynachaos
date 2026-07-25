@@ -33,9 +33,9 @@ viz = ["matplotlib>=3.9", "pillow>=10.0"]
 dev = ["pytest>=9.0", "maturin>=1.8,<2.0", "ruff>=0.4"]
 
 [project.urls]
-Homepage = "https://github.com/ricardofrantz/dynachaos"
-Repository = "https://github.com/ricardofrantz/dynachaos"
-"Bug Tracker" = "https://github.com/ricardofrantz/dynachaos/issues"
+Homepage = "https://github.com/openfluids/dynachaos"
+Repository = "https://github.com/openfluids/dynachaos"
+"Bug Tracker" = "https://github.com/openfluids/dynachaos/issues"
 
 [project.scripts]
 dynachaos = "dynachaos.cli:main"

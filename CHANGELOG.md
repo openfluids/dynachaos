@@ -14,7 +14,7 @@ reconstructed from git history.
 
 - Added `docs/real-analysis-guide.md`, a user guide for real analyses: input
   expectations, diagnostic choice, long-signal/RQA scaling guidance,
-  reliability-metadata interpretation, and positioning. README
+  reliability-metadata interpretation, and package positioning. README
   quickstart now runs the tested external-signal recipe; all shown commands
   are executed in checks or explicitly marked local/full-run.
 

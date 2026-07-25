@@ -1,6 +1,6 @@
 ![dynachaos banner](https://raw.githubusercontent.com/ricardofrantz/dynachaos/main/assets/readme-banner-v1.png)
 
-[![CI](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ricardofrantz/dynachaos/actions/workflows/ci.yml)
+[![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -53,7 +53,7 @@ The setup and backend-check commands in this section are local contributor
 commands for a private checkout.
 
 ```bash
-git clone https://github.com/ricardofrantz/dynachaos.git
+git clone https://github.com/openfluids/dynachaos.git
 cd dynachaos
 uv sync
 uv run --extra viz pytest tests/ -q
@@ -106,7 +106,7 @@ for the long-signal streaming example.
 
 - [Real-analysis user guide](docs/real-analysis-guide.md): input expectations,
   diagnostic choice, long-signal scaling, workflow outputs, reliability metadata,
-  finite-data caveats, and positioning.
+  and finite-data caveats.
 - [Example gallery](examples/README.md): tested recipe commands for external
   signals and long-signal streaming RQA.
 - [RQA scaling design note](docs/rqa-scaling-design.md): dense recurrence memory
@@ -245,15 +245,24 @@ symmetric. The direct line extractors, including the Rust-accelerated helpers,
 are lower-level square-matrix scanners and do not replace that public RQA
 validation boundary.
 
-## Flagship application: Kaneko Atlas
+## Reproduction gallery
 
-A companion manuscript and
-figure pipeline that serves as dynachaos's flagship application and stress test.
-It revisits Kunihiko Kaneko's foundational work on chaos with the same reusable
-Python/Rust diagnostics exposed by the package. The package is broader than this
-one atlas: use the tested quickstart and recipe gallery above for public,
-copyable user commands. The manuscript pipeline remains a local full-run path for
-the paper checkout rather than the general user quickstart.
+The `figures/` tree holds a section-indexed set of reproductions of Kunihiko
+Kaneko's published work on circle maps, torus doubling, fractalization,
+coupled map lattices, and globally coupled maps. Each section is regenerated
+from scratch by the same public entry points users call:
+
+```bash
+dynachaos list
+dynachaos run sec02_circle_map
+dynachaos run all
+```
+
+The committed `.npz` caches double as golden data for the reproducibility and
+determinism tests, so the gallery is both a worked example and a standing
+regression check. It is a demanding stress test of the package rather than its
+boundary: for general use on your own signals, see the quickstart and recipe
+gallery above.
 
 ## Development
 
@@ -276,9 +285,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribu
 
 ## Citation
 
-Citation metadata is provisional while the repository and manuscript remain
-private. Do not treat the companion paper entry as a published article until
-the public release phase is explicitly completed.
+If you use dynachaos in published work, please cite the software:
 
 ```bibtex
 @software{dynachaos2026,
@@ -286,16 +293,8 @@ the public release phase is explicitly completed.
   title   = {dynachaos: Dynamical-systems analysis for time signals with Rust-accelerated kernels},
   year    = {2026},
   version = {0.3.0},
-  url     = {https://github.com/ricardofrantz/dynachaos},
+  url     = {https://github.com/openfluids/dynachaos},
   license = {Apache-2.0}
-}
-
-@article{removed,
-  author  = {Frantz, Ricardo},
-  
-             },
-  
-  year    = {2026}
 }
 ```
 
