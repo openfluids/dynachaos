@@ -57,7 +57,14 @@ jobs:
           # No --no-sdist: maturin dropped that flag, and `maturin build` no
           # longer produces an sdist anyway. Passing it aborted every wheel
           # target with "unexpected argument" before any compilation started.
-          args: --release --out dist
+          #
+          # --find-interpreter is required for the Linux targets. Those build
+          # inside the manylinux container, which keeps its interpreters under
+          # /opt/python/* and puts none of them on PATH, so maturin's default
+          # search failed with "Couldn't find any python interpreters from
+          # 'python3'". macOS and Windows build natively and find the runner's
+          # own interpreter, which is why only Linux failed.
+          args: --release --out dist --find-interpreter
           manylinux: auto
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

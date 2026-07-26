@@ -308,8 +308,13 @@ def _even_sample(points, max_points):
 
 
 def _source_file_label():
+    # as_posix(), not str(): this label is written into the .npz payload as
+    # provenance, so it is data rather than a filesystem operation. str() would
+    # render it with the OS separator and a cache generated on Windows would
+    # record "src\\dynachaos\\..." while every other platform records
+    # "src/dynachaos/...", making the metadata non-portable.
     try:
-        return str(_THIS_FILE.relative_to(_THIS_FILE.parents[3]))
+        return _THIS_FILE.relative_to(_THIS_FILE.parents[3]).as_posix()
     except ValueError:
         return _THIS_FILE.name
 
