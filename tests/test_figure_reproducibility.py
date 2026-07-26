@@ -34,7 +34,7 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
     Elementwise equality is asserted only on the architecture that produced the
     caches. These sections integrate chaotic maps, so on another architecture a
     last-bit difference is amplified into an O(1) one and elementwise agreement
-    is unattainable by construction (see conftest.REFERENCE_PLATFORM). There the
+    is unattainable by construction (see conftest.REFERENCE_PLATFORM_ENV). There the
     contract itself is still checked -- see assert_npz_structurally_sound for
     what survives the architecture change and what only looks like it does.
     """

@@ -36,7 +36,7 @@ def test_representative_figure_caches_recompute_deterministically(tmp_path):
     """Recompute chaotic sections and compare against the committed caches.
 
     Elementwise equality only holds on the architecture that produced the
-    caches (see conftest.REFERENCE_PLATFORM). Everywhere else the pipeline is
+    caches (see conftest.REFERENCE_PLATFORM_ENV). Everywhere else the pipeline is
     still run and its output contract still verified.
     """
     check = _assert_npz_matches if is_reference_platform() else _assert_npz_structurally_sound

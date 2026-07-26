@@ -1,40 +1,55 @@
 """Shared test fixtures and helpers."""
 
-import platform
-import sys
+import os
 
 import numpy as np
 import pytest
 
-# The committed figure caches under figures/ were computed on Linux x86_64.
+# The committed figure caches under figures/ cannot be reproduced elementwise
+# anywhere but the machine that produced them.
 #
-# They cannot be reproduced elementwise on another architecture. Most of the
-# sections integrate chaotic maps and coupled map lattices, where a last-bit
-# difference in the first arithmetic operation is amplified exponentially: on
-# macOS arm64 the recomputed sec12_intermittency cache differs from the
-# committed one by a relative 4e4, and sec08_sti differs in 100% of elements.
-# That is the systems behaving correctly, not a defect, and no tolerance can
-# accommodate it.
+# Most of these sections integrate chaotic maps and coupled map lattices, where
+# a last-bit difference in the first arithmetic operation is amplified
+# exponentially: on macOS arm64 the recomputed sec12_intermittency cache differs
+# from the committed one by a relative 4e4, and sec08_sti differs in 100% of
+# elements. That is the systems behaving correctly, not a defect, and no
+# tolerance can accommodate it.
 #
-# So the elementwise comparison is asserted only on the architecture that
-# produced the caches. Elsewhere the pipelines are still executed and their
-# output is still checked against the contract that does survive the
-# architecture change -- see assert_npz_structurally_sound, which is also where
-# the two properties that only *look* portable (exact shape, finiteness) are
-# spelled out.
-REFERENCE_PLATFORM = "Linux x86_64"
+# The scope of that statement was initially misjudged as "another architecture".
+# It is narrower. GitHub's ubuntu-latest runner is also Linux x86_64 and it too
+# fails to reproduce sec12_intermittency elementwise, and extracts a different
+# number of Lorenz return points than the reference machine did -- a different
+# microarchitecture is enough to change which OpenBLAS kernels are selected and
+# how the last bits fall. Gating on the architecture therefore asserted
+# something false and turned an inherent property of chaotic systems into a CI
+# failure.
+#
+# So elementwise agreement is opt-in, enabled only on the machine that
+# regenerates the caches. Everywhere else -- including every CI runner -- the
+# pipelines are still executed and their output is still checked against the
+# contract that does survive, plus the physics assertions, which hold
+# everywhere. See assert_npz_structurally_sound for what survives and for the
+# two properties that only *look* portable (exact shape, finiteness).
+REFERENCE_PLATFORM_ENV = "DYNACHAOS_REFERENCE_PLATFORM"
 
 
 def is_reference_platform() -> bool:
-    """True on the architecture the committed figure caches were generated on."""
-    return sys.platform.startswith("linux") and platform.machine() == "x86_64"
+    """True only where the committed caches can be reproduced elementwise.
+
+    Set ``DYNACHAOS_REFERENCE_PLATFORM=1`` on the machine that regenerates the
+    caches under ``figures/``. There is no autodetect for this: reproducing the
+    caches bit-for-bit depends on the CPU, the BLAS build and its kernel
+    dispatch, so it is a property of one machine rather than of any platform
+    triple that could be sniffed at runtime.
+    """
+    return os.environ.get(REFERENCE_PLATFORM_ENV) == "1"
 
 
 requires_reference_platform = pytest.mark.skipif(
     not is_reference_platform(),
     reason=(
-        f"committed figure caches are {REFERENCE_PLATFORM} artifacts; chaotic "
-        "sections cannot reproduce them elementwise on another architecture"
+        f"committed figure caches reproduce only where {REFERENCE_PLATFORM_ENV}=1; chaotic "
+        "sections cannot reproduce them elementwise on any other machine"
     ),
 )
 
@@ -44,8 +59,8 @@ def assert_npz_structurally_sound(
 ):
     """Assert what stays true off the reference platform: same contract, sane values.
 
-    Elementwise agreement is unattainable on another architecture (see
-    REFERENCE_PLATFORM), but three things are still genuine contracts and are
+    Elementwise agreement is unattainable off the reference machine (see
+    REFERENCE_PLATFORM_ENV), but three things are still genuine contracts and are
     checked here. Two others look like contracts and are not:
 
     ``shape`` is only partly a contract. Trailing axes are structural -- a
