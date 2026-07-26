@@ -80,7 +80,6 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
         "backend",
         "wall_time_s_p50",
         "peak_rss_bytes",
-        "parity_vs_other_backend",
     }
     measured_gp = [row for row in gp_rows if not row.get("skipped")]
     assert measured_gp
@@ -89,9 +88,24 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
         assert row["backend"] in {"rust", "python"}
         assert row["wall_time_s_p50"] >= 0.0
         assert row["peak_rss_bytes"] > 0
-        parity = row["parity_vs_other_backend"]
-        assert parity["max_abs_delta_logC"] <= 1e-12
-        assert parity["max_abs_delta_slope"] <= 1e-12
+
+    # Cross-backend parity is only defined when both backends actually ran.
+    # Under DYNACHAOS_NO_RUST=1 there is no second backend to compare against,
+    # so the benchmark emits no parity block — absence is correct there, and
+    # asserting it unconditionally is what made the pure-Python CI job fail.
+    backends_run = {row["backend"] for row in measured_gp}
+    if backends_run == {"rust", "python"}:
+        for row in measured_gp:
+            assert "parity_vs_other_backend" in row, (
+                f"both backends ran, so row N={row['N']} must carry parity"
+            )
+            parity = row["parity_vs_other_backend"]
+            assert parity["max_abs_delta_logC"] <= 1e-12
+            assert parity["max_abs_delta_slope"] <= 1e-12
+    else:
+        assert not any("parity_vs_other_backend" in row for row in measured_gp), (
+            f"only {backends_run} ran, so no row should claim cross-backend parity"
+        )
 
     rqa_rows = data["rqa"]
     assert rqa_rows

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from conftest import is_reference_platform
 
 from dynachaos.io.paths import safe_load
 from dynachaos.pipelines.registry import get_section
@@ -28,6 +29,15 @@ HEAVY_REPRODUCIBILITY_SECTIONS = (
 
 
 def _assert_npz_matches(generated_path: Path, committed_path: Path):
+    """Compare a regenerated cache against the committed one.
+
+    Elementwise equality is asserted only on the architecture that produced the
+    caches. These sections integrate chaotic maps, so on another architecture a
+    last-bit difference is amplified into an O(1) one and elementwise agreement
+    is unattainable by construction (see conftest.REFERENCE_PLATFORM). There the
+    contract itself is still checked: same keys, shapes, dtypes, finite values.
+    """
+    exact = is_reference_platform()
     with safe_load(generated_path) as generated, safe_load(committed_path) as committed:
         assert set(generated.files) == set(committed.files)
         for key in generated.files:
@@ -36,8 +46,11 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
             assert actual.shape == expected.shape, key
             assert actual.dtype == expected.dtype, key
             if np.issubdtype(actual.dtype, np.floating):
-                np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
-            else:
+                if exact:
+                    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+                else:
+                    assert np.all(np.isfinite(actual)), key
+            elif exact:
                 np.testing.assert_array_equal(actual, expected)
 
 

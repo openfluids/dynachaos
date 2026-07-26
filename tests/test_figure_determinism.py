@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+from conftest import is_reference_platform
 
 from dynachaos.io.paths import safe_load
 from dynachaos.pipelines.registry import get_section
@@ -25,12 +26,32 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
                 np.testing.assert_array_equal(actual, expected)
 
 
+def _assert_npz_structurally_sound(generated_path: Path, committed_path: Path):
+    """Check what remains true off the reference platform: same contract, finite values."""
+    with safe_load(generated_path) as generated, safe_load(committed_path) as committed:
+        assert set(generated.files) == set(committed.files)
+        for key in generated.files:
+            actual = generated[key]
+            expected = committed[key]
+            assert actual.shape == expected.shape, key
+            assert actual.dtype == expected.dtype, key
+            if np.issubdtype(actual.dtype, np.floating):
+                assert np.all(np.isfinite(actual)), key
+
+
 def test_representative_figure_caches_recompute_deterministically(tmp_path):
+    """Recompute chaotic sections and compare against the committed caches.
+
+    Elementwise equality only holds on the architecture that produced the
+    caches (see conftest.REFERENCE_PLATFORM). Everywhere else the pipeline is
+    still run and its output contract still verified.
+    """
+    check = _assert_npz_matches if is_reference_platform() else _assert_npz_structurally_sound
     for section_id in DETERMINISM_SECTIONS:
         run_section(section_id, output_root=tmp_path, profile="paper", recompute=True)
         spec = get_section(section_id)
         for cache_file in spec.cache_files:
-            _assert_npz_matches(
+            check(
                 tmp_path / section_id / cache_file,
                 COMMITTED_FIGURES / section_id / cache_file,
             )

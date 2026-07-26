@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -285,9 +286,14 @@ def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
     if not hasattr(_os, "wait4"):
         pytest.skip("os.wait4 not available on this platform")
 
-    # Fake rusage: 262144 KiB = 256 MiB on Linux
+    # ru_maxrss units are platform-dependent: bytes on macOS, KiB on Linux.
+    # Build the fake value in the units the running platform actually reports,
+    # so this asserts the conversion rather than the developer's platform.
+    _MIB = 1024 * 1024
+    _RSS_RAW_256_MIB = 256 * _MIB if sys.platform == "darwin" else 256 * 1024
+
     class FakeRusage:
-        ru_maxrss = 262144  # KiB (Linux units)
+        ru_maxrss = _RSS_RAW_256_MIB
 
     class FakePopen:
         pid = 9999
@@ -306,7 +312,6 @@ def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
 
     rss = _runner._run_module("dummy.module", tmp_path, "paper")
 
-    # Linux: 262144 KiB / 1024 = 256.0 MB
     assert rss == pytest.approx(256.0, abs=0.01)
 
 
@@ -315,7 +320,12 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     """Ledger peak_rss_mb reflects child allocation, not orchestrator RSS (T1 integration).
 
     A real subprocess that allocates 100 MB is spawned via a monkeypatched _run_module;
-    the ledgered value must be clearly non-zero and above 50 MB (numpy + 100 MB array).
+    the ledgered value must clearly exceed what the allocation-free orchestrator
+    would report.
+
+    The child writes to every page. ``np.zeros`` is backed by ``calloc``, which
+    returns lazily-mapped pages that are never resident until touched, so a
+    zeros-only child does not reliably raise peak RSS on any platform.
     """
     import os as _os
 
@@ -361,7 +371,13 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
         import sys as _sys
 
         proc = _sp.Popen(
-            [_sys.executable, "-c", "import numpy as np; x = np.zeros(100 * 1024 * 1024 // 8)"],
+            [
+                _sys.executable,
+                "-c",
+                # ones() writes every element, faulting the pages in; zeros()
+                # would be lazily mapped and never become resident.
+                "import numpy as np; x = np.ones(100 * 1024 * 1024 // 8); x[::4096] += 1",
+            ],
         )
         pid, status, rusage = _os.wait4(proc.pid, 0)
         divisor = 1024 * 1024 if _sys.platform == "darwin" else 1024
@@ -379,9 +395,11 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     child_rss = events[0]["peak_rss_mb"]
 
     # Child allocates ~100 MB on top of Python/numpy baseline — must exceed 30 MB
-    # (conservative: kernel may lazily page np.zeros, but RSS should still exceed 30 MB)
-    assert child_rss >= 30.0, (
-        f"Expected child RSS >= 30 MB (numpy + 100 MB alloc), got {child_rss:.1f} MB"
+    # The child faults in a full 100 MB array, so its peak RSS must clear that
+    # allocation by a wide margin on every platform. A value below this means the
+    # orchestrator's RSS was recorded instead of the child's.
+    assert child_rss >= 50.0, (
+        f"Expected child RSS >= 50 MB (numpy + 100 MB touched alloc), got {child_rss:.1f} MB"
     )
     # Verify it is larger than if we had mistakenly read the orchestrator (which would have
     # recorded ~0 overhead from the no-op orchestrator side)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import logistic_series
+from conftest import assert_threshold_well_separated, logistic_series
 
 try:
     import dynachaos._rust  # noqa: F401
@@ -37,11 +37,30 @@ class TestRecurrenceParity:
     """Verify Rust and Python _diagonal_lines / _vertical_lines agree."""
 
     def _recurrence_matrix(self):
+        """Build a recurrence matrix that is identical on every platform.
+
+        This trajectory is a uniformly sampled circle, so it is highly
+        degenerate: 79800 pairs take only 399 distinct distances, and 272 of
+        them land within 1e-9 of the threshold. That tie-cluster straddles
+        ``eps``, and last-bit differences between x86_64/OpenBLAS and
+        arm64/Accelerate split it differently on each machine. Thresholding the
+        raw distances therefore gave R.sum() 13316 on Linux against 13318 on
+        macOS, moving 6 of 77 diagonal line lengths and failing pinned goldens.
+
+        Quantising onto a 1e-9 grid before comparing makes the whole tie-cluster
+        move as a unit, so R is bit-identical everywhere (verified: R sha256
+        matches on Linux x86_64 and macOS arm64) and the goldens mean the same
+        thing on every machine.
+        """
+        from scipy.spatial.distance import pdist, squareform
+
         t = np.linspace(0.0, 40.0, 400)
         traj = np.column_stack([np.sin(t), np.cos(t)])
-        from dynachaos.diagnostics.recurrence import recurrence_matrix
 
-        R, _ = recurrence_matrix(traj, percentile=8)
+        d = np.round(pdist(traj, metric="euclidean"), 9)
+        eps = round(float(np.percentile(d, 8)), 9)
+        R = squareform(d) <= eps
+        np.fill_diagonal(R, True)
         return R
 
     def test_diagonal_lines_parity(self):
@@ -66,6 +85,9 @@ class TestRecurrenceParity:
 
             rs_result = np.asarray(sorted(rust_diag(R, l_min=2)), dtype=np.int64)
             np.testing.assert_array_equal(rs_result, _golden("diag_lines"))
+            # The parity contract itself: both backends, same input, same answer.
+            # Holds on every platform regardless of how R was built.
+            np.testing.assert_array_equal(rs_result, np.asarray(sorted(py_result), dtype=np.int64))
 
     def test_vertical_lines_parity(self):
         R = self._recurrence_matrix()
@@ -88,6 +110,7 @@ class TestRecurrenceParity:
 
             rs_result = np.asarray(sorted(rust_vert(R, v_min=2)), dtype=np.int64)
             np.testing.assert_array_equal(rs_result, _golden("vert_lines"))
+            np.testing.assert_array_equal(rs_result, np.asarray(sorted(py_result), dtype=np.int64))
 
     @pytest.mark.parametrize(
         ("mask", "min_length"),
@@ -130,10 +153,19 @@ class TestRecurrenceParity:
             rust_line_lengths(np.array([True, False], dtype=np.bool_), 0)
 
     def test_streaming_rqa_uses_line_scanner_transparently(self):
+        from scipy.spatial.distance import pdist
+
         from dynachaos.diagnostics import recurrence as rec_mod
 
         t = np.linspace(0.0, 18.0, 120)
         traj = np.column_stack([np.sin(t), np.cos(1.4 * t)])
+
+        # This Lissajous curve is non-degenerate: all 7140 pairwise distances are
+        # distinct and the nearest sits ~6e-5 from the threshold, eleven orders of
+        # magnitude above double-precision noise. That separation is what makes
+        # the pinned values below portable, so assert it rather than assume it.
+        distances = pdist(traj, metric="chebyshev")
+        assert_threshold_well_separated(distances, float(np.percentile(distances, 7)))
 
         old_flag = rec_mod._RUST_AVAILABLE
         try:
@@ -174,6 +206,11 @@ class TestRecurrenceParity:
                 atol=0.0,
                 rtol=0.0,
             )
+            # The transparency claim in this test's name: swapping the line
+            # scanner must not change a single bit of the result.
+            assert [rust_stats[k] for k in sorted(rust_stats)] == [
+                python_stats[k] for k in sorted(python_stats)
+            ]
 
     @rust_extension
     @pytest.mark.parametrize(

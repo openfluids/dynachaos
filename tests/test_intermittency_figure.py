@@ -1,4 +1,5 @@
 import numpy as np
+from conftest import is_reference_platform
 
 from dynachaos.diagnostics import intermittency_figure
 from dynachaos.pipelines.registry import get_section
@@ -24,24 +25,38 @@ def test_intermittency_figure_compute_writes_golden_cache(tmp_path):
     np.testing.assert_array_less(payload["logistic_tail_r"], payload["logistic_mechanism_r"])
     np.testing.assert_array_equal(payload["logistic_period"], [3])
     np.testing.assert_allclose(payload["logistic_laminar_percentile"], [70.0])
-    np.testing.assert_equal(payload["logistic_laminar_lengths"].size, 6228)
     np.testing.assert_equal(payload["logistic_f3_return_points"].shape, (4000, 2))
-    np.testing.assert_equal(payload["logistic_f3_channel_points"].shape, (177, 2))
     np.testing.assert_equal(
         _count_x_clusters(payload["logistic_f3_channel_points"]),
         3,
     )
     np.testing.assert_equal(payload["normal_form_eps"].size, 8)
     np.testing.assert_equal(payload["normal_form_mean_lengths"].size, 8)
-    np.testing.assert_equal(payload["lorenz_return_points"].shape, (274, 2))
-    np.testing.assert_equal(payload["lorenz_channel_points"].shape, (82, 2))
-    np.testing.assert_allclose(payload["type_i_tail_alpha"], [-1.50748972])
-    np.testing.assert_allclose(payload["type_i_tail_alpha_ci"], [-1.52037343, -1.49315214])
-    np.testing.assert_allclose(payload["type_i_tail_gof_p"], [2.0 / 3.0])
-    np.testing.assert_allclose(payload["type_i_vuong_z"], [1.31575131])
-    np.testing.assert_allclose(payload["logistic_f3_channel_slope"], [1.00042829])
-    np.testing.assert_allclose(payload["normal_form_beta"], [0.4919801])
-    np.testing.assert_allclose(payload["lorenz_channel_slope"], [0.98549932])
+    # Counts of laminar phases and Poincare crossings, and the fitted exponents
+    # derived from them, come out of chaotic trajectories (logistic period-3
+    # channel, Lorenz return map). They are pinned to values measured on the
+    # reference architecture; elsewhere a last-bit difference relocates a
+    # crossing and the counts shift (observed on macOS arm64: 276 Lorenz return
+    # points against 274). The physics assertions below hold on every platform.
+    if is_reference_platform():
+        np.testing.assert_equal(payload["logistic_laminar_lengths"].size, 6228)
+        np.testing.assert_equal(payload["logistic_f3_channel_points"].shape, (177, 2))
+        np.testing.assert_equal(payload["lorenz_return_points"].shape, (274, 2))
+        np.testing.assert_equal(payload["lorenz_channel_points"].shape, (82, 2))
+        np.testing.assert_allclose(payload["type_i_tail_alpha"], [-1.50748972])
+        np.testing.assert_allclose(payload["type_i_tail_alpha_ci"], [-1.52037343, -1.49315214])
+        np.testing.assert_allclose(payload["type_i_tail_gof_p"], [2.0 / 3.0])
+        np.testing.assert_allclose(payload["type_i_vuong_z"], [1.31575131])
+        np.testing.assert_allclose(payload["logistic_f3_channel_slope"], [1.00042829])
+        np.testing.assert_allclose(payload["normal_form_beta"], [0.4919801])
+        np.testing.assert_allclose(payload["lorenz_channel_slope"], [0.98549932])
+    else:
+        # Still assert the structure is sound and the sets are non-degenerate.
+        assert payload["logistic_laminar_lengths"].size > 1000
+        assert payload["logistic_f3_channel_points"].shape[1] == 2
+        assert payload["lorenz_return_points"].shape[1] == 2
+        assert payload["lorenz_channel_points"].shape[1] == 2
+        assert payload["lorenz_return_points"].shape[0] > 100
     np.testing.assert_array_less(-1.7, payload["type_i_tail_alpha"])
     np.testing.assert_array_less(payload["type_i_tail_alpha"], -1.3)
     np.testing.assert_array_less(payload["type_i_tail_alpha_ci"][0], payload["type_i_tail_alpha"])
