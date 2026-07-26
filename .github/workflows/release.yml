@@ -45,7 +45,13 @@ jobs:
             target: aarch64
           - os: macos-latest
             target: aarch64
-          - os: macos-13
+          # x86_64 macOS is cross-compiled from the arm64 runner rather than
+          # built on macos-13. GitHub retired the Intel macOS images, and a
+          # macos-13 job sat unassigned for 44 minutes with started_at still
+          # null, blocking the whole release: the publish job needs every
+          # wheel. Apple ships a universal SDK, so rustup can target
+          # x86_64-apple-darwin from an arm64 host.
+          - os: macos-latest
             target: x86_64
           - os: windows-latest
             target: x64
