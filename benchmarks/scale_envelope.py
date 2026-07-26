@@ -14,13 +14,17 @@ from __future__ import annotations
 import json
 import os
 import platform
-import resource
 import subprocess
 import sys
 import time
 from pathlib import Path
 from statistics import median
 from typing import Any
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows has no resource module
+    resource = None
 
 import numpy as np
 
@@ -80,6 +84,11 @@ def _vmhwm_bytes() -> int:
         for line in status.read_text(encoding="utf-8").splitlines():
             if line.startswith("VmHWM:"):
                 return int(line.split()[1]) * 1024
+    if resource is None:
+        # Windows has no resource module and no /proc, so peak RSS is simply
+        # unavailable. Report 0 rather than failing at import time, which took
+        # the whole scale-envelope test module down on Windows CI.
+        return 0
     # Linux ru_maxrss is KiB; macOS is bytes.  This repo is developed on Linux,
     # but keep the fallback sensible.
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

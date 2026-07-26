@@ -33,6 +33,10 @@ jobs:
       # (native SIMD is correct for local dev but wrong for distribution)
       RUSTFLAGS: ""
     strategy:
+      # Report every wheel target, not just the first to fail. The default
+      # cancelled four of five targets the moment Windows failed, hiding
+      # whether the others would have built.
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -50,7 +54,10 @@ jobs:
       - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --no-sdist
+          # No --no-sdist: maturin dropped that flag, and `maturin build` no
+          # longer produces an sdist anyway. Passing it aborted every wheel
+          # target with "unexpected argument" before any compilation started.
+          args: --release --out dist
           manylinux: auto
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

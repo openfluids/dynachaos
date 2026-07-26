@@ -23,6 +23,12 @@ def _load_script_module():
     return module
 
 
+# Peak RSS is unavailable on Windows: there is no resource module and no
+# /proc, so the benchmark reports 0 rather than failing. Requiring a positive
+# value there asserts the availability of a facility the platform lacks.
+PEAK_RSS_AVAILABLE = sys.platform != "win32"
+
+
 def test_strip_jsonc_preserves_comment_markers_inside_strings():
     module = _load_script_module()
     text = r"""
@@ -87,7 +93,7 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
         assert required_gp <= row.keys()
         assert row["backend"] in {"rust", "python"}
         assert row["wall_time_s_p50"] >= 0.0
-        assert row["peak_rss_bytes"] > 0
+        assert row["peak_rss_bytes"] > 0 if PEAK_RSS_AVAILABLE else row["peak_rss_bytes"] >= 0
 
     # Cross-backend parity is only defined when both backends actually ran.
     # Under DYNACHAOS_NO_RUST=1 there is no second backend to compare against,
@@ -132,7 +138,7 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
             == 3 * row["predicted_dense_distance_bytes"]
         )
         assert row["wall_time_s_p50"] >= 0.0
-        assert row["peak_rss_bytes"] > 0
+        assert row["peak_rss_bytes"] > 0 if PEAK_RSS_AVAILABLE else row["peak_rss_bytes"] >= 0
         for key in ["RR", "DET", "LAM", "L", "TT", "ENTR", "Lmax"]:
             assert key in row["rqa"]
 
