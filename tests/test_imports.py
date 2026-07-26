@@ -65,9 +65,10 @@ def test_no_rust_env_returns_false_without_importing():
     def failing_importer(name):
         raise AssertionError(f"unexpected import: {name}")
 
-    assert _ensure_rust_backend(
-        env={"DYNACHAOS_NO_RUST": "1"}, import_module=failing_importer
-    ) is False
+    assert (
+        _ensure_rust_backend(env={"DYNACHAOS_NO_RUST": "1"}, import_module=failing_importer)
+        is False
+    )
 
 
 def test_rust_backend_available():

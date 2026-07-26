@@ -186,7 +186,9 @@ def compute_map_IV_lyapunov(
         spectra[i] = lyapunov_spectrum(f, jac, x0, n_iter=n_iter, n_transient=n_transient)
         if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
-            _io_write_payload(output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]}, base_dir=FIG_DIR)
+            _io_write_payload(
+                output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1]}, base_dir=FIG_DIR
+            )
 
     return _io_write_payload(output_path, {"D": D_values, "spectra": spectra}, base_dir=FIG_DIR)
 

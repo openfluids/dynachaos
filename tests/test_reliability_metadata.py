@@ -9,7 +9,6 @@ from dynachaos.diagnostics import recurrence as rec_mod
 from dynachaos.diagnostics.correlation import correlation_dimension
 from dynachaos.diagnostics.recurrence import rqa_from_trajectory
 
-
 REQUIRED_FIELDS = {
     "method_name",
     "backend",

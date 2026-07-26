@@ -105,7 +105,9 @@ pub fn on_off_oracle<'py>(
     let mut out = Vec::with_capacity(driver_slice.len());
     for &eta in driver_slice {
         if !eta.is_finite() {
-            return Err(PyValueError::new_err("driver must contain only finite values"));
+            return Err(PyValueError::new_err(
+                "driver must contain only finite values",
+            ));
         }
         let multiplier = (transverse_lyapunov + noise_scale * eta).exp();
         x = multiplier * x / (1.0 + x * x);

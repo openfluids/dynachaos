@@ -27,7 +27,8 @@ USAGE:   python src/dynachaos/maps/delayed_logistic.py
 
 import numpy as np
 
-from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir, write_payload as _io_write_payload
+from dynachaos.io.paths import load_or_compute_payload, safe_load, section_dir
+from dynachaos.io.paths import write_payload as _io_write_payload
 from dynachaos.maps._iter import run_animation_sweep, trajectory_after_transient
 
 FIG_DIR = section_dir("sec05_oscillation")
@@ -181,10 +182,20 @@ def compute_lyapunov_spectrum(
         if output_path is not None and progress_interval and (i + 1) % progress_interval == 0:
             print(f"  Lyapunov: {i + 1}/{n_params}")
             _io_write_payload(
-                output_path, {"D": D_values[: i + 1], "spectra": spectra[: i + 1], "spectra_err": spectra_err[: i + 1]}, base_dir=FIG_DIR
+                output_path,
+                {
+                    "D": D_values[: i + 1],
+                    "spectra": spectra[: i + 1],
+                    "spectra_err": spectra_err[: i + 1],
+                },
+                base_dir=FIG_DIR,
             )
 
-    return _io_write_payload(output_path, {"D": D_values, "spectra": spectra, "spectra_err": spectra_err}, base_dir=FIG_DIR)
+    return _io_write_payload(
+        output_path,
+        {"D": D_values, "spectra": spectra, "spectra_err": spectra_err},
+        base_dir=FIG_DIR,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +289,14 @@ def plot_lyapunov(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, spectra[:, 0], color=lyap_color(0), linestyle="-", lw=0.8, label=r"$\lambda_1$")
-    ax.fill_between(D, spectra[:, 0] - spectra_err[:, 0], spectra[:, 0] + spectra_err[:, 0], alpha=0.15, color=lyap_color(0), linewidth=0)
+    ax.fill_between(
+        D,
+        spectra[:, 0] - spectra_err[:, 0],
+        spectra[:, 0] + spectra_err[:, 0],
+        alpha=0.15,
+        color=lyap_color(0),
+        linewidth=0,
+    )
     ax.plot(D, spectra[:, 1], color=lyap_color(1), linestyle="-", lw=0.8, label=r"$\lambda_2$")
     reference_line(ax, 0, axis="y", lw=0.7)
     ax.set_xlabel(r"$D$")

@@ -1,7 +1,47 @@
 # Changelog
 
-Versions before 0.3.0 were private and unpublished; their entries were
-reconstructed from git history.
+Versions before 0.4.0 were private and unpublished; their entries were
+reconstructed from git history. 0.4.0 is the first public release.
+
+## 0.4.0 — 2026-07-26
+
+First public release, under the openfluids organization and on PyPI.
+
+### Project
+
+- Moved to `github.com/openfluids/dynachaos` and published to PyPI as
+  `dynachaos`. Install with `pip install dynachaos`.
+- Removed material specific to a separate, unpublished manuscript that used
+  this package. Citations to Kunihiko Kaneko's published papers throughout
+  `src/` are unchanged — they are scientific attribution.
+- `CITATION.cff` now cites the software itself rather than an unpublished
+  manuscript.
+- Reframed the `figures/` tree as a reproduction gallery: section-indexed
+  reproductions of Kaneko's published work that double as golden test data.
+- Removed changelog commit links that pointed at a repository and commit
+  hashes that no longer exist.
+
+### Dependencies
+
+- Rust edition 2021 → 2024; pyo3 0.28 → 0.29, numpy 0.28 → 0.29,
+  rayon 1.10 → 1.12, ndarray → 0.17.2.
+- Development tooling moved to current releases (maturin, ruff, pytest).
+- Runtime floors for numpy and scipy are unchanged; they are minimums, not
+  targets, and raising them would force needless upgrades on users.
+
+### Fixed
+
+- `TestVersion` asserted a hardcoded `"0.2.0"` while the package reported
+  `0.3.0`, so the suite was red from the 0.3.0 release prep onward. It now
+  compares `__version__` against the installed package metadata, which is the
+  drift this test existed to catch and which no longer breaks on a bump.
+
+### Packaging
+
+- Renamed the release workflow to `release.yml`, matching the PyPI trusted
+  publisher and the other openfluids packages.
+- Excluded `figures/`, `tests/`, and benchmark results from the sdist; the
+  tracked figure data would otherwise have pushed it past PyPI's size limit.
 
 ## 0.3.0 — 2026-06-11
 
@@ -38,7 +78,7 @@ reconstructed from git history.
   (`docs/rust-acceleration-roadmap.md`) and the subprocess-isolated hotspot
   profiler `benchmarks/rust_hotspot_profile.py` with checked-in artifacts;
   streaming RQA is ranked as the next port candidate with a recorded parity
-  test plan ([66ee0e8](https://github.com/ricardofrantz/dynachaos/commit/66ee0e8)).
+  test plan.
 
 ### Scalable analysis workflow
 
@@ -46,119 +86,82 @@ reconstructed from git history.
   `.npy`/`.npz` or generated signals writing a stable output directory
   (`results.json`, `metadata.json` with scale/cost and reliability metadata,
   `summary.md`), with explicit failure modes and a dense-RQA scale-envelope
-  guard ([2c9d6b6](https://github.com/ricardofrantz/dynachaos/commit/2c9d6b6)).
+  guard.
 
 ### Long-signal RQA scaling
 
 - Added `rqa_streaming_from_trajectory`: exact matrix-free RQA (RR, DET, LAM,
   L, TT, ENTR, Lmax and ENTR bins) with Theiler-window support and a recorded
-  interface decision plus RSS evidence in `docs/rqa-scaling-design.md` ([d625980](https://github.com/ricardofrantz/dynachaos/commit/d625980)).
+  interface decision plus RSS evidence in `docs/rqa-scaling-design.md`.
 
 ### Private release posture and documentation
 
 - Renamed the default branch to `main` and hardened project checks around that
-  branch convention ([e71ed4e](https://github.com/ricardofrantz/dynachaos/commit/e71ed4e)).
+  branch convention.
 - Sharpened the internal maintenance workflow, including private-only pushes
-  and per-change review/commit discipline
-  ([c8da3a0](https://github.com/ricardofrantz/dynachaos/commit/c8da3a0),
-  [cdda594](https://github.com/ricardofrantz/dynachaos/commit/cdda594)).
+  and per-change review/commit discipline.
 - Clarified that the repository, package publication, benchmark numbers, and
   citation metadata remain private/provisional until a future public release
-  phase ([5ec636a](https://github.com/ricardofrantz/dynachaos/commit/5ec636a)).
+  phase.
 - Refreshed README backend notes so they match the exported Rust surface and
-  documented the verified manuscript build sequence
-  ([0c0ae1c](https://github.com/ricardofrantz/dynachaos/commit/0c0ae1c)).
+  documented the verified manuscript build sequence.
 
 ### Diagnostics correctness and numerical edge cases
 
 - Added validation for correlation norms, radius grids, Theiler windows, and
-  undefined correlation-dimension cases ([15c76fd](https://github.com/ricardofrantz/dynachaos/commit/15c76fd)).
+  undefined correlation-dimension cases.
 - Hardened time-delay embedding parameter validation with deterministic
-  fuzz-style tests ([7ce6f50](https://github.com/ricardofrantz/dynachaos/commit/7ce6f50)).
-- Fixed degenerate recurrence auto-thresholding for constant signals
-  ([0ff1cb3](https://github.com/ricardofrantz/dynachaos/commit/0ff1cb3)).
+  fuzz-style tests.
+- Fixed degenerate recurrence auto-thresholding for constant signals.
 - Rejected non-finite entropy and recurrence diagnostic inputs, invalid
   recurrence thresholds, invalid 0-1 test parameters, and zero-MSD 0-1 test
-  regressions found during a systematic bug hunt
-  ([4ff83ad](https://github.com/ricardofrantz/dynachaos/commit/4ff83ad),
-  [b473141](https://github.com/ricardofrantz/dynachaos/commit/b473141),
-  [8dc0541](https://github.com/ricardofrantz/dynachaos/commit/8dc0541),
-  [93c02e2](https://github.com/ricardofrantz/dynachaos/commit/93c02e2)).
+  regressions found during a systematic bug hunt.
 - Added entropy and recurrence metamorphic tests for translation and scaling
-  invariants ([9c8f596](https://github.com/ricardofrantz/dynachaos/commit/9c8f596)).
+  invariants.
 - Tightened RQA recurrence-matrix and line-threshold validation across Python
-  and direct Rust entry points
-  ([66f4d6e](https://github.com/ricardofrantz/dynachaos/commit/66f4d6e),
-  [d1340b1](https://github.com/ricardofrantz/dynachaos/commit/d1340b1)).
+  and direct Rust entry points.
 - Added metamorphic tests for correlation-integral radius monotonicity and
-  Theiler-window valid-pair counts ([c1c316a](https://github.com/ricardofrantz/dynachaos/commit/c1c316a)).
+  Theiler-window valid-pair counts.
 
 ### Rust backend hardening
 
 - Fixed CI and parity-test behavior for pure-Python runs without the Rust
-  extension ([0f58bba](https://github.com/ricardofrantz/dynachaos/commit/0f58bba)).
+  extension.
 - Added direct validation for ordinal-pattern Rust inputs and matching Python
-  wrapper validation ([d511c11](https://github.com/ricardofrantz/dynachaos/commit/d511c11)).
-- Recorded that the in-tree Rust extension contains no `unsafe` sites
-  ([e0d1fc4](https://github.com/ricardofrantz/dynachaos/commit/e0d1fc4),
-  [0f58ef2](https://github.com/ricardofrantz/dynachaos/commit/0f58ef2)).
-- Avoided debug-build overflow in direct Rust calls with huge Theiler windows
-  ([4735647](https://github.com/ricardofrantz/dynachaos/commit/4735647)).
-- Validated Rust AMI inputs directly and recorded a Rust undefined-behavior audit
-  ([dd8ee6c](https://github.com/ricardofrantz/dynachaos/commit/dd8ee6c),
-  [66f4d6e](https://github.com/ricardofrantz/dynachaos/commit/66f4d6e)).
+  wrapper validation.
+- Recorded that the in-tree Rust extension contains no `unsafe` sites.
+- Avoided debug-build overflow in direct Rust calls with huge Theiler windows.
+- Validated Rust AMI inputs directly and recorded a Rust undefined-behavior audit.
 
 ### Pipeline architecture and performance evidence
 
 - Added a reusable NPZ cache contract with required-key validation for figure
-  pipeline caches ([d605795](https://github.com/ricardofrantz/dynachaos/commit/d605795)).
-- Adopted the cache contract in the circle-map figure pipeline
-  ([eff0b34](https://github.com/ricardofrantz/dynachaos/commit/eff0b34)).
+  pipeline caches.
+- Adopted the cache contract in the circle-map figure pipeline.
 - Added architecture, simplification, complexity, profiling, and optimization
   decision artifacts so future maintainers can distinguish measured work from
-  deferred ideas ([acbaa38](https://github.com/ricardofrantz/dynachaos/commit/acbaa38),
-  [d0b4d4e](https://github.com/ricardofrantz/dynachaos/commit/d0b4d4e),
-  [e7ef0ec](https://github.com/ricardofrantz/dynachaos/commit/e7ef0ec),
-  [9ab2bb4](https://github.com/ricardofrantz/dynachaos/commit/9ab2bb4),
-  [bc997b5](https://github.com/ricardofrantz/dynachaos/commit/bc997b5)).
+  deferred ideas.
 - Captured further architecture, simplification, complexity, profiling, and
   optimization artifacts, including an RQA count-reuse optimization measured at
-  roughly 1.3--1.5x faster in the profiled range
-  ([2b56ac5](https://github.com/ricardofrantz/dynachaos/commit/2b56ac5),
-  [60dd71f](https://github.com/ricardofrantz/dynachaos/commit/60dd71f),
-  [ee0f98c](https://github.com/ricardofrantz/dynachaos/commit/ee0f98c),
-  [4c7a153](https://github.com/ricardofrantz/dynachaos/commit/4c7a153),
-  [8295d26](https://github.com/ricardofrantz/dynachaos/commit/8295d26)).
-- Added a `dynachaos --version` CLI path for installed-package introspection
-  ([049782e](https://github.com/ricardofrantz/dynachaos/commit/049782e)).
+  roughly 1.3--1.5x faster in the profiled range.
+- Added a `dynachaos --version` CLI path for installed-package introspection.
 
 ### Paper and README maintenance
 
 - Relaxed optional dependencies in the vendored journal class so local builds can
-  progress farther on smaller TeX installations ([3072d1c](https://github.com/ricardofrantz/dynachaos/commit/3072d1c)).
+  progress farther on smaller TeX installations.
 - Removed optional `enumitem`/TikZ manuscript dependencies and regenerated the
-  tracked paper PDF after a clean pdflatex/BibTeX build
-  ([69ee577](https://github.com/ricardofrantz/dynachaos/commit/69ee577)).
+  tracked paper PDF after a clean pdflatex/BibTeX build.
 - Added Python, Rust unsafe, and LaTeX review artifacts for Loop 1 of the
-  improvement campaign ([e5164df](https://github.com/ricardofrantz/dynachaos/commit/e5164df),
-  [e0d1fc4](https://github.com/ricardofrantz/dynachaos/commit/e0d1fc4),
-  [3072d1c](https://github.com/ricardofrantz/dynachaos/commit/3072d1c)).
+  improvement campaign.
 
 ### Earlier project build-out
 
 - Created the initial dynachaos codebase, maps, diagnostics, visual assets,
-  paper materials, and CI/release workflow scaffolding
-  ([f8c3acf](https://github.com/ricardofrantz/dynachaos/commit/f8c3acf),
-  [58da059](https://github.com/ricardofrantz/dynachaos/commit/58da059)).
+  paper materials, and CI/release workflow scaffolding.
 - Added paper figure polish, manuscript synchronization, entropy-family
   diagnostics, JSONC example configs, Rust solver timing work, and benchmark
-  corrections across the pre-goal history
-  ([7fbddbd](https://github.com/ricardofrantz/dynachaos/commit/7fbddbd),
-  [6073de8](https://github.com/ricardofrantz/dynachaos/commit/6073de8),
-  [7b87562](https://github.com/ricardofrantz/dynachaos/commit/7b87562),
-  [3d64ab5](https://github.com/ricardofrantz/dynachaos/commit/3d64ab5),
-  [8e99790](https://github.com/ricardofrantz/dynachaos/commit/8e99790),
-  [1d138e3](https://github.com/ricardofrantz/dynachaos/commit/1d138e3)).
+  corrections across the pre-goal history.
 
 ## Evidence Sources
 

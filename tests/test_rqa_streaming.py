@@ -32,7 +32,9 @@ def _dense_diag_bins(R, l_min):
     return np.unique(np.asarray(lengths, dtype=int), return_counts=True)
 
 
-def _assert_streaming_matches_dense(X, *, eps=None, percentile=5, metric="euclidean", l_min=2, v_min=2, theiler=0):
+def _assert_streaming_matches_dense(
+    X, *, eps=None, percentile=5, metric="euclidean", l_min=2, v_min=2, theiler=0
+):
     R, eps_used = recurrence_matrix(X, eps=eps, metric=metric, percentile=percentile)
     R = _mask_theiler(R, theiler)
     dense = rqa(R, l_min=l_min, v_min=v_min)
@@ -64,7 +66,14 @@ def _assert_streaming_matches_dense(X, *, eps=None, percentile=5, metric="euclid
         {"eps": 0.23, "metric": "euclidean", "l_min": 3, "v_min": 2, "theiler": 0},
         {"eps": 0.31, "metric": "cityblock", "l_min": 2, "v_min": 3, "theiler": 0},
         {"eps": 0.42, "metric": "chebyshev", "l_min": 2, "v_min": 2, "theiler": 1},
-        {"eps": None, "percentile": 40, "metric": "euclidean", "l_min": 2, "v_min": 2, "theiler": 0},
+        {
+            "eps": None,
+            "percentile": 40,
+            "metric": "euclidean",
+            "l_min": 2,
+            "v_min": 2,
+            "theiler": 0,
+        },
     ],
 )
 def test_rqa_streaming_exact_dense_parity(kwargs):

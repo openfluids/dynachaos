@@ -69,7 +69,9 @@ def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
     return log_sum / n_iter
 
 
-def lyapunov_spectrum(f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_interval=1, return_convergence=False):
+def lyapunov_spectrum(
+    f, jac, x0, n_iter=100_000, n_transient=10_000, reorth_interval=1, return_convergence=False
+):
     """Compute the full Lyapunov spectrum of an N-dimensional map.
 
     Uses QR decomposition (Benettin et al. 1980) to track all N Lyapunov

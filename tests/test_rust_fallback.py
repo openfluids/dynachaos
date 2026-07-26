@@ -1060,7 +1060,10 @@ class TestViz:
 
 
 class TestVersion:
-    def test_version_string(self):
+    def test_version_matches_package_metadata(self):
+        """__version__ must not drift from the version declared in pyproject.toml."""
+        from importlib.metadata import version
+
         import dynachaos
 
-        assert dynachaos.__version__ == "0.2.0"
+        assert dynachaos.__version__ == version("dynachaos")

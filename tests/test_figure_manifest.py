@@ -3,7 +3,6 @@ from pathlib import Path
 
 from dynachaos.pipelines.registry import SECTION_SPECS, list_sections
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIGURES_ROOT = REPO_ROOT / "figures"
 PAPER_TEX = REPO_ROOT / "paper" / "main.tex"
@@ -90,8 +89,9 @@ def test_manuscript_figure_references_match_registry_and_disk_when_present():
     registry_images_not_in_tex = registry_images - tex_refs
 
     assert not refs_missing_from_registry, (
-        "Manuscript figure refs missing from registry: "
-        f"{sorted(refs_missing_from_registry)}"
+        f"Manuscript figure refs missing from registry: {sorted(refs_missing_from_registry)}"
     )
-    assert not refs_missing_on_disk, f"Manuscript figure refs missing on disk: {refs_missing_on_disk}"
+    assert not refs_missing_on_disk, (
+        f"Manuscript figure refs missing on disk: {refs_missing_on_disk}"
+    )
     assert registry_images_not_in_tex == ORPHAN_IMAGE_ALLOWLIST

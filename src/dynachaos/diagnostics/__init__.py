@@ -6,7 +6,6 @@ from dynachaos.diagnostics.correlation import (
     fit_power_law_loglog,
     takens_theiler_dimension,
 )
-from dynachaos.diagnostics.gp_protocol import gp_dimension_robust
 from dynachaos.diagnostics.embedding import (
     average_mutual_information,
     cao_method,
@@ -21,6 +20,7 @@ from dynachaos.diagnostics.entropy import (
     multiscale_entropy,
     sample_entropy,
 )
+from dynachaos.diagnostics.gp_protocol import gp_dimension_robust
 from dynachaos.diagnostics.intermittency import (
     BurstAmplitudeDistribution,
     CandidateScalingLaw,
@@ -65,7 +65,6 @@ from dynachaos.diagnostics.lyapunov import (
 from dynachaos.diagnostics.multifractal import local_multifractality, multifractal_spectrum
 from dynachaos.diagnostics.permutation import complexity_entropy, permutation_entropy
 from dynachaos.diagnostics.poincare import poincare_section
-from dynachaos.diagnostics.reliability import ReliabilityRecord
 from dynachaos.diagnostics.recurrence import (
     LaminarLengthsResult,
     embed_time_delay,
@@ -74,6 +73,7 @@ from dynachaos.diagnostics.recurrence import (
     rqa,
     rqa_from_trajectory,
 )
+from dynachaos.diagnostics.reliability import ReliabilityRecord
 from dynachaos.diagnostics.rqa_streaming import rqa_streaming_from_trajectory
 from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic

@@ -104,9 +104,7 @@ def test_long_signal_streaming_recipe_smoke_stays_in_streaming_path(tmp_path):
     rqa_record = metadata["reliability"]["rqa_streaming"]
     assert rqa_record["method_name"] == "rqa_from_trajectory"
     assert rqa_record["data_length"] == 159
-    assert "without dense recurrence matrix" in rqa_record[
-        "sampling_downsampling_note"
-    ].lower()
+    assert "without dense recurrence matrix" in rqa_record["sampling_downsampling_note"].lower()
     assert "Results JSON: `results.json`" in summary
 
 

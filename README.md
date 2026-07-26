@@ -1,4 +1,4 @@
-![dynachaos banner](https://raw.githubusercontent.com/ricardofrantz/dynachaos/main/assets/readme-banner-v1.png)
+![dynachaos banner](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/readme-banner-v1.png)
 
 [![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
@@ -6,8 +6,7 @@
 
 **Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
-Status: this is a private research and development repository. Public release,
-package publication, and final paper citation details are still future work.
+Available on PyPI: `pip install dynachaos`
 
 > *"Chaos: When the present determines the future, but the approximate present*
 > *does not approximately determine the future."*
@@ -47,10 +46,10 @@ AMI histograms, Cao dimension selection, multifractal moments
 **Visualization** — bifurcation diagrams, cobweb plots, return maps,
 curated Swiss-inspired style themes
 
-## Private Development Setup
+## Development setup
 
-The setup and backend-check commands in this section are local contributor
-commands for a private checkout.
+The setup and backend-check commands in this section are for working on
+dynachaos itself. To *use* the package, see Quick Start above.
 
 ```bash
 git clone https://github.com/openfluids/dynachaos.git
@@ -292,7 +291,7 @@ If you use dynachaos in published work, please cite the software:
   author  = {Frantz, Ricardo},
   title   = {dynachaos: Dynamical-systems analysis for time signals with Rust-accelerated kernels},
   year    = {2026},
-  version = {0.3.0},
+  version = {0.4.0},
   url     = {https://github.com/openfluids/dynachaos},
   license = {Apache-2.0}
 }

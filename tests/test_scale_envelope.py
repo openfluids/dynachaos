@@ -4,7 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "benchmarks" / "scale_envelope.jsonc"
 SCRIPT = ROOT / "benchmarks" / "scale_envelope.py"
@@ -26,14 +25,14 @@ def _load_script_module():
 
 def test_strip_jsonc_preserves_comment_markers_inside_strings():
     module = _load_script_module()
-    text = r'''
+    text = r"""
     {
       "uri": "file://example/path", // line comment
       "pattern": "not /* a comment */ here",
       /* block comment */
       "escaped": "quote: \" // still string"
     }
-    '''
+    """
 
     data = json.loads(module._strip_jsonc(text))
 
@@ -114,7 +113,10 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
         ]:
             assert key in row
         assert row["predicted_dense_distance_bytes"] == 8 * row["N"] * row["N"]
-        assert row["predicted_peak_with_temporaries_bytes"] == 3 * row["predicted_dense_distance_bytes"]
+        assert (
+            row["predicted_peak_with_temporaries_bytes"]
+            == 3 * row["predicted_dense_distance_bytes"]
+        )
         assert row["wall_time_s_p50"] >= 0.0
         assert row["peak_rss_bytes"] > 0
         for key in ["RR", "DET", "LAM", "L", "TT", "ENTR", "Lmax"]:

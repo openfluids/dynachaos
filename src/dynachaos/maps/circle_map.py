@@ -193,7 +193,7 @@ def plot(data):
 
     # Mark the onset of 1/5 locking and compute chaos onset live from cached data.
     K_inf = 0.15671685
-    
+
     # Compute chaos onset: first K where lam stays sustained above 5-sigma noise floor
     noise_floor = lam[A < 0.10].std() * 5
     noise_floor = max(noise_floor, 1e-6)  # Ensure reasonable floor
@@ -203,12 +203,12 @@ def plot(data):
     window_size = 50
     K_chaos_onset = None
     for i in range(len(lam_scan) - window_size):
-        if np.all(lam_scan[i:i+window_size] > noise_floor):
+        if np.all(lam_scan[i : i + window_size] > noise_floor):
             K_chaos_onset = A_scan[i]
             break
     if K_chaos_onset is None:
         K_chaos_onset = 0.182  # fallback
-    
+
     for ax in (ax1, ax2):
         ax.axvline(K_inf, color=COLORS["blue"], lw=0.7, ls=":", alpha=0.8)
         ax.axvline(K_chaos_onset, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)

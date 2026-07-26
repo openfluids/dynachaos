@@ -174,8 +174,8 @@ def _fit_correlation_length(r, corr_normalized):
     stop_idx = int(head_indices[-1]) if head_indices.size else 0
     stopped_at_target = abs_corr[stop_idx] <= target if stop_idx else False
     near_field = min(len(abs_corr) - 1, 8)
-    later_near_field_peaks = (
-        stop_idx + 1 <= near_field and np.any(abs_corr[stop_idx + 1 : near_field + 1] > target)
+    later_near_field_peaks = stop_idx + 1 <= near_field and np.any(
+        abs_corr[stop_idx + 1 : near_field + 1] > target
     )
     if stopped_at_target and not later_near_field_peaks:
         x0, x1 = float(r[stop_idx - 1]), float(r[stop_idx])

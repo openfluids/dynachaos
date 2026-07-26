@@ -114,9 +114,7 @@ def compute_dimensions():
                 A=np.array([A]),
             )
 
-    np.savez_compressed(
-        DIM_NPZ, D=D_values, D2=D2_values, D2_err=D2_err_values, A=np.array([A])
-    )
+    np.savez_compressed(DIM_NPZ, D=D_values, D2=D2_values, D2_err=D2_err_values, A=np.array([A]))
     print(f"Saved {DIM_NPZ}")
 
 
@@ -215,9 +213,7 @@ def plot_dimension(data):
         linewidth=0,
         zorder=0,
     )
-    reference_line(
-        ax, 1.0, axis="y", lw=0.6, alpha=0.7, label="$D_2 = 1$ (smooth torus)"
-    )
+    reference_line(ax, 1.0, axis="y", lw=0.6, alpha=0.7, label="$D_2 = 1$ (smooth torus)")
     ax.axvspan(1.92, 1.95, color=COLORS["grey"], alpha=0.10, zorder=0)
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Correlation dimension $D_2$")

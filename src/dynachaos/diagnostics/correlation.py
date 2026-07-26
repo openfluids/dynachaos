@@ -300,15 +300,33 @@ def fit_power_law_loglog(x, y, min_points=5, *, return_stderr=False):
     result = linregress(fit_x, fit_y)
     if return_stderr:
         return (
-            float(result.slope), float(result.intercept), float(result.rvalue),
-            float(result.stderr), full_slopes, full_scaling,
+            float(result.slope),
+            float(result.intercept),
+            float(result.rvalue),
+            float(result.stderr),
+            full_slopes,
+            full_scaling,
         )
-    return float(result.slope), float(result.intercept), float(result.rvalue), full_slopes, full_scaling
+    return (
+        float(result.slope),
+        float(result.intercept),
+        float(result.rvalue),
+        full_slopes,
+        full_scaling,
+    )
 
 
 def correlation_dimension(
-    traj, n_r=50, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False,
-    return_stderr=False, *, return_metadata=False,
+    traj,
+    n_r=50,
+    r_range=None,
+    max_pairs=500_000,
+    theiler_window=0,
+    norm="chebyshev",
+    verbose=False,
+    return_stderr=False,
+    *,
+    return_metadata=False,
 ):
     """Estimate the correlation dimension D_2 from trajectory points.
 
@@ -369,7 +387,9 @@ def correlation_dimension(
             },
             data_length=N,
             data_shape=tuple(int(v) for v in traj.shape),
-            sampling_downsampling_note="no sampling/downsampling; exact all-pairs counting for available backend",
+            sampling_downsampling_note=(
+                "no sampling/downsampling; exact all-pairs counting for available backend"
+            ),
             validity_warnings=list(warnings or []),
             unresolved_verdicts=list(unresolved or []),
             scale_evidence={
@@ -442,8 +462,10 @@ def correlation_dimension(
         r_values, fit_values, min_points=3, return_stderr=True
     )
 
-    result = (D2, r_values, C_values, D2_stderr, full_slopes, full_scaling) if return_stderr else (
-        D2, r_values, C_values, full_slopes, full_scaling
+    result = (
+        (D2, r_values, C_values, D2_stderr, full_slopes, full_scaling)
+        if return_stderr
+        else (D2, r_values, C_values, full_slopes, full_scaling)
     )
     if return_metadata:
         warnings = []
@@ -498,13 +520,11 @@ def _takens_theiler_curve(r_values, C_values, c_floor):
     log_C = np.log(CC)
 
     # per-segment log-log slopes a_j (between consecutive valid points)
-    a = np.diff(log_C) / np.diff(log_r)          # length len(idx)-1
+    a = np.diff(log_C) / np.diff(log_r)  # length len(idx)-1
 
     # segment integrals of C/x: (C_j - C_{j-1})/a_j, with a->0 limit
     dC = np.diff(CC)
-    seg = np.where(np.abs(a) > 1e-12,
-                   dC / np.where(a == 0.0, 1.0, a),
-                   CC[:-1] * np.diff(log_r))
+    seg = np.where(np.abs(a) > 1e-12, dC / np.where(a == 0.0, 1.0, a), CC[:-1] * np.diff(log_r))
 
     # lower tail int_0^{r_min} C/x dx = C(r_min)/a_tail, extrapolating C ~ r^a_tail
     # below r_min. a_tail is the SCALING-region slope (median local slope in the
@@ -528,17 +548,18 @@ def _takens_theiler_curve(r_values, C_values, c_floor):
     tail = CC[0] / a_tail
 
     # cumulative integral I(r_i) = tail + sum_{j<=i} seg_j
-    I = np.empty(len(idx))
-    I[0] = tail
-    I[1:] = tail + np.cumsum(seg)
+    cumulative_integral = np.empty(len(idx))
+    cumulative_integral[0] = tail
+    cumulative_integral[1:] = tail + np.cumsum(seg)
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        D_tt[idx] = CC / I
+        D_tt[idx] = CC / cumulative_integral
     return D_tt
 
 
-def takens_theiler_dimension(traj, n_r=60, r_range=None, max_pairs=500_000,
-                             theiler_window=0, norm="chebyshev", verbose=False):
+def takens_theiler_dimension(
+    traj, n_r=60, r_range=None, max_pairs=500_000, theiler_window=0, norm="chebyshev", verbose=False
+):
     """Correlation dimension via the Takens-Theiler maximum-likelihood estimator.
 
     Fit-window-free alternative to the log-log slope of
@@ -581,13 +602,13 @@ def takens_theiler_dimension(traj, n_r=60, r_range=None, max_pairs=500_000,
         diameter = np.max(np.ptp(traj, axis=0))
         if not np.isfinite(diameter) or diameter <= 0.0:
             # degenerate (constant / collapsed) trajectory -- no scaling to fit
-            return np.nan, np.array([]), np.array([]), np.array([]), \
-                np.zeros(0, dtype=bool)
+            return np.nan, np.array([]), np.array([]), np.array([]), np.zeros(0, dtype=bool)
         r_range = (diameter / N, diameter)
 
     r_values = np.logspace(np.log10(r_range[0]), np.log10(r_range[1]), n_r)
-    C_values = correlation_integral(traj, r_values, max_pairs,
-                                    theiler_window, norm, verbose=verbose)
+    C_values = correlation_integral(
+        traj, r_values, max_pairs, theiler_window, norm, verbose=verbose
+    )
 
     n_valid = _valid_pair_count(N, theiler_window)
     c_floor = 1.0 / np.sqrt(n_valid) if n_valid > 0 else 1e-5
@@ -614,13 +635,13 @@ def takens_theiler_dimension(traj, n_r=60, r_range=None, max_pairs=500_000,
     cand_idx = np.where(cand)[0]
     d_cand = D_tt[cand_idx]
     n_c = len(cand_idx)
-    win = min(n_c, max(4, n_c // 2))      # shelf window: ~half the clean band
+    win = min(n_c, max(4, n_c // 2))  # shelf window: ~half the clean band
     best_std, best_lo = np.inf, 0
     for lo in range(n_c - win + 1):
-        s = np.std(d_cand[lo:lo + win])
+        s = np.std(d_cand[lo : lo + win])
         if s < best_std:
             best_std, best_lo = s, lo
-    shelf = cand_idx[best_lo:best_lo + win]
+    shelf = cand_idx[best_lo : best_lo + win]
 
     full_scaling[shelf] = True
     D2 = float(np.median(D_tt[shelf]))

@@ -50,6 +50,8 @@ from dynachaos.maps.coupled_logistic import (
 from dynachaos.maps.delayed_logistic import (
     ATTRACTOR_LABELS_SHORT,
     LOCKING_LABELS_SHORT,
+)
+from dynachaos.maps.delayed_logistic import (
     compute_attractors as compute_delayed_attractors,
 )
 from dynachaos.maps.delayed_logistic import (
@@ -579,7 +581,9 @@ def test_sec06_three_torus_cache_preserves_two_zero_exponent_signature():
 
 
 def test_sec07_correlation_dimension_cache_stays_bounded_and_rises():
-    with np.load("figures/sec07_fractalization/correlation_dimension.npz", allow_pickle=False) as data:
+    with np.load(
+        "figures/sec07_fractalization/correlation_dimension.npz", allow_pickle=False
+    ) as data:
         D = data["D"]
         D2 = data["D2"]
         A = float(data["A"][0])
@@ -701,7 +705,6 @@ def test_compute_torus_map_IV_lyapunov_returns_and_writes_explicit_payload(tmp_p
         assert set(saved.files) == set(payload)
         np.testing.assert_allclose(saved["D"], payload["D"])
         np.testing.assert_allclose(saved["spectra"], payload["spectra"])
-
 
 
 def test_map_IV_off_symmetry_ic_and_lyapunov_physics():
@@ -1237,13 +1240,15 @@ def test_compute_clusters_seed_controls_rng_determinism():
     np.testing.assert_array_equal(first["cluster_labels"], second["cluster_labels"])
     np.testing.assert_array_equal(first["x_record"], second["x_record"])
 
-    different_seed = compute_clusters(seed=99, n_sites=8, n_transient=2, n_record=4, output_path=None)
+    different_seed = compute_clusters(
+        seed=99, n_sites=8, n_transient=2, n_record=4, output_path=None
+    )
 
     assert not np.array_equal(
         first["cluster_labels"], different_seed["cluster_labels"]
-    ) or not np.array_equal(
-        first["x_record"], different_seed["x_record"]
-    ), "compute_clusters should produce different stochastic payloads for different seeds"
+    ) or not np.array_equal(first["x_record"], different_seed["x_record"]), (
+        "compute_clusters should produce different stochastic payloads for different seeds"
+    )
 
 
 def test_compute_collective_seed_controls_rng_determinism():
@@ -1283,9 +1288,9 @@ def test_compute_collective_seed_controls_rng_determinism():
         progress_interval=0,
     )
 
-    assert not np.array_equal(
-        first["lyap_c"], different_seed["lyap_c"]
-    ), "compute_collective should produce different lyap_c values for different seeds"
+    assert not np.array_equal(first["lyap_c"], different_seed["lyap_c"]), (
+        "compute_collective should produce different lyap_c values for different seeds"
+    )
 
 
 # ---------------------------------------------------------------------------

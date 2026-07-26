@@ -9,7 +9,6 @@ from dynachaos.io.paths import safe_load
 from dynachaos.pipelines.registry import get_section
 from dynachaos.pipelines.runner import run_section
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMITTED_FIGURES = REPO_ROOT / "figures"
 FAST_REPRODUCIBILITY_SECTIONS = (

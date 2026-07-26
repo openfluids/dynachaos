@@ -22,13 +22,14 @@ Returns D_c +/- sigma with an explicit band label and reliability flags rather
 than a single over-precise scalar. See docs/correlation_dimension_methodology.md
 (protocol v2) for the literature basis.
 """
+
 from __future__ import annotations
 
 import numpy as np
 from scipy.signal import periodogram
 
-from dynachaos.diagnostics.embedding import _embed, optimal_delay, optimal_dimension
 from dynachaos.diagnostics.correlation import takens_theiler_dimension
+from dynachaos.diagnostics.embedding import _embed, optimal_delay, optimal_dimension
 
 
 def _dominant_period_samples(x: np.ndarray) -> int:
@@ -63,8 +64,9 @@ def _dc_of_m(signal, tau, theiler, m_values, max_pairs, norm):
         if len(emb) < 500:
             out.append(np.nan)
             continue
-        d, *_ = takens_theiler_dimension(emb, max_pairs=max_pairs,
-                                         theiler_window=theiler, norm=norm)
+        d, *_ = takens_theiler_dimension(
+            emb, max_pairs=max_pairs, theiler_window=theiler, norm=norm
+        )
         out.append(d)
     return np.asarray(out, dtype=float)
 
@@ -106,12 +108,20 @@ def _classify(D_c: float, saturated: bool):
         return "T1", True
     if 1.75 <= D_c <= 2.35:
         return "T2", True
-    return "ambiguous (band gap)", True   # 1.25-1.75 or 2.35-2.5
+    return "ambiguous (band gap)", True  # 1.25-1.75 or 2.35-2.5
 
 
-def gp_dimension_robust(signal, tau=None, m_cao=None, theiler=None,
-                        n_segments=8, m_max=10, max_pairs=2_000_000,
-                        norm="chebyshev", is_map=None):
+def gp_dimension_robust(
+    signal,
+    tau=None,
+    m_cao=None,
+    theiler=None,
+    n_segments=8,
+    m_max=10,
+    max_pairs=2_000_000,
+    norm="chebyshev",
+    is_map=None,
+):
     """Robust GP correlation dimension with a banded classification and CI.
 
     Parameters
@@ -175,19 +185,19 @@ def gp_dimension_robust(signal, tau=None, m_cao=None, theiler=None,
     min_seg = max(1000, (m_cao - 1) * tau + 50)
     if seg_len >= min_seg:
         for k in range(n_segments):
-            seg = x[k * seg_len:(k + 1) * seg_len]
+            seg = x[k * seg_len : (k + 1) * seg_len]
             emb = _embed(seg, m_cao, tau)
             if len(emb) < 500:
                 continue
-            d, *_ = takens_theiler_dimension(emb, max_pairs=max_pairs,
-                                             theiler_window=theiler, norm=norm)
+            d, *_ = takens_theiler_dimension(
+                emb, max_pairs=max_pairs, theiler_window=theiler, norm=norm
+            )
             if np.isfinite(d):
                 seg_vals.append(d)
     if len(seg_vals) >= 3:
         seg_vals = np.asarray(seg_vals)
         sigma = float(np.std(seg_vals))
-        ci = (float(np.percentile(seg_vals, 2.5)),
-              float(np.percentile(seg_vals, 97.5)))
+        ci = (float(np.percentile(seg_vals, 2.5)), float(np.percentile(seg_vals, 97.5)))
         seg_median = float(np.median(seg_vals))
         n_used = len(seg_vals)
     else:
@@ -197,8 +207,8 @@ def gp_dimension_robust(signal, tau=None, m_cao=None, theiler=None,
         n_used = 0
 
     return {
-        "D_c": D_c,                      # full-signal D_TT(m) plateau mean
-        "sigma": sigma,                  # std over independent segments
+        "D_c": D_c,  # full-signal D_TT(m) plateau mean
+        "sigma": sigma,  # std over independent segments
         "ci": ci,
         "tau_used": int(tau),
         "m_used": int(m_cao),

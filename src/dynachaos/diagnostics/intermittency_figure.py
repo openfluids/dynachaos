@@ -354,11 +354,7 @@ def _logistic_f3_tangent_channels(points, derivative):
     points = np.asarray(points, dtype=np.float64)
     derivative = np.asarray(derivative, dtype=np.float64)
     diagonal_distance = np.abs(points[:, 1] - points[:, 0])
-    mask = (
-        (points[:, 0] > 0.05)
-        & (diagonal_distance <= 0.01)
-        & (np.abs(derivative - 1.0) < 1.0)
-    )
+    mask = (points[:, 0] > 0.05) & (diagonal_distance <= 0.01) & (np.abs(derivative - 1.0) < 1.0)
     channel = points[mask]
     if channel.shape[0] < 20:
         msg = "logistic f^3 grid did not resolve the tangent channels"

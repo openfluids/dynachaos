@@ -227,6 +227,7 @@ def test_section_output_validator_rejects_empty_figure(tmp_path):
 # T2: schema_version contract for attractors.npz
 # ---------------------------------------------------------------------------
 
+
 def test_smoke_gate_rejects_attractors_missing_schema_version(tmp_path):
     """Regression: attractors.npz without schema_version must fail smoke gate (T2).
 
@@ -238,17 +239,29 @@ def test_smoke_gate_rejects_attractors_missing_schema_version(tmp_path):
     section_dir.mkdir()
     np.savez_compressed(
         section_dir / "phase_diagram.npz",
-        A=[1.0], D=[0.1], asym=[0.0], lyap=[0.1], schema_version=[4],
+        A=[1.0],
+        D=[0.1],
+        asym=[0.0],
+        lyap=[0.1],
+        schema_version=[4],
     )
     # attractors.npz missing the schema_version key (old pre-v4 cache format)
     np.savez_compressed(
         section_dir / "attractors.npz",
-        A_values=[1.0], labels=["sync"], initial_states=[[0.5, 0.5]],
-        x_limits=[0.0, 1.0], y_limits=[0.0, 1.0], D=[0.1],
+        A_values=[1.0],
+        labels=["sync"],
+        initial_states=[[0.5, 0.5]],
+        x_limits=[0.0, 1.0],
+        y_limits=[0.0, 1.0],
+        D=[0.1],
     )
     np.savez_compressed(
         section_dir / "basins.npz",
-        x=[0.5], y=[0.5], basin=[0], A=[1.0], D=[0.1],
+        x=[0.5],
+        y=[0.5],
+        basin=[0],
+        A=[1.0],
+        D=[0.1],
     )
     with pytest.raises(RuntimeError, match="missing required NPZ keys.*schema_version"):
         validate_section_cache("sec03_transition", output_root=tmp_path)
@@ -258,6 +271,7 @@ def test_smoke_gate_rejects_attractors_missing_schema_version(tmp_path):
 # T1: child RSS measurement
 # ---------------------------------------------------------------------------
 
+
 def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
     """_run_module returns peak RSS of the child process via os.wait4 (T1 unit test).
 
@@ -265,6 +279,7 @@ def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
     the KB-to-MB conversion matches get_rss_mb's convention.
     """
     import os as _os
+
     from dynachaos.pipelines import runner as _runner
 
     if not hasattr(_os, "wait4"):
@@ -303,6 +318,7 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     the ledgered value must be clearly non-zero and above 50 MB (numpy + 100 MB array).
     """
     import os as _os
+
     from dynachaos.pipelines import runner as _runner
     from dynachaos.utils.system import get_rss_mb
 
@@ -310,16 +326,29 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     section_dir.mkdir()
     np.savez_compressed(
         section_dir / "phase_diagram.npz",
-        A=[1.0], D=[0.1], asym=[0.0], lyap=[0.1], schema_version=[4],
+        A=[1.0],
+        D=[0.1],
+        asym=[0.0],
+        lyap=[0.1],
+        schema_version=[4],
     )
     np.savez_compressed(
         section_dir / "attractors.npz",
-        A_values=[1.0], labels=["sync"], initial_states=[[0.5, 0.5]],
-        x_limits=[0.0, 1.0], y_limits=[0.0, 1.0], D=[0.1], schema_version=[4],
+        A_values=[1.0],
+        labels=["sync"],
+        initial_states=[[0.5, 0.5]],
+        x_limits=[0.0, 1.0],
+        y_limits=[0.0, 1.0],
+        D=[0.1],
+        schema_version=[4],
     )
     np.savez_compressed(
         section_dir / "basins.npz",
-        x=[0.5], y=[0.5], basin=[0], A=[1.0], D=[0.1],
+        x=[0.5],
+        y=[0.5],
+        basin=[0],
+        A=[1.0],
+        D=[0.1],
     )
     for png in ("phase_diagram.png", "attractors.png", "basins.png"):
         (section_dir / png).write_bytes(b"png")
@@ -330,9 +359,9 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
         """Spawn a child that allocates ~100 MB and return its peak RSS."""
         import subprocess as _sp
         import sys as _sys
+
         proc = _sp.Popen(
-            [_sys.executable, "-c",
-             "import numpy as np; x = np.zeros(100 * 1024 * 1024 // 8)"],
+            [_sys.executable, "-c", "import numpy as np; x = np.zeros(100 * 1024 * 1024 // 8)"],
         )
         pid, status, rusage = _os.wait4(proc.pid, 0)
         divisor = 1024 * 1024 if _sys.platform == "darwin" else 1024
@@ -341,7 +370,9 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner, "_run_module", allocating_module)
 
     ledger_path = tmp_path / "timing.jsonl"
-    run_section("sec03_transition", output_root=tmp_path, profile="paper", timing_ledger=ledger_path)
+    run_section(
+        "sec03_transition", output_root=tmp_path, profile="paper", timing_ledger=ledger_path
+    )
 
     events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
     assert len(events) == 1
@@ -355,5 +386,6 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     # Verify it is larger than if we had mistakenly read the orchestrator (which would have
     # recorded ~0 overhead from the no-op orchestrator side)
     assert child_rss > orchestrator_rss * 0.5, (
-        f"Child RSS {child_rss:.1f} MB is suspiciously close to orchestrator {orchestrator_rss:.1f} MB"
+        f"Child RSS {child_rss:.1f} MB is suspiciously close to "
+        f"orchestrator {orchestrator_rss:.1f} MB"
     )
