@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import is_reference_platform
+from conftest import assert_npz_structurally_sound, is_reference_platform
 
 from dynachaos.io.paths import safe_load
 from dynachaos.pipelines.registry import get_section
@@ -35,10 +35,13 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
     caches. These sections integrate chaotic maps, so on another architecture a
     last-bit difference is amplified into an O(1) one and elementwise agreement
     is unattainable by construction (see conftest.REFERENCE_PLATFORM). There the
-    contract itself is still checked: same keys, shapes, dtypes, finite values.
+    contract itself is still checked -- see assert_npz_structurally_sound for
+    what survives the architecture change and what only looks like it does.
     """
-    exact = is_reference_platform()
     with safe_load(generated_path) as generated, safe_load(committed_path) as committed:
+        if not is_reference_platform():
+            assert_npz_structurally_sound(generated, committed)
+            return
         assert set(generated.files) == set(committed.files)
         for key in generated.files:
             actual = generated[key]
@@ -46,11 +49,8 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
             assert actual.shape == expected.shape, key
             assert actual.dtype == expected.dtype, key
             if np.issubdtype(actual.dtype, np.floating):
-                if exact:
-                    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
-                else:
-                    assert np.all(np.isfinite(actual)), key
-            elif exact:
+                np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+            else:
                 np.testing.assert_array_equal(actual, expected)
 
 

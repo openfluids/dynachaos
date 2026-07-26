@@ -330,7 +330,6 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     import os as _os
 
     from dynachaos.pipelines import runner as _runner
-    from dynachaos.utils.system import get_rss_mb
 
     section_dir = tmp_path / "sec03_transition"
     section_dir.mkdir()
@@ -363,47 +362,71 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
     for png in ("phase_diagram.png", "attractors.png", "basins.png"):
         (section_dir / png).write_bytes(b"png")
 
-    orchestrator_rss = get_rss_mb()
+    def make_allocating_module(alloc_mib):
+        """Build a fake _run_module whose child allocates ``alloc_mib`` and reports its RSS."""
 
-    def allocating_module(module_name, output_root, profile):
-        """Spawn a child that allocates ~100 MB and return its peak RSS."""
-        import subprocess as _sp
-        import sys as _sys
+        def allocating_module(module_name, output_root, profile):
+            import subprocess as _sp
+            import sys as _sys
 
-        proc = _sp.Popen(
-            [
-                _sys.executable,
-                "-c",
-                # ones() writes every element, faulting the pages in; zeros()
-                # would be lazily mapped and never become resident.
-                "import numpy as np; x = np.ones(100 * 1024 * 1024 // 8); x[::4096] += 1",
-            ],
+            proc = _sp.Popen(
+                [
+                    _sys.executable,
+                    "-c",
+                    # ones() writes every element, faulting the pages in; zeros()
+                    # would be lazily mapped and never become resident.
+                    f"import numpy as np; x = np.ones({alloc_mib} * 1024 * 1024 // 8); "
+                    "x[::4096] += 1",
+                ],
+            )
+            pid, status, rusage = _os.wait4(proc.pid, 0)
+            divisor = 1024 * 1024 if _sys.platform == "darwin" else 1024
+            return rusage.ru_maxrss / divisor
+
+        return allocating_module
+
+    def ledger_rss(alloc_mib, ledger_name):
+        monkeypatch.setattr(_runner, "_run_module", make_allocating_module(alloc_mib))
+        ledger_path = tmp_path / ledger_name
+        run_section(
+            "sec03_transition", output_root=tmp_path, profile="paper", timing_ledger=ledger_path
         )
-        pid, status, rusage = _os.wait4(proc.pid, 0)
-        divisor = 1024 * 1024 if _sys.platform == "darwin" else 1024
-        return rusage.ru_maxrss / divisor
+        events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+        assert len(events) == 1
+        return events[0]["peak_rss_mb"]
 
-    monkeypatch.setattr(_runner, "_run_module", allocating_module)
+    # Measure the ledger against two different child allocations. Comparing a
+    # single measurement against the orchestrator's own RSS -- the obvious
+    # approach, and what this test used to do -- cannot work: getrusage(
+    # RUSAGE_SELF).ru_maxrss is a high-water mark over the whole process
+    # lifetime, so inside a pytest session it accumulates whatever the heaviest
+    # earlier test allocated. It climbs from ~72 MB to ~130 MB on Linux and to
+    # ~465 MB on macOS purely as a function of test ordering, and at ~130 MB it
+    # coincides with the child's own footprint. Any threshold against a moving
+    # reference is really a threshold against test-suite history.
+    #
+    # The difference between two child allocations has no such dependence. If
+    # the ledger were recording the orchestrator, both runs would report the
+    # same number and the delta would collapse to zero.
+    small_mib, large_mib = 100, 300
+    rss_small = ledger_rss(small_mib, "timing_small.jsonl")
+    rss_large = ledger_rss(large_mib, "timing_large.jsonl")
 
-    ledger_path = tmp_path / "timing.jsonl"
-    run_section(
-        "sec03_transition", output_root=tmp_path, profile="paper", timing_ledger=ledger_path
+    # Each child faults in its full array, so its peak RSS must clear that
+    # allocation. A value below this means nothing resembling the child was
+    # measured.
+    assert rss_small >= 50.0, (
+        f"Expected child RSS >= 50 MB (numpy + {small_mib} MB alloc), got {rss_small:.1f} MB"
     )
-
-    events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
-    assert len(events) == 1
-    child_rss = events[0]["peak_rss_mb"]
-
-    # Child allocates ~100 MB on top of Python/numpy baseline — must exceed 30 MB
-    # The child faults in a full 100 MB array, so its peak RSS must clear that
-    # allocation by a wide margin on every platform. A value below this means the
-    # orchestrator's RSS was recorded instead of the child's.
-    assert child_rss >= 50.0, (
-        f"Expected child RSS >= 50 MB (numpy + 100 MB touched alloc), got {child_rss:.1f} MB"
-    )
-    # Verify it is larger than if we had mistakenly read the orchestrator (which would have
-    # recorded ~0 overhead from the no-op orchestrator side)
-    assert child_rss > orchestrator_rss * 0.5, (
-        f"Child RSS {child_rss:.1f} MB is suspiciously close to "
-        f"orchestrator {orchestrator_rss:.1f} MB"
+    # The ledger must follow the child's allocation, not a constant. Allow a
+    # generous band: the delta is dominated by the 200 MB difference in touched
+    # pages, but allocator behaviour and the interpreter baseline add slop.
+    observed_delta = rss_large - rss_small
+    expected_delta = large_mib - small_mib
+    assert 0.5 * expected_delta < observed_delta < 1.5 * expected_delta, (
+        f"Ledger reported {rss_small:.1f} MB for a {small_mib} MB child and "
+        f"{rss_large:.1f} MB for a {large_mib} MB one — a delta of "
+        f"{observed_delta:.1f} MB where ~{expected_delta} MB was expected. The "
+        f"ledger does not track the child's allocation; it may be recording the "
+        f"orchestrator's own rusage."
     )

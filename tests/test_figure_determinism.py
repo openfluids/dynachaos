@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from conftest import is_reference_platform
+from conftest import assert_npz_structurally_sound, is_reference_platform
 
 from dynachaos.io.paths import safe_load
 from dynachaos.pipelines.registry import get_section
@@ -27,16 +27,9 @@ def _assert_npz_matches(generated_path: Path, committed_path: Path):
 
 
 def _assert_npz_structurally_sound(generated_path: Path, committed_path: Path):
-    """Check what remains true off the reference platform: same contract, finite values."""
+    """Check what remains true off the reference platform: same contract, sane values."""
     with safe_load(generated_path) as generated, safe_load(committed_path) as committed:
-        assert set(generated.files) == set(committed.files)
-        for key in generated.files:
-            actual = generated[key]
-            expected = committed[key]
-            assert actual.shape == expected.shape, key
-            assert actual.dtype == expected.dtype, key
-            if np.issubdtype(actual.dtype, np.floating):
-                assert np.all(np.isfinite(actual)), key
+        assert_npz_structurally_sound(generated, committed)
 
 
 def test_representative_figure_caches_recompute_deterministically(tmp_path):

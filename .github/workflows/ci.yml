@@ -11,6 +11,10 @@ jobs:
     name: Python ${{ matrix.python-version }} (pure)
     runs-on: ubuntu-latest
     strategy:
+      # Report every interpreter, not just the first to fail. Without this a
+      # single failure cancels the rest of the matrix and platform problems
+      # surface one CI round-trip at a time.
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
@@ -27,6 +31,7 @@ jobs:
     name: Rust extension (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
