@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/openfluids/dynachaos/blob/main/LICENSE)
 
 **Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
@@ -12,7 +12,7 @@ Available on PyPI: `pip install dynachaos`
 > *does not approximately determine the future."*
 > — Edward Lorenz
 
-![Bifurcation diagram of the logistic map](assets/bifurcation.png)
+![Bifurcation diagram of the logistic map](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/bifurcation.png)
 
 ## Why dynachaos?
 
@@ -103,16 +103,16 @@ for the long-signal streaming example.
 
 ## User documentation spine
 
-- [Real-analysis user guide](docs/real-analysis-guide.md): input expectations,
+- [Real-analysis user guide](https://github.com/openfluids/dynachaos/blob/main/docs/real-analysis-guide.md): input expectations,
   diagnostic choice, long-signal scaling, workflow outputs, reliability metadata,
   and finite-data caveats.
-- [Example gallery](examples/README.md): tested recipe commands for external
+- [Example gallery](https://github.com/openfluids/dynachaos/blob/main/examples/README.md): tested recipe commands for external
   signals and long-signal streaming RQA.
-- [RQA scaling design note](docs/rqa-scaling-design.md): dense recurrence memory
+- [RQA scaling design note](https://github.com/openfluids/dynachaos/blob/main/docs/rqa-scaling-design.md): dense recurrence memory
   envelope and streaming RQA design.
-- [Rust acceleration roadmap](docs/rust-acceleration-roadmap.md): measured
+- [Rust acceleration roadmap](https://github.com/openfluids/dynachaos/blob/main/docs/rust-acceleration-roadmap.md): measured
   acceleration claims and future kernel priorities.
-- [Claims checklist](docs/claims-checklist.md): wording boundaries for public
+- [Claims checklist](https://github.com/openfluids/dynachaos/blob/main/docs/claims-checklist.md): wording boundaries for public
   documentation and manuscripts.
 
 ## Config-driven signal analysis workflow
@@ -280,7 +280,7 @@ uv run --extra viz pytest tests/ -q
 
 ## Contributing
 
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines. All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Please see [CONTRIBUTING.md](https://github.com/openfluids/dynachaos/blob/main/CONTRIBUTING.md) for development setup and contribution guidelines. All participants are expected to follow the [Code of Conduct](https://github.com/openfluids/dynachaos/blob/main/CODE_OF_CONDUCT.md).
 
 ## Citation
 
