@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -51,17 +52,44 @@ def test_cli_version():
     assert proc.stdout.strip().startswith("dynachaos ")
 
 
-def test_cli_run_smoke_on_existing_figure_cache():
+def test_cli_run_smoke_on_existing_figure_cache(tmp_path):
+    """Smoke profile runs against a real committed cache, copied out of the repo.
+
+    This used to pass --output-root figures, pointing the run at the repository's
+    own committed artifacts. The smoke profile validates the cache and then runs
+    the section's modules, so the run overwrote figures/sec02_circle_map/*.png in
+    place: executing the suite left three modified PNGs in the working tree, and
+    a careless `git add` would have committed regenerated binaries.
+
+    The point of the test is that smoke succeeds against a genuine cache rather
+    than a synthetic one, so the cache is copied to tmp_path instead of being
+    mutated where it lives.
+    """
+    committed = Path(__file__).resolve().parents[1] / "figures" / "sec02_circle_map"
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    for artifact in committed.iterdir():
+        if artifact.is_file():
+            shutil.copy2(artifact, section_dir / artifact.name)
+
+    before = {p.name: p.stat().st_mtime_ns for p in committed.iterdir() if p.is_file()}
+
     proc = _run_cli(
         "run",
         "sec02_circle_map",
         "--profile",
         "smoke",
         "--output-root",
-        "figures",
+        str(tmp_path),
     )
     assert proc.returncode == 0, proc.stderr
     assert "[sec02_circle_map]" in proc.stdout
+
+    after = {p.name: p.stat().st_mtime_ns for p in committed.iterdir() if p.is_file()}
+    assert before == after, (
+        f"the run modified committed artifacts under figures/sec02_circle_map: "
+        f"{sorted(k for k in before if before[k] != after.get(k))}"
+    )
 
 
 def test_cli_style_list():
