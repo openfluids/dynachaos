@@ -75,6 +75,7 @@ select = ["E", "F", "W", "I", "UP"]
 [dependency-groups]
 dev = [
     "pytest>=9.1",
+    "pytest-xdist>=3.8",
     "maturin>=1.14,<2.0",
     "ruff>=0.16",
 ]

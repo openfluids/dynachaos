@@ -25,7 +25,11 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --all-extras --python ${{ matrix.python-version }}
       - name: Run tests (pure Python)
-        run: DYNACHAOS_NO_RUST=1 uv run pytest tests/ -q
+        # -n auto: the suite is embarrassingly parallel and this job ran for
+        # 1h45m serially. Note the floor is one test, not the core count --
+        # sec08_sti alone takes ~33 min without the Rust kernels, so no
+        # amount of parallelism takes this job below that.
+        run: DYNACHAOS_NO_RUST=1 uv run pytest tests/ -q -n auto --durations=12
 
   rust-tests:
     name: Rust extension (${{ matrix.os }})
@@ -44,7 +48,7 @@ jobs:
       - name: Build Rust extension
         run: uv run maturin develop --release
       - name: Run tests (with Rust)
-        run: uv run pytest tests/ -q
+        run: uv run pytest tests/ -q -n auto --durations=12
 
   lint:
     name: Lint
