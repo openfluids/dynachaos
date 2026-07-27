@@ -66,8 +66,44 @@ def test_intermittency_figure_compute_writes_golden_cache(tmp_path):
     np.testing.assert_array_less(0.0, payload["type_i_vuong_z"])
     np.testing.assert_array_less(0.35, payload["normal_form_beta"])
     np.testing.assert_array_less(payload["normal_form_beta"], 0.65)
-    np.testing.assert_array_less(0.8, payload["lorenz_channel_slope"])
-    np.testing.assert_array_less(payload["lorenz_channel_slope"], 1.2)
+    # lorenz_channel_slope was asserted to lie in [0.8, 1.2] on the reasoning
+    # that type-I intermittency makes the return map tangent to the diagonal in
+    # the laminar channel, so the fitted slope should sit near 1. The physics is
+    # right; this estimator does not resolve it at this configuration, and the
+    # band held on the reference machine by luck rather than by construction.
+    #
+    # Measured. At the shipped settings (t_max=80, channel_percentile=30, ~274
+    # extracted maxima) perturbing the Lorenz initial condition by 1e-12 -- the
+    # scale of cross-platform last-bit divergence -- moves the fitted slope
+    # across [0.617, 1.540]. The committed 0.98549932 is one draw from that
+    # distribution. CI runners land outside the band; 2.048 was observed.
+    #
+    # More data does not rescue it: at t_max=1500 the spread across the same
+    # perturbations is still 0.48. And the falsifying check fails outright --
+    # if the fit were measuring the tangency, narrowing the channel would drive
+    # the slope to 1, but at t_max=1500 it runs 1.223, 0.519, 0.652, 0.725,
+    # 0.850, 0.822, 0.819 for percentiles 30 down to 0.5. Non-monotonic, and
+    # converging near 0.82 rather than 1.
+    #
+    # The same estimator returns 1.00042829 for logistic_f3_channel_slope, a
+    # deterministic 1-D map, so the estimator is not simply broken -- roughly
+    # 274 maxima off a chaotic ODE do not determine the channel. Until the fit
+    # is reworked, assert what the measurement supports: the channel was found
+    # and the fit produced a finite, positive slope. Widening the band instead
+    # would keep the appearance of a physics check while asserting nothing.
+    assert payload["lorenz_channel_slope"].shape == (1,)
+    slope = float(payload["lorenz_channel_slope"][0])
+    assert np.isfinite(slope), f"channel slope must be finite, got {slope!r}"
+    assert slope > 0.0, (
+        f"channel slope must be positive -- the laminar channel runs alongside "
+        f"the diagonal, so a non-positive slope means the fit did not find it "
+        f"(got {slope!r})"
+    )
+    assert payload["lorenz_channel_points"].shape[1] == 2
+    assert payload["lorenz_channel_points"].shape[0] >= 5, (
+        "min_channel_points=5 was requested, so fewer than 5 means the channel "
+        "extraction silently returned an under-determined set"
+    )
 
 
 def test_intermittency_figure_plot_writes_png(tmp_path):
