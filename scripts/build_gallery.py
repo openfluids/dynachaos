@@ -393,7 +393,7 @@ document.addEventListener('keydown', (e) => {
     html_parts.append("</html>")
 
     html_content = "\n".join(html_parts)
-    site_index = site_dir / "index.html"
+    site_index = site_dir / "gallery.html"
     site_index.write_text(html_content)
     site_bytes = site_index.stat().st_size
 
@@ -401,7 +401,7 @@ document.addEventListener('keydown', (e) => {
     print(f"Thumbnails written: {thumb_count}")
     print(f"Thumbnail bytes: {thumb_bytes:,}")
     print(f"Site index bytes: {site_bytes:,}")
-    print(f"Gallery built at: {site_dir / 'index.html'}")
+    print(f"Gallery built at: {site_dir / 'gallery.html'}")
 
     return 0
 
