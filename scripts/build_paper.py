@@ -427,6 +427,56 @@ def program_arc(fig_id: str, caption: str, number: int) -> str:
     )
 
 
+OPACITY_RULE = re.compile(r"([^{}]+)\{([^{}]*opacity:\s*([01])[^{}]*)\}")
+
+
+def specificity(selector: str) -> tuple[int, int, int]:
+    """Rough CSS specificity: (ids, classes, elements)."""
+    sel = selector.strip()
+    return (
+        sel.count("#"),
+        sel.count(".") + sel.count("[") + sel.count(":"),
+        len(re.findall(r"(?:^|[\s>+~])[a-z]+", sel)),
+    )
+
+
+def check_reveal_rules(css: str) -> list[str]:
+    """Fail the build if something is hidden with no stronger rule to show it.
+
+    A rule that sets ``opacity:0`` needs a more specific rule setting it back to
+    1, or the element never appears. Getting this wrong blanks the page while
+    every other check still passes, so it is verified rather than trusted.
+
+    Hiders revealed by a CSS animation, and keyframe steps themselves, are not
+    the failure this is looking for.
+    """
+    KEYFRAME_STEP = re.compile(r"^(from|to|\d+%)$")
+    hiders: list[tuple[str, tuple[int, int, int]]] = []
+    showers: list[tuple[str, tuple[int, int, int]]] = []
+
+    for match in OPACITY_RULE.finditer(css):
+        declarations = match.group(2)
+        for selector in match.group(1).split(","):
+            selector = selector.strip().rsplit("}", 1)[-1].strip()
+            if not selector or selector.startswith("@") or KEYFRAME_STEP.match(selector):
+                continue
+            if match.group(3) == "1":
+                showers.append((selector, specificity(selector)))
+            elif "animation" not in declarations:
+                hiders.append((selector, specificity(selector)))
+
+    problems = []
+    for selector, spec in hiders:
+        # the rightmost simple selector is what the reveal rule must also target
+        key = re.split(r"[\s>+~]", selector.split(":")[0])[-1]
+        if not key:
+            continue
+        if any(key in other and other_spec > spec for other, other_spec in showers):
+            continue
+        problems.append(selector)
+    return problems
+
+
 def strip_tags(fragment: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", fragment)).strip()
 
@@ -760,6 +810,13 @@ def main() -> None:
     if not META.exists():
         raise SystemExit(f"{META.relative_to(REPO)} is missing. Import it once with --manuscript.")
     meta = json.loads(META.read_text(encoding="utf-8"))
+
+    hidden = check_reveal_rules(CSS)
+    if hidden:
+        raise SystemExit(
+            "CSS would hide these with no stronger rule to reveal them, which "
+            "blanks the page:\n  " + "\n  ".join(hidden)
+        )
 
     body, nav = transform(BODY.read_text(encoding="utf-8"), meta.get("eq_tags"))
     body, dropped = dedupe_ids(body)

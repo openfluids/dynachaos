@@ -333,7 +333,7 @@ html.js figure{opacity:0;transform:translateX(-50%) translateY(22px) scale(.985)
 html.js figure.seen{opacity:1;transform:translateX(-50%) translateY(0) scale(1);
   transition:opacity .7s cubic-bezier(.22,.68,.28,1),transform .7s cubic-bezier(.22,.68,.28,1),box-shadow .3s ease,border-color .3s ease;}
 @media (prefers-reduced-motion:reduce){html.js figure{opacity:1;transform:translateX(-50%);}}
-.reveal.in{opacity:1;transform:none;}
+html.js .reveal.in{opacity:1;transform:none;}
 @media (prefers-reduced-motion:reduce){html.js .reveal{opacity:1;transform:none;transition:none;}html{scroll-behavior:auto;}.progress{transition:none;}}
 
 @media print{
