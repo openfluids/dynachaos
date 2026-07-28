@@ -106,7 +106,14 @@ body{
 @media (prefers-reduced-motion:reduce){body{transition:none;}}
 
 math{font-family:var(--math);}
-math[display="block"]{display:block;margin:1.4em auto;overflow-x:auto;overflow-y:hidden;max-width:100%;}
+math[display="block"]{display:block;margin:0;overflow-x:auto;overflow-y:hidden;max-width:100%;}
+/* the raw-LaTeX annotation is stripped at build time; belt and braces */
+annotation,annotation-xml{display:none;}
+.eqn{display:grid;grid-template-columns:1fr auto;align-items:center;gap:1rem;
+  margin:1.65em 0;padding:0.15em 0;}
+.eqn > math{min-width:0;}
+.eqn .eqno{font-variant-numeric:tabular-nums;color:var(--ink-low);font-size:0.92em;flex:none;}
+math[display="block"]:not(.eqn > math){margin:1.5em auto;}
 
 /* ------------------------------ type ------------------------------ */
 .eyebrow{font-family:var(--mono);font-size:0.66rem;letter-spacing:0.26em;text-transform:uppercase;color:var(--ink-low);margin:0;}
@@ -114,7 +121,14 @@ h1{font-size:clamp(2rem,1.1rem+3.6vw,3.6rem);line-height:1.03;letter-spacing:-0.
 h2{font-size:clamp(1.35rem,1.1rem+0.9vw,1.75rem);line-height:1.2;letter-spacing:-0.014em;font-weight:700;margin:0 0 0.6em;text-wrap:balance;}
 h3{font-size:1.06rem;font-weight:700;margin:2em 0 0.35em;text-wrap:balance;}
 p{margin:0 0 0.95em;}
-article li{margin-bottom:0.35em;}
+article ul,article ol{margin:0 0 1em;padding-left:1.35em;}
+article li{margin-bottom:0.4em;}
+article li > p{margin:0 0 0.4em;}
+article li > p:last-child{margin-bottom:0;}
+article li > ul,article li > ol{margin-top:0.4em;}
+/* pandoc leaves these wrappers behind for LaTeX environments it half-converts */
+.center,.minipage,.tabularx{margin:1.2rem 0;}
+.tabularx{overflow-x:auto;font-size:0.85em;}
 a{color:var(--chaotic);text-decoration:none;border-bottom:1px solid color-mix(in oklab,var(--chaotic) 35%,transparent);}
 a:hover{border-bottom-color:currentColor;}
 :focus-visible{outline:2px solid var(--chaotic);outline-offset:2px;border-radius:2px;}
@@ -232,7 +246,26 @@ figcaption .num{color:var(--ink);font-weight:700;}
 .plot-wrap{position:relative;padding:0.35rem;}
 canvas.plot{width:100%;display:block;touch-action:pan-y;}
 .hint{margin:0;padding:0 0.8rem 0.6rem;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;color:var(--ink-low);}
-figure.plain{padding:0.8rem;font-size:0.85rem;}
+/* research-arc overview: a timeline, not a table */
+figure.arc{background:var(--raised);}
+.arc-track{list-style:none;margin:0;padding:1.4rem 1rem 1.2rem;display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));gap:0;position:relative;}
+.arc-track::before{content:"";position:absolute;left:1.6rem;right:1.6rem;top:2.55rem;height:1.5px;
+  background:linear-gradient(90deg,var(--locked),var(--torus),var(--chaotic));opacity:.45;}
+.arc-track li{display:flex;flex-direction:column;gap:0.18rem;padding:0 0.45rem;margin:0;
+  text-align:left;position:relative;}
+.arc-track li::before{content:"";position:absolute;left:0.45rem;top:1.72rem;width:7px;height:7px;
+  border-radius:50%;border:1.5px solid var(--raised);z-index:1;
+  background:color-mix(in oklab,var(--locked) calc((5 - var(--i)) * 20%),var(--chaotic));}
+.arc-track .yr{font-family:var(--mono);font-size:0.63rem;letter-spacing:0.1em;color:var(--ink-low);}
+.arc-track .topic{margin-top:1.35rem;font-weight:700;font-size:0.9rem;line-height:1.2;}
+.arc-track .mech{font-size:0.78rem;color:var(--ink-mid);line-height:1.25;}
+@media (max-width:44rem){
+  .arc-track{grid-template-columns:repeat(2,minmax(0,1fr));gap:1.1rem 0;}
+  .arc-track::before{display:none;}
+  .arc-track li::before{display:none;}
+  .arc-track .topic{margin-top:0.15rem;}
+}
 
 .readout{position:absolute;pointer-events:none;z-index:4;background:var(--sunken);border:1px solid var(--rule);
   border-radius:4px;padding:0.3rem 0.45rem;font-family:var(--mono);font-size:0.66rem;line-height:1.45;

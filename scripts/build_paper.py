@@ -42,6 +42,7 @@ SITE = REPO / "site"
 FONTS_SRC = REPO / "assets" / "fonts"
 
 FIG_RE = re.compile(r"<figure\b.*?</figure>", re.S)
+PROGRAM_ARC_SLOT = "<!--PROGRAM-ARC-->"
 IMG_RE = re.compile(r'<img[^>]*src="(?:figures/)?([a-z0-9_]+)/([a-z0-9_]+)\.png"[^>]*/?>', re.I)
 CAP_RE = re.compile(r"<figcaption>(.*?)</figcaption>", re.S)
 SEC_RE = re.compile(r'<section id="([^"]+)" class="([^"]*)"[^>]*>')
@@ -186,6 +187,108 @@ def run_pandoc(source: Path) -> str:
     return proc.stdout
 
 
+HYPERTARGET_RE = re.compile(r'<(span|div) id="((?:eq|tab):[^"]+)"[^>]*>\s*</\1>')
+BLOCK_MATH_RE = re.compile(r'<math display="block".*?</math>', re.S)
+ANNOTATION_RE = re.compile(r"<annotation\b[^>]*>.*?</annotation>", re.S)
+XREF_RE = re.compile(
+    r'(<a href="#([^"]+)"[^>]*data-reference-type="(?:eqref|ref)"[^>]*>)\[([^\]]+)\]</a>'
+)
+
+
+def number_equations(body: str) -> tuple[str, dict[str, str], int]:
+    """Number labelled display equations and show the number beside each.
+
+    Pandoc leaves ``\\eqref`` as a literal ``[eq:foo]`` and gives display maths no
+    number at all, so the prose reads "the delayed logistic map [eq:delayed_logistic]".
+    Number them here and hand back the mapping so the references can be rewritten.
+    """
+    numbers: dict[str, str] = {}
+    count = 0
+
+    def tag(match: re.Match[str]) -> str:
+        nonlocal count
+        label = match.group(2)
+        if label.startswith("tab:"):
+            return match.group(0)
+        count += 1
+        numbers[label] = str(count)
+        return f'<span id="{label}" data-eqno="{count}"></span>'
+
+    body = HYPERTARGET_RE.sub(tag, body)
+
+    # Attach the number to the display equation that follows each anchor.
+    out, pos = [], 0
+    for m in re.finditer(r'<span id="((?:eq):[^"]+)" data-eqno="(\d+)"></span>', body):
+        eq = BLOCK_MATH_RE.search(body, m.end())
+        if not eq or eq.start() - m.end() > 1200:
+            continue
+        out.append(body[pos : eq.start()])
+        out.append(f'<div class="eqn">{eq.group(0)}<span class="eqno">({m.group(2)})</span></div>')
+        pos = eq.end()
+    out.append(body[pos:])
+    return "".join(out), numbers, count
+
+
+def number_tables(body: str) -> tuple[str, dict[str, str]]:
+    """Number the tables in reading order so table references resolve."""
+    numbers: dict[str, str] = {}
+    count = 0
+
+    def tag(match: re.Match[str]) -> str:
+        nonlocal count
+        count += 1
+        numbers[match.group(2)] = str(count)
+        return match.group(0)
+
+    HYPERTARGET_RE.sub(lambda m: tag(m) if m.group(2).startswith("tab:") else m.group(0), body)
+    return body, numbers
+
+
+def resolve_refs(body: str, numbers: dict[str, str]) -> tuple[str, int]:
+    """Replace literal ``[eq:foo]`` reference text with the real number."""
+    fixed = 0
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal fixed
+        open_tag, target = match.group(1), match.group(2)
+        number = numbers.get(target)
+        if not number:
+            return match.group(0)
+        fixed += 1
+        label = f"({number})" if target.startswith("eq:") else number
+        return f"{open_tag}{label}</a>"
+
+    return XREF_RE.sub(repl, body), fixed
+
+
+# Transcribed verbatim from the manuscript's tabularx overview figure, which
+# pandoc cannot convert (it emits the raw cell separators as prose). Content is
+# the manuscript's, not invented; only the presentation is ours.
+PROGRAM_ARC = (
+    ("1982", "Circle map", "phase locking"),
+    ("1983\u201384", "Torus instabilities", "oscillation, doubling"),
+    ("1983", "Coupled maps", "symmetry breaking"),
+    ("1985", "CML", "spatial extension"),
+    ("1989\u201390", "GCM", "mean-field"),
+    ("1994\u201398", "Milnor / biology", "applications"),
+)
+
+
+def program_arc(fig_id: str, caption: str, number: int) -> str:
+    """Render the research-arc overview as a timeline rather than a table."""
+    cells = "".join(
+        f'<li style="--i:{i}"><span class="yr">{year}</span>'
+        f'<span class="topic">{topic}</span><span class="mech">{mech}</span></li>'
+        for i, (year, topic, mech) in enumerate(PROGRAM_ARC)
+    )
+    return (
+        f'<figure id="{fig_id}" class="arc" data-fignum="{number}">'
+        f'<ol class="arc-track">{cells}</ol>'
+        f'<figcaption><span class="num">Figure {number}.</span> {caption}</figcaption>'
+        f"</figure>"
+    )
+
+
 def strip_tags(fragment: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", fragment)).strip()
 
@@ -241,7 +344,7 @@ def thumb_dims() -> dict[str, tuple[int, int]]:
 def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
     """Rewrite pandoc output into the page's own figure, table and heading shapes."""
     dims = thumb_dims()
-    stats = {"interactive": 0, "static": 0, "passthrough": 0}
+    stats: dict[str, object] = {"interactive": 0, "static": 0, "arc": 0, "dropped": []}
 
     def do_figure(match: re.Match[str]) -> str:
         block = match.group(0)
@@ -251,10 +354,13 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
         cap = CAP_RE.search(block)
         caption = cap.group(1).strip() if cap else ""
         if not img:
-            stats["passthrough"] += 1
-            return f'<figure class="plain">{block[len("<figure") :]}'.replace(
-                "</figure>", "</figure>", 1
-            )
+            # pandoc cannot convert the tabularx overview; it emits raw cell
+            # separators as prose. Render it as a purpose-built timeline instead.
+            if fig_id == "fig:program_map":
+                stats["arc"] += 1
+                return PROGRAM_ARC_SLOT
+            stats["dropped"].append(fig_id or "(unlabelled)")
+            return ""
         section, name = img.group(1), img.group(2)
         if (SITE / "data" / section / f"{name}.json").exists():
             stats["interactive"] += 1
@@ -272,14 +378,24 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
     def number_figure(match: re.Match[str]) -> str:
         nonlocal fig_no
         block = match.group(0)
-        if 'class="plain"' in block[:40]:
-            return block
         fig_no += 1
         return block.replace(
             "<figcaption>", f'<figcaption><span class="num">Figure {fig_no}.</span> ', 1
         ).replace("<figure ", f'<figure data-fignum="{fig_no}" ', 1)
 
     body = FIG_RE.sub(number_figure, body)
+    if PROGRAM_ARC_SLOT in body:
+        arc_caption = (
+            "Arc of Kaneko's research programme, from one-dimensional phase-locking "
+            "analysis (1982) through coupled map lattices and globally coupled maps "
+            "to biological applications (1990s). The columns mark the extension of "
+            "the framework to higher complexity. Abbreviations: CML, coupled map "
+            "lattice; GCM, globally coupled map."
+        )
+        fig_no += 1
+        body = body.replace(
+            PROGRAM_ARC_SLOT, program_arc("fig:program_map", arc_caption, fig_no), 1
+        )
 
     # Keep pandoc's ids verbatim: they are the manuscript's own \label anchors,
     # and every internal cross-reference in the text points at them.
@@ -318,12 +434,23 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
         return f"<{new}{attrs}>{label}{text}</{new}>"
 
     body = HEAD_RE.sub(demote, body)
+    body, eq_numbers, n_eq = number_equations(body)
+    body, tab_numbers = number_tables(body)
+    body, n_fixed = resolve_refs(body, {**eq_numbers, **tab_numbers})
+    # The raw-LaTeX annotation duplicates every equation as plain text when a
+    # browser does not render MathML; drop it rather than rely on a UA stylesheet.
+    n_ann = len(ANNOTATION_RE.findall(body))
+    body = ANNOTATION_RE.sub("", body)
     body, folded = fold_back_matter(body)
     print(
-        f"  figures: {stats['interactive']} interactive, {stats['static']} static, "
-        f"{stats['passthrough']} passthrough (numbered 1-{fig_no})"
+        f"  figures: {stats['interactive']} interactive, {stats['static']} static "
+        f"(numbered 1-{fig_no})"
     )
+    if stats["dropped"]:
+        print(f"  DROPPED (pandoc could not convert): {', '.join(stats['dropped'])}")
     print(f"  sections numbered: {sum(1 for *_, n in nav if n)} of {len(nav)}")
+    print(f"  equations numbered: {n_eq}; references resolved: {n_fixed}")
+    print(f"  latex annotations stripped: {n_ann}")
     print(f"  back matter folded: {folded}")
     return body, nav
 
