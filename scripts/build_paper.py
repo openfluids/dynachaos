@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import re
 import shutil
 import subprocess
@@ -36,6 +37,7 @@ from paper_shell import CSS, JS  # noqa: E402
 REPO = Path(__file__).resolve().parent.parent
 WEB = REPO / "web"
 BODY = WEB / "paper-body.html"
+META = WEB / "paper-meta.json"
 SITE = REPO / "site"
 FONTS_SRC = REPO / "assets" / "fonts"
 
@@ -99,6 +101,62 @@ def dedupe_ids(body: str) -> tuple[str, int]:
     return ID_ATTR.sub(repl, body), removed
 
 
+ACCENTS = {
+    ("'", "e"): "é", ("'", "E"): "É", ("`", "e"): "è", ("`", "E"): "È",
+    ("^", "e"): "ê", ("^", "E"): "Ê", ('"', "e"): "ë", ("'", "a"): "á",
+    ("`", "a"): "à", ("^", "a"): "â", ('"', "a"): "ä", ("'", "o"): "ó",
+    ("^", "o"): "ô", ('"', "o"): "ö", ("'", "i"): "í", ("^", "i"): "î",
+    ('"', "i"): "ï", ("'", "u"): "ú", ("^", "u"): "û", ('"', "u"): "ü",
+    ("~", "n"): "ñ", ("'", "c"): "ć", ("~", "a"): "ã", ("~", "o"): "õ",
+}  # fmt: skip
+
+ACCENT_RE = re.compile(r"\\(['`^\"~=.])\{?([a-zA-Z])\}?")
+
+
+def extract_meta(tex: str) -> dict[str, str]:
+    """Pull title, byline, affiliation and a lede from the manuscript preamble.
+
+    Cached to ``web/paper-meta.json`` at import so the build never needs the
+    LaTeX source. Anything not found is left blank rather than invented --- an
+    author list is not something to guess at.
+    """
+
+    def clean(raw: str) -> str:
+        raw = ACCENT_RE.sub(lambda m: ACCENTS.get((m.group(1), m.group(2)), m.group(2)), raw)
+        raw = re.sub(r"\\[a-zA-Z]+\{([^{}]*)\}", r"\1", raw)
+        raw = raw.replace(r"\&", "&").replace("~", " ").replace("--", "\u2013")
+        raw = re.sub(r"\\[a-zA-Z]+", "", raw)
+        raw = raw.replace("{", "").replace("}", "")
+        return " ".join(raw.split()).strip()
+
+    def find(pattern: str) -> str:
+        m = re.search(pattern, tex, re.S)
+        return clean(m.group(1)) if m else ""
+
+    abstract = find(r"\\begin\{abstract\}(.*?)\\end\{abstract\}")
+    sentences = [x for x in re.split(r"(?<=\.)\s+", abstract) if x]
+
+    # Lead with the claim, not the background: prefer the sentence that states
+    # what was investigated over the one describing prior work.
+    start = 0
+    for i, sentence in enumerate(sentences):
+        if re.match(r"\s*We\b", sentence):
+            start = i
+            break
+    lede = ""
+    for sentence in sentences[start:]:
+        if lede and len(lede) + len(sentence) > 320:
+            break
+        lede += (" " if lede else "") + sentence
+
+    return {
+        "title": find(r"\\title\{(.+?)\}\s*\n"),
+        "authors": find(r"\\author\{(.+?)\}"),
+        "affil": find(r"\\affil[^{]*\{(.+?)\}"),
+        "lede": lede or abstract[:320],
+    }
+
+
 def run_pandoc(source: Path) -> str:
     """Convert a LaTeX manuscript to an HTML fragment with MathML and citations."""
     if shutil.which("pandoc") is None:
@@ -135,7 +193,12 @@ def strip_tags(fragment: str) -> str:
 def figure_block(
     fig_id: str, section: str, name: str, caption: str, dims: dict[str, tuple[int, int]]
 ) -> str:
-    """Render one figure: static image always, interactive canvas when data exists."""
+    """Render one figure.
+
+    The static image is always present and is what the reader sees first; the
+    interactive chart is fetched only when asked for, so no reader pays for a
+    payload they never open.
+    """
     thumb = SITE / "thumbs" / section / f"{name}.webp"
     data = SITE / "data" / section / f"{name}.json"
     src = f"thumbs/{section}/{name}.webp" if thumb.exists() else f"full/{section}/{name}.png"
@@ -144,18 +207,21 @@ def figure_block(
         w, h = dims[(section, name)]
         size = f' width="{w}" height="{h}"'
     alt = html.escape(strip_tags(caption)[:150], quote=True)
-    tag = (
-        '<span class="tag">interactive</span>'
-        if data.exists()
-        else '<span class="tag static">figure</span>'
-    )
-    mount = f'<div data-src="data/{section}/{name}.json"></div>' if data.exists() else ""
+
+    acts = ['<button type="button" class="act-zoom">enlarge</button>']
+    attrs = f' id="{fig_id}"'
+    if data.exists():
+        acts.insert(0, '<button type="button" class="act-interact">interact</button>')
+        attrs += f' data-src="data/{section}/{name}.json" data-state="static"'
+
     return (
-        f'<figure id="{fig_id}">'
-        f'<div class="fig-head"><span class="name">{section}/{name}</span>{tag}</div>'
+        f"<figure{attrs}>"
+        f'<div class="fig-head"><span class="name">{section}/{name}</span>'
+        f'<span class="acts">{"".join(acts)}</span></div>'
+        f'<div class="fig-body">'
         f'<img src="{src}" data-full="full/{section}/{name}.png" alt="{alt}"'
         f' loading="lazy"{size}>'
-        f"{mount}"
+        f"</div>"
         f"<figcaption>{caption}</figcaption></figure>"
     )
 
@@ -237,22 +303,43 @@ def build_nav(nav: list[tuple[int, str, str]]) -> str:
     return "".join(out)
 
 
-def hero(title: str, authors: str, lede: str) -> str:
+def hero(meta: dict[str, str]) -> str:
+    stats = "".join(
+        f"<li><b>{b}</b><span>{lab}</span></li>"
+        for b, lab in (
+            ("6", "mechanisms"),
+            ("5&ndash;1000&times;", "finer resolution"),
+            ("4", "modern diagnostics"),
+        )
+    )
     return f"""<header class="hero">
 <canvas id="bifurcation" aria-hidden="true"></canvas>
 <div class="hero-inner">
-<p class="eyebrow">Interactive reproduction &middot; dynachaos</p>
-<h1>{title}</h1>
-<p class="authors">{authors}</p>
-<p class="lede">{lede}</p>
+<p class="eyebrow">Interactive study &middot; built on dynachaos</p>
+<h1>{html.escape(meta["title"])}</h1>
+<p class="byline">{html.escape(meta["authors"])}<span class="affil">{html.escape(meta["affil"])}</span></p>
+<p class="lede">{html.escape(meta["lede"])}</p>
+<ul class="stats">{stats}</ul>
 </div>
 <div class="legend">
 <span><span class="swatch" style="background:var(--locked)"></span><b>&lambda; &lt; 0</b> &nbsp;mode-locked</span>
 <span><span class="swatch" style="background:var(--torus)"></span><b>&lambda; &asymp; 0</b> &nbsp;quasiperiodic</span>
 <span><span class="swatch" style="background:var(--chaotic)"></span><b>&lambda; &gt; 0</b> &nbsp;chaotic</span>
-<span style="color:var(--ink-low)">above: logistic map attractor, computed live in your browser</span>
+<span style="color:var(--ink-low)">above &mdash; logistic attractor, computed live in your browser</span>
 </div>
 </header>"""
+
+
+CONTROLS = """<div class="progress" aria-hidden="true"></div>
+<div class="controls" role="group" aria-label="Reading controls">
+<button type="button" class="c-rail" title="Toggle contents sidebar">contents</button>
+<span class="sep"></span>
+<button type="button" class="c-smaller" title="Smaller text" aria-label="Smaller text">A&minus;</button>
+<button type="button" class="c-larger" title="Larger text" aria-label="Larger text">A+</button>
+<span class="sep"></span>
+<button type="button" class="c-fig" title="Toggle larger figures">figures</button>
+<button type="button" class="c-theme" title="Cycle theme: auto, light, dark">auto</button>
+</div>"""
 
 
 def assemble(body: str, nav: str, meta: dict[str, str]) -> str:
@@ -266,7 +353,8 @@ def assemble(body: str, nav: str, meta: dict[str, str]) -> str:
 <style>{CSS}</style>
 </head>
 <body>
-{hero(html.escape(meta["title"]), html.escape(meta["authors"]), html.escape(meta["lede"]))}
+{CONTROLS}
+{hero(meta)}
 <div class="shell">
 {nav}
 <article>
@@ -274,15 +362,14 @@ def assemble(body: str, nav: str, meta: dict[str, str]) -> str:
 </article>
 </div>
 <footer class="foot">
-<p>Every figure is regenerated from scratch by the same public commands:</p>
+<p>Every figure is recomputed from scratch by the same public commands, on any machine:</p>
 <pre><code>pip install dynachaos
 dynachaos list
 dynachaos run all</code></pre>
-<p><a href="gallery.html">Figure gallery</a> &middot;
-<a href="https://github.com/openfluids/dynachaos">Source on GitHub</a></p>
+<p><a href="gallery.html">Figure index</a> &middot;
+<a href="https://github.com/openfluids/dynachaos">dynachaos on GitHub</a></p>
 </footer>
-<div class="lb"><button class="lb-close">close</button><img alt=""></div>
-<button class="theme" type="button">dark mode</button>
+<div class="lb"><button class="lb-close" type="button">close</button><img alt=""><p class="lb-cap"></p></div>
 <script>{JS}</script>
 </body>
 </html>
@@ -292,22 +379,20 @@ dynachaos run all</code></pre>
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manuscript", type=Path, help="LaTeX source to import (local only)")
-    ap.add_argument("--title", default="The routes to chaos")
-    ap.add_argument("--authors", default="Ricardo A. S. Frantz")
-    ap.add_argument(
-        "--lede",
-        default=(
-            "Thirty-seven figures reproducing Kunihiko Kaneko's work on circle maps, "
-            "torus doubling, fractalization and coupled map lattices."
-        ),
-    )
     args = ap.parse_args()
 
     if args.manuscript:
         WEB.mkdir(parents=True, exist_ok=True)
+        tex = args.manuscript.read_text(encoding="utf-8")
         raw = run_pandoc(args.manuscript)
         BODY.write_text(raw, encoding="utf-8")
+        meta = extract_meta(tex)
+        missing = [k for k, v in meta.items() if not v]
+        if missing:
+            print(f"  WARNING: could not parse from the manuscript: {', '.join(missing)}")
+        META.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         print(f"  imported {len(raw):,} bytes -> {BODY.relative_to(REPO)}")
+        print(f"  title: {meta['title'][:70]}")
 
     if not BODY.exists():
         raise SystemExit(
@@ -321,13 +406,15 @@ def main() -> None:
     for face in FONTS_SRC.glob("*.woff2"):
         shutil.copy2(face, fonts_dst / face.name)
 
+    if not META.exists():
+        raise SystemExit(f"{META.relative_to(REPO)} is missing. Import it once with --manuscript.")
+    meta = json.loads(META.read_text(encoding="utf-8"))
+
     body, nav = transform(BODY.read_text(encoding="utf-8"))
     body, dropped = dedupe_ids(body)
     if dropped:
         print(f"  removed {dropped} duplicate id attributes")
-    page = assemble(body, build_nav(nav), {
-        "title": args.title, "authors": args.authors, "lede": args.lede,
-    })  # fmt: skip
+    page = assemble(body, build_nav(nav), meta)
     out = SITE / "index.html"
     out.write_text(page, encoding="utf-8")
 
