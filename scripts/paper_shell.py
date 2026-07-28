@@ -279,13 +279,29 @@ figure.arc{background:var(--raised);}
 .readout.on{opacity:1;}
 
 /* ------------------------------ tables + refs ------------------------------ */
-.table-wrap{overflow-x:auto;margin:2rem 0;border:1px solid var(--rule);border-radius:6px;
+.table-wrap{overflow-x:auto;margin:2.2rem 0;border:1px solid var(--rule);border-radius:6px;
+  background:var(--raised);box-shadow:var(--shadow);
   width:var(--bleed);max-width:calc(100vw - 2*var(--gutter));position:relative;left:50%;transform:translateX(-50%);}
-table{border-collapse:collapse;font-size:0.83rem;width:100%;font-variant-numeric:tabular-nums;}
-th,td{padding:0.4rem 0.65rem;text-align:left;border-bottom:1px solid var(--rule-soft);}
-thead th{border-bottom:1px solid var(--ink-mid);font-weight:700;white-space:nowrap;}
+table{border-collapse:collapse;width:100%;font-size:0.9rem;line-height:1.45;
+  font-variant-numeric:tabular-nums;}
+caption{caption-side:top;text-align:left;padding:0.85rem 1rem 0.75rem;
+  font-size:0.86rem;line-height:1.45;color:var(--ink-mid);border-bottom:1px solid var(--rule);}
+caption .num{color:var(--ink);font-weight:700;}
+thead th{
+  position:sticky;top:0;z-index:1;
+  background:var(--sunken);
+  font-family:var(--sans);font-size:0.7rem;font-weight:700;
+  letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-mid);
+  padding:0.6rem 1rem;white-space:nowrap;
+  border-bottom:1px solid var(--rule);}
+tbody td{padding:0.52rem 1rem;border-bottom:1px solid var(--rule-soft);vertical-align:baseline;}
 tbody tr:last-child td{border-bottom:none;}
-caption{caption-side:top;text-align:left;padding:0.6rem 0.65rem;font-size:0.82rem;color:var(--ink-mid);border-bottom:1px solid var(--rule-soft);}
+tbody tr:hover td{background:color-mix(in oklab,var(--chaotic) 5%,transparent);}
+/* first column of a reference table is the symbol being defined */
+tbody td:first-child{font-weight:700;white-space:nowrap;}
+tbody td math{font-size:1em;}
+table th[style],table td[style]{text-align:left !important;}
+
 .citation{white-space:nowrap;}
 #refs,.references{margin-top:1.2rem;font-size:0.82rem;}
 .csl-entry{margin:0 0 0.6em;padding-left:1.5em;text-indent:-1.5em;color:var(--ink-mid);line-height:1.45;}

@@ -57,6 +57,75 @@ LABEL_RE = re.compile(r"\\label\{((?:eq|tab):[^}]+)\}")
 ID_ATTR = re.compile(r'\sid="([^"]+)"')
 
 
+COLSPEC_NOISE = re.compile(r"[@><!]\{(?:[^{}]|\{[^{}]*\})*\}")
+COLSPEC_SIZED = re.compile(r"[pmb]\{[^{}]*\}")
+COLSPEC_STAR = re.compile(r"\*\{(\d+)\}\{([^{}]*)\}")
+
+
+def count_columns(spec: str) -> int:
+    """Count real columns in a LaTeX column specification."""
+    spec = COLSPEC_STAR.sub(lambda m: m.group(2) * int(m.group(1)), spec)
+    spec = COLSPEC_NOISE.sub("", spec)
+    spec = COLSPEC_SIZED.sub("l", spec)
+    return sum(1 for ch in spec if ch in "lcrXY")
+
+
+def brace_group(text: str, start: int) -> tuple[str, int]:
+    """Read one balanced ``{...}`` group beginning at ``start``.
+
+    Column specifications nest braces (``>{\\raggedright}p{2.2cm}``), so a
+    non-greedy regex stops at the first closing brace and captures nonsense.
+    """
+    if start >= len(text) or text[start] != "{":
+        return "", start
+    depth, i = 0, start
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1 : i], i + 1
+        i += 1
+    return "", start
+
+
+def tabularx_to_tabular(tex: str) -> tuple[str, int]:
+    """Rewrite ``tabularx`` environments as plain ``tabular``.
+
+    Pandoc converts ``tabular`` correctly but leaves ``tabularx`` untouched, so
+    the column specification and every ``&`` separator land on the page as
+    prose. The X/Y stretch columns carry no meaning on the web -- the table is
+    laid out by CSS -- so collapsing them to ``l`` loses nothing.
+    """
+    out, pos, count = [], 0, 0
+    marker = "\\begin{tabularx}"
+    while True:
+        i = tex.find(marker, pos)
+        if i < 0:
+            break
+        j = i + len(marker)
+        _, j = brace_group(tex, j)  # width argument
+        spec, j = brace_group(tex, j)  # column specification
+        end = tex.find("\\end{tabularx}", j)
+        if not spec or end < 0:
+            out.append(tex[pos : i + len(marker)])
+            pos = i + len(marker)
+            continue
+        cols = count_columns(spec)
+        if not cols:
+            out.append(tex[pos:j])
+            pos = j
+            continue
+        count += 1
+        out.append(tex[pos:i])
+        body = tex[j:end]
+        out.append(f"\\begin{{tabular}}{{{'l' * cols}}}{body}\\end{{tabular}}")
+        pos = end + len("\\end{tabularx}")
+    out.append(tex[pos:])
+    return "".join(out), count
+
+
 def anchor_labels(tex: str) -> tuple[str, int]:
     """Insert ``\\hypertarget`` before every labelled equation and table.
 
@@ -166,7 +235,11 @@ def run_pandoc(source: Path) -> str:
         raise SystemExit(f"manuscript not found: {source}")
     bib = source.parent / "references.bib"
 
-    patched, n_anchor = anchor_labels(source.read_text(encoding="utf-8"))
+    raw_tex = source.read_text(encoding="utf-8")
+    raw_tex, n_tabx = tabularx_to_tabular(raw_tex)
+    if n_tabx:
+        print(f"  rewrote {n_tabx} tabularx environments as tabular")
+    patched, n_anchor = anchor_labels(raw_tex)
     staged = Path(tempfile.mkdtemp(prefix="dynachaos-paper-")) / source.name
     staged.write_text(patched, encoding="utf-8")
     print(f"  anchored {n_anchor} labelled equations and tables")

@@ -25,12 +25,36 @@
 <p>The case for revisiting this programme now begins with computational power. Kaneko’s original computations were performed under mainframe-era computational constraints, with parameter scans of order <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mn>2</mn></msup><annotation encoding="application/x-tex">10^2</annotation></semantics></math> points and time series of order <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mn>4</mn></msup><annotation encoding="application/x-tex">10^4</annotation></semantics></math>–<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mn>5</mn></msup><annotation encoding="application/x-tex">10^5</annotation></semantics></math> iterations. A modern laptop reproduces every figure overnight at <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mn>5</mn><annotation encoding="application/x-tex">5</annotation></semantics></math>–<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1000</mn><mo>×</mo></mrow><annotation encoding="application/x-tex">1000\times</annotation></semantics></math> finer parameter resolution (from <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>5</mn><mo>×</mo></mrow><annotation encoding="application/x-tex">5\times</annotation></semantics></math> for the coupled delayed map to <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1000</mn><mo>×</mo></mrow><annotation encoding="application/x-tex">1000\times</annotation></semantics></math> for the devil’s staircase). It also benefits from modern diagnostics: the 0-1 test for chaos <span class="citation" data-cites="gottwald2004new">(Gottwald and Melbourne 2004)</span>, the SALI/GALI alignment indices <span class="citation" data-cites="skokos2001alignment skokos2007gali">(Skokos 2001; Skokos et al. 2007)</span>, permutation entropy <span class="citation" data-cites="bandt2002permutation">(Bandt and Pompe 2002)</span>, and recurrence quantification analysis <span class="citation" data-cites="marwan2007recurrence">(Marwan et al. 2007)</span>, all of which reveal structure invisible to the original analysis. The programme remains relevant as well. Yamagishi and Kaneko <span class="citation" data-cites="yamagishi2020chaos">(Yamagishi and Kaneko 2020)</span> demonstrated chaos <em>on</em> a high-dimensional torus (not collapse of it), recent large-scale surveys now quantify CML behaviour with statistical metrics <span class="citation" data-cites="nolan2026chaos">(Nolan et al. 2026)</span>, and Kaneko’s clustering ideas have continued into biological and ecological models <span class="citation" data-cites="kaneko1994clustering kaneko1997differentiation">(Kaneko 1994b, 1997a)</span>, most recently in a preprint by Shimada and Kaneko <span class="citation" data-cites="shimada2026cross">(Shimada and Kaneko 2026)</span>. The contribution is therefore a reproducible mechanistic atlas. We do not claim a new route to chaos, a new diagnostic algorithm, or a complete phase diagram for any one model. Instead, the goal is to make Kaneko’s scattered programme reproducible with enough resolution and diagnostic cross-checking that the relationships among the models can be inspected directly. The accompanying <code>dynachaos</code> package is the study’s reproducibility and analysis substrate: Kaneko is its flagship use case, while the package itself is a general tool for scripted dynamical-systems models, time-series diagnostics, and auditable figure pipelines.</p>
 <p>Figure <a href="#fig:program_map" data-reference-type="ref" data-reference="fig:program_map">1</a> summarises the arc of Kaneko’s research programme.</p>
 <figure id="fig:program_map" data-latex-placement="htbp">
-<div class="tabularx">
-<p><span>@YYYYYY@</span> &amp; 1983–84 &amp; 1983 &amp; 1985 &amp; 1989–90 &amp; 1994–98<br />
-Circle map &amp; Torus instabilities &amp; Coupled maps &amp; CML &amp; GCM &amp; Milnor / biology<br />
-phase locking &amp; oscillation, doubling &amp; symmetry breaking &amp; spatial extension &amp; mean-field &amp; applications<br />
-</p>
-</div>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">1982</th>
+<th style="text-align: left;">1983–84</th>
+<th style="text-align: left;">1983</th>
+<th style="text-align: left;">1985</th>
+<th style="text-align: left;">1989–90</th>
+<th style="text-align: left;">1994–98</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Circle map</td>
+<td style="text-align: left;">Torus instabilities</td>
+<td style="text-align: left;">Coupled maps</td>
+<td style="text-align: left;">CML</td>
+<td style="text-align: left;">GCM</td>
+<td style="text-align: left;">Milnor / biology</td>
+</tr>
+<tr>
+<td style="text-align: left;">phase locking</td>
+<td style="text-align: left;">oscillation, doubling</td>
+<td style="text-align: left;">symmetry breaking</td>
+<td style="text-align: left;">spatial extension</td>
+<td style="text-align: left;">mean-field</td>
+<td style="text-align: left;">applications</td>
+</tr>
+</tbody>
+</table>
 <figcaption>Arc of Kaneko’s research programme, from one-dimensional phase-locking analysis (1982) through coupled map lattices and globally coupled maps to biological applications (1990s). The columns mark the extension of the framework to higher complexity. Abbreviations: CML, coupled map lattice; GCM, globally coupled map.</figcaption>
 </figure>
 <section id="convention-tori-in-maps-versus-flows" class="level2 unnumbered">
@@ -43,50 +67,204 @@ phase locking &amp; oscillation, doubling &amp; symmetry breaking &amp; spatial 
 <div id="tab:notation">
 
 </div>
-<div class="tabularx">
-<p>@lYl&gt;</p>
-<p>p<span>2.2cm</span>@</p>
-<p>Symbol &amp; Meaning &amp; Type &amp; Sections<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math> &amp; Circle map nonlinearity (sine amplitude) &amp; Parameter &amp; 2, 6<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi mathvariant="normal">Ω</mi><annotation encoding="application/x-tex">\Omega</annotation></semantics></math> &amp; Bare rotation frequency (circle map) &amp; Parameter &amp; 2, 6<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>a</mi><annotation encoding="application/x-tex">a</annotation></semantics></math> &amp; Logistic nonlinearity (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mo>−</mo><mi>a</mi><msup><mi>x</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">1 - ax^2</annotation></semantics></math>) &amp; Parameter &amp; 4, 6, 7<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math> &amp; Delay mixing weight (convex parameter) &amp; Parameter &amp; 3, 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>A</mi></msub><annotation encoding="application/x-tex">D_A</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>B</mi></msub><annotation encoding="application/x-tex">D_B</annotation></semantics></math> &amp; Drive amplitude / bare frequency (Kaneko’s <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>1</mn></msub><annotation encoding="application/x-tex">D_1</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math>) &amp; Parameter &amp; 3, 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ε</mi><annotation encoding="application/x-tex">\varepsilon</annotation></semantics></math> &amp; Coupling strength (diffusive or global) &amp; Parameter &amp; 4, 5, 6, 7<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>A</mi><annotation encoding="application/x-tex">A</annotation></semantics></math> &amp; Nonlinearity strength (modulated circle map) &amp; Parameter &amp; 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>C</mi><annotation encoding="application/x-tex">C</annotation></semantics></math> &amp; Irrational modulation frequency <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="prefix">(</mo><msqrt><mn>5</mn></msqrt><mo>−</mo><mn>1</mn><mo stretchy="false" form="postfix">)</mo><mi>/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">(\sqrt{5}-1)/2</annotation></semantics></math> &amp; Parameter &amp; 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>δ</mi><annotation encoding="application/x-tex">\delta</annotation></semantics></math> &amp; Recurrence threshold (RQA) &amp; Parameter &amp; 6<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ρ</mi><annotation encoding="application/x-tex">\rho</annotation></semantics></math> &amp; Rotation number &amp; Observable &amp; 2, 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>λ</mi><mi>i</mi></msub><annotation encoding="application/x-tex">\lambda_i</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>-th Lyapunov exponent (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>≥</mo><msub><mi>λ</mi><mn>2</mn></msub><mo>≥</mo><mi>⋯</mi></mrow><annotation encoding="application/x-tex">\lambda_1 \ge \lambda_2 \ge \cdots</annotation></semantics></math>) &amp; Observable &amp; Throughout<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math> &amp; Correlation dimension (Grassberger–Procaccia) &amp; Observable &amp; 3<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>H</mi><mtext mathvariant="normal">PE</mtext></msub><annotation encoding="application/x-tex">H_\text{PE}</annotation></semantics></math>&amp; Permutation entropy (normalised) &amp; Observable &amp; 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>C</mi><mtext mathvariant="normal">JS</mtext></msub><annotation encoding="application/x-tex">C_\text{JS}</annotation></semantics></math>&amp; Jensen–Shannon statistical complexity &amp; Observable &amp; 5<br />
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>K</mi><mn>01</mn></msub><annotation encoding="application/x-tex">K_{01}</annotation></semantics></math> &amp; 0-1 test statistic &amp; Observable &amp; 4<br />
-</p>
-</div>
+<table id="tab:notation">
+<caption>Global notation. Each symbol has a unique meaning throughout the paper.</caption>
+<thead>
+<tr>
+<th style="text-align: left;">Symbol</th>
+<th style="text-align: left;">Meaning</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Sections</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math></td>
+<td style="text-align: left;">Circle map nonlinearity (sine amplitude)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">2, 6</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi mathvariant="normal">Ω</mi><annotation encoding="application/x-tex">\Omega</annotation></semantics></math></td>
+<td style="text-align: left;">Bare rotation frequency (circle map)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">2, 6</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>a</mi><annotation encoding="application/x-tex">a</annotation></semantics></math></td>
+<td style="text-align: left;">Logistic nonlinearity (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mo>−</mo><mi>a</mi><msup><mi>x</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">1 - ax^2</annotation></semantics></math>)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">4, 6, 7</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></td>
+<td style="text-align: left;">Delay mixing weight (convex parameter)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">3, 5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>A</mi></msub><annotation encoding="application/x-tex">D_A</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>B</mi></msub><annotation encoding="application/x-tex">D_B</annotation></semantics></math></td>
+<td style="text-align: left;">Drive amplitude / bare frequency (Kaneko’s <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>1</mn></msub><annotation encoding="application/x-tex">D_1</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math>)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">3, 5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ε</mi><annotation encoding="application/x-tex">\varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;">Coupling strength (diffusive or global)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">4, 5, 6, 7</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>A</mi><annotation encoding="application/x-tex">A</annotation></semantics></math></td>
+<td style="text-align: left;">Nonlinearity strength (modulated circle map)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>C</mi><annotation encoding="application/x-tex">C</annotation></semantics></math></td>
+<td style="text-align: left;">Irrational modulation frequency <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="prefix">(</mo><msqrt><mn>5</mn></msqrt><mo>−</mo><mn>1</mn><mo stretchy="false" form="postfix">)</mo><mi>/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">(\sqrt{5}-1)/2</annotation></semantics></math></td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>δ</mi><annotation encoding="application/x-tex">\delta</annotation></semantics></math></td>
+<td style="text-align: left;">Recurrence threshold (RQA)</td>
+<td style="text-align: left;">Parameter</td>
+<td style="text-align: left;">6</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ρ</mi><annotation encoding="application/x-tex">\rho</annotation></semantics></math></td>
+<td style="text-align: left;">Rotation number</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">2, 5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>λ</mi><mi>i</mi></msub><annotation encoding="application/x-tex">\lambda_i</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>-th Lyapunov exponent (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>≥</mo><msub><mi>λ</mi><mn>2</mn></msub><mo>≥</mo><mi>⋯</mi></mrow><annotation encoding="application/x-tex">\lambda_1 \ge \lambda_2 \ge \cdots</annotation></semantics></math>)</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">Throughout</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math></td>
+<td style="text-align: left;">Correlation dimension (Grassberger–Procaccia)</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">3</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>H</mi><mtext mathvariant="normal">PE</mtext></msub><annotation encoding="application/x-tex">H_\text{PE}</annotation></semantics></math></td>
+<td style="text-align: left;">Permutation entropy (normalised)</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>C</mi><mtext mathvariant="normal">JS</mtext></msub><annotation encoding="application/x-tex">C_\text{JS}</annotation></semantics></math></td>
+<td style="text-align: left;">Jensen–Shannon statistical complexity</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>K</mi><mn>01</mn></msub><annotation encoding="application/x-tex">K_{01}</annotation></semantics></math></td>
+<td style="text-align: left;">0-1 test statistic</td>
+<td style="text-align: left;">Observable</td>
+<td style="text-align: left;">4</td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="sec:atlas" class="level2 unnumbered">
 <h2 class="unnumbered">Mechanistic atlas</h2>
-<p>Table <a href="#tab:atlas" data-reference-type="ref" data-reference="tab:atlas">[tab:atlas]</a> summarises the eight mechanisms spanning Kaneko’s arc. Each row identifies the physical mechanism, the canonical model, the state-space dimension, the control parameters (in the notation of this paper), the attractor types encountered, and the Lyapunov signature.</p>
+<p>Table <a href="#tab:atlas" data-reference-type="ref" data-reference="tab:atlas">2</a> summarises the eight mechanisms spanning Kaneko’s arc. Each row identifies the physical mechanism, the canonical model, the state-space dimension, the control parameters (in the notation of this paper), the attractor types encountered, and the Lyapunov signature.</p>
 <div id="tab:atlas">
 
 </div>
-<div class="tabularx">
-<p>@c&gt;</p>
-<p>p<span>2.6cm</span>&gt;</p>
-<p>p<span>2.2cm</span>c&gt;</p>
-<p>p<span>2.5cm</span>YY@</p>
-<p># &amp; Mechanism &amp; Model &amp; Dim &amp; Parameters &amp; Attractor types &amp; Lyapunov signature<br />
-&amp; Phase locking &amp; Circle map &amp; 1 &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>,</mo><mi mathvariant="normal">Ω</mi></mrow><annotation encoding="application/x-tex">K, \Omega</annotation></semantics></math> &amp; Fixed pts, inv. circle &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>&lt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda&lt; 0</annotation></semantics></math> or <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda= 0</annotation></semantics></math><br />
-2 &amp; Amplitude inst. &amp; Delayed logistic &amp; 2 &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><mi>D</mi></mrow><annotation encoding="application/x-tex">\alpha, D</annotation></semantics></math> &amp; Torus, doubled, fractal &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>=</mo><mn>0</mn><mo>→</mo><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_1 = 0 \to &gt; 0</annotation></semantics></math><br />
-3 &amp; Torus doubling &amp; Map (I), Map (IV) &amp; 3, 4 &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><mi>D</mi></mrow><annotation encoding="application/x-tex">\alpha, D</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup><mo>,</mo><mn>2</mn><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup><mo>,</mo><mn>4</mn><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup></mrow><annotation encoding="application/x-tex">\mathbb{T}^1, 2\mathbb{T}^1, 4\mathbb{T}^1</annotation></semantics></math>, chaos &amp; Multiple <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>=</mo><mn>0</mn><mo>→</mo><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda= 0 \to &gt; 0</annotation></semantics></math><br />
-4 &amp; Symmetry breaking &amp; Coupled logistic &amp; 2 &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math> &amp; Torus, broken torus &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_1 = 0</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>2</mn></msub><mo>&lt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_2 &lt; 0</annotation></semantics></math><br />
-5 &amp; Three-torus &amp; Coupled delayed &amp; 4 &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><msub><mi>D</mi><mi>A</mi></msub><mo>,</mo><msub><mi>D</mi><mi>B</mi></msub><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">\alpha, D_A, D_B, \varepsilon</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi mathvariant="double-struck">𝕋</mi><mn>2</mn></msup><annotation encoding="application/x-tex">\mathbb{T}^2</annotation></semantics></math>, lockings, chaos &amp; Two zero exponents<br />
-6 &amp; STI &amp; CML (logistic) &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math> &amp; Laminar/burst coexist &amp; DP-like scaling (conjectured) <span class="citation" data-cites="pomeau1986front chate1988spatiotemporal">(Pomeau 1986; Chaté and Manneville 1988b)</span><br />
-7 &amp; Pattern dynamics &amp; CML (logistic) &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math> &amp; 5 phases &amp; Frozen <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>→</mo><annotation encoding="application/x-tex">\to</annotation></semantics></math> turbulent<br />
-8 &amp; Collective chaos &amp; GCM (logistic) &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math> &amp; <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math> &amp; Clusters, mean-field chaos &amp; LLN violation<br />
-</p>
-</div>
+<table id="tab:atlas">
+<caption>Mechanistic atlas of Kaneko-style dynamical systems.</caption>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">Mechanism</th>
+<th style="text-align: left;">Model</th>
+<th style="text-align: left;">Dim</th>
+<th style="text-align: left;">Parameters</th>
+<th style="text-align: left;">Attractor types</th>
+<th style="text-align: left;">Lyapunov signature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">Phase locking</td>
+<td style="text-align: left;">Circle map</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>,</mo><mi mathvariant="normal">Ω</mi></mrow><annotation encoding="application/x-tex">K, \Omega</annotation></semantics></math></td>
+<td style="text-align: left;">Fixed pts, inv. circle</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>&lt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda&lt; 0</annotation></semantics></math> or <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda= 0</annotation></semantics></math></td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">Amplitude inst.</td>
+<td style="text-align: left;">Delayed logistic</td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><mi>D</mi></mrow><annotation encoding="application/x-tex">\alpha, D</annotation></semantics></math></td>
+<td style="text-align: left;">Torus, doubled, fractal</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>=</mo><mn>0</mn><mo>→</mo><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_1 = 0 \to &gt; 0</annotation></semantics></math></td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">Torus doubling</td>
+<td style="text-align: left;">Map (I), Map (IV)</td>
+<td style="text-align: left;">3, 4</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><mi>D</mi></mrow><annotation encoding="application/x-tex">\alpha, D</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup><mo>,</mo><mn>2</mn><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup><mo>,</mo><mn>4</mn><msup><mi mathvariant="double-struck">𝕋</mi><mn>1</mn></msup></mrow><annotation encoding="application/x-tex">\mathbb{T}^1, 2\mathbb{T}^1, 4\mathbb{T}^1</annotation></semantics></math>, chaos</td>
+<td style="text-align: left;">Multiple <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>λ</mi><mo>=</mo><mn>0</mn><mo>→</mo><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda= 0 \to &gt; 0</annotation></semantics></math></td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">Symmetry breaking</td>
+<td style="text-align: left;">Coupled logistic</td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;">Torus, broken torus</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>1</mn></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_1 = 0</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>λ</mi><mn>2</mn></msub><mo>&lt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\lambda_2 &lt; 0</annotation></semantics></math></td>
+</tr>
+<tr>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">Three-torus</td>
+<td style="text-align: left;">Coupled delayed</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>,</mo><msub><mi>D</mi><mi>A</mi></msub><mo>,</mo><msub><mi>D</mi><mi>B</mi></msub><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">\alpha, D_A, D_B, \varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi mathvariant="double-struck">𝕋</mi><mn>2</mn></msup><annotation encoding="application/x-tex">\mathbb{T}^2</annotation></semantics></math>, lockings, chaos</td>
+<td style="text-align: left;">Two zero exponents</td>
+</tr>
+<tr>
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">STI</td>
+<td style="text-align: left;">CML (logistic)</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;">Laminar/burst coexist</td>
+<td style="text-align: left;">DP-like scaling (conjectured) <span class="citation" data-cites="pomeau1986front chate1988spatiotemporal">(Pomeau 1986; Chaté and Manneville 1988b)</span></td>
+</tr>
+<tr>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">Pattern dynamics</td>
+<td style="text-align: left;">CML (logistic)</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;">5 phases</td>
+<td style="text-align: left;">Frozen <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>→</mo><annotation encoding="application/x-tex">\to</annotation></semantics></math> turbulent</td>
+</tr>
+<tr>
+<td style="text-align: left;">8</td>
+<td style="text-align: left;">Collective chaos</td>
+<td style="text-align: left;">GCM (logistic)</td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math></td>
+<td style="text-align: left;"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>,</mo><mi>ε</mi></mrow><annotation encoding="application/x-tex">a, \varepsilon</annotation></semantics></math></td>
+<td style="text-align: left;">Clusters, mean-field chaos</td>
+<td style="text-align: left;">LLN violation</td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="computational-defaults" class="level2 unnumbered">
 <h2 class="unnumbered">Computational defaults</h2>
@@ -652,10 +830,10 @@ d-1\}</annotation></semantics></math>). The normalised Shannon entropy of the pa
 <p>Organising the work this way makes a recurring construction easy to see: a low-dimensional invariant object is destabilised, then a new degree of freedom (amplitude, symmetry, spatial propagation, or mean-field correlation) becomes dynamically active. This pattern was already present in Kaneko’s original papers; recomputing the figures at higher resolution and viewing the models side by side simply brings it into a single view.</p>
 <p>The principal contributions of this work are:</p>
 <ol>
-<li><p><strong>Mechanistic organisation</strong>: Kaneko’s results, originally spread across nine papers, are reorganised into a coherent atlas structured by the underlying physical mechanism (Table <a href="#tab:atlas" data-reference-type="ref" data-reference="tab:atlas">[tab:atlas]</a>).</p></li>
+<li><p><strong>Mechanistic organisation</strong>: Kaneko’s results, originally spread across nine papers, are reorganised into a coherent atlas structured by the underlying physical mechanism (Table <a href="#tab:atlas" data-reference-type="ref" data-reference="tab:atlas">2</a>).</p></li>
 <li><p><strong>High-resolution reproductions</strong>: Selected key figures are recomputed at substantially finer parameter resolution, revealing fine structure invisible at the original resolution.</p></li>
 <li><p><strong>Distributed diagnostics</strong>: The four modern diagnostics are applied as “diagnostic spotlights,” each placed where it most naturally illuminates a specific mechanism.</p></li>
-<li><p><strong>Unified notation</strong>: A single consistent notation (Table <a href="#tab:notation" data-reference-type="ref" data-reference="tab:notation">[tab:notation]</a>) replaces the parameter symbols that varied across Kaneko’s papers, disambiguating drive parameters (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>A</mi></msub><annotation encoding="application/x-tex">D_A</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>B</mi></msub><annotation encoding="application/x-tex">D_B</annotation></semantics></math>) from the correlation dimension <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math>.</p></li>
+<li><p><strong>Unified notation</strong>: A single consistent notation (Table <a href="#tab:notation" data-reference-type="ref" data-reference="tab:notation">1</a>) replaces the parameter symbols that varied across Kaneko’s papers, disambiguating drive parameters (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>A</mi></msub><annotation encoding="application/x-tex">D_A</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>B</mi></msub><annotation encoding="application/x-tex">D_B</annotation></semantics></math>) from the correlation dimension <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mn>2</mn></msub><annotation encoding="application/x-tex">D_2</annotation></semantics></math>.</p></li>
 <li><p><strong>Torus ontology</strong>: The map-vs-flow distinction in Lyapunov counting for <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>-tori is made explicit (Section <a href="#sec:intro" data-reference-type="ref" data-reference="sec:intro">1</a>).</p></li>
 </ol>
 <p>The atlas provides a reproducible, notation-consistent reference point from which sharper questions can be asked. It enables direct comparison of old and modern computations without changing the underlying models, and contributes to reproducibility for a historically important part of nonlinear dynamics. Limitations remain. The paper does not establish new scaling laws, does not replace finite-size scaling for STI, and does not turn the diagnostic spotlights into validated automatic classifiers. Future work should include a controlled finite-size-scaling study of the STI examples, uncertainty estimates for the torus-doubling scaling exponent, and a systematic comparison between the diagnostic spotlights used here and larger metric suites for CMLs.</p>
@@ -665,7 +843,7 @@ d-1\}</annotation></semantics></math>). The normalised Shannon entropy of the pa
 </section>
 <section id="app:provenance" class="level1">
 <h1>Equation Provenance</h1>
-<p>Table <a href="#tab:provenance" data-reference-type="ref" data-reference="tab:provenance">1</a> maps every numbered equation in this paper to its original source. Equations marked with <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>†</mi><annotation encoding="application/x-tex">\dagger</annotation></semantics></math> use notation or functional form that differs from the original; the body text explains the correspondence.</p>
+<p>Table <a href="#tab:provenance" data-reference-type="ref" data-reference="tab:provenance">3</a> maps every numbered equation in this paper to its original source. Equations marked with <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>†</mi><annotation encoding="application/x-tex">\dagger</annotation></semantics></math> use notation or functional form that differs from the original; the body text explains the correspondence.</p>
 <div id="tab:provenance">
 
 </div>
@@ -741,7 +919,7 @@ d-1\}</annotation></semantics></math>). The normalised Shannon entropy of the pa
 <section id="app:repro_index" class="level1">
 <h1>Reproduction Index</h1>
 <p>Reproduction scripts are implemented as <code>dynachaos</code> modules and can be run via <code>dynachaos run &lt;section_id&gt;</code> or <code>python -m dynachaos.&lt;module&gt;</code>. For config-driven diagnostics, the traceable command form is <code>dynachaos analyze &lt;config.jsonc&gt;</code>, which writes a named <code>results.json</code> alongside metadata and a summary in the configured output directory.</p>
-<p>Table <a href="#tab:repro_index" data-reference-type="ref" data-reference="tab:repro_index">2</a> maps each reproduced figure to its original source, key parameters, and the generating script.</p>
+<p>Table <a href="#tab:repro_index" data-reference-type="ref" data-reference="tab:repro_index">4</a> maps each reproduced figure to its original source, key parameters, and the generating script.</p>
 <div id="tab:repro_index">
 
 </div>
