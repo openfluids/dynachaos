@@ -265,18 +265,31 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
     body = FIG_RE.sub(do_figure, body)
     body = TABLE_RE.sub(lambda m: f'<div class="table-wrap">{m.group(0)}</div>', body)
 
+    # Number the figures in reading order, so a reader can name what they are
+    # looking at. Done after the figure rewrite so the count matches the page.
+    fig_no = 0
+
+    def number_figure(match: re.Match[str]) -> str:
+        nonlocal fig_no
+        block = match.group(0)
+        if 'class="plain"' in block[:40]:
+            return block
+        fig_no += 1
+        return block.replace(
+            "<figcaption>", f'<figcaption><span class="num">Figure {fig_no}.</span> ', 1
+        ).replace("<figure ", f'<figure data-fignum="{fig_no}" ', 1)
+
+    body = FIG_RE.sub(number_figure, body)
+
     # Keep pandoc's ids verbatim: they are the manuscript's own \label anchors,
     # and every internal cross-reference in the text points at them.
     body = SEC_RE.sub(lambda m: f'<section id="{m.group(1)}" class="{m.group(2)} reveal">', body)
 
-    # level1 -> h2, level2 -> h3, so the shell's type scale applies.
-    nav: list[tuple[int, str, str]] = []
-
-    def demote(match: re.Match[str]) -> str:
-        tag, attrs, text = match.group(1), match.group(2), match.group(3)
-        new = "h2" if tag == "h1" else "h3"
-        return f"<{new}{attrs}>{text}</{new}>"
-
+    # Number sections from the heading tree, skipping the ones the manuscript
+    # marks unnumbered, then demote level1 -> h2 and level2 -> h3 so the
+    # shell's type scale applies.
+    nav: list[tuple[int, str, str, str]] = []
+    top = sub = 0
     for m in re.finditer(r'<section id="([^"]+)" class="([^"]*)"', body):
         sec_id, cls = m.group(1), m.group(2)
         tail = body[m.end() : m.end() + 4000]
@@ -284,22 +297,91 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
         if not h:
             continue
         level = 1 if "level1" in cls else 2
-        nav.append((level, sec_id, strip_tags(h.group(3))))
+        number = ""
+        if "unnumbered" not in cls:
+            if level == 1:
+                top += 1
+                sub = 0
+                number = str(top)
+            else:
+                sub += 1
+                number = f"{top}.{sub}"
+        nav.append((level, sec_id, strip_tags(h.group(3)), number))
+
+    numbers = iter(n for *_, n in nav)
+
+    def demote(match: re.Match[str]) -> str:
+        tag, attrs, text = match.group(1), match.group(2), match.group(3)
+        new = "h2" if tag == "h1" else "h3"
+        number = next(numbers, "")
+        label = f'<span class="secno">{number}</span> ' if number else ""
+        return f"<{new}{attrs}>{label}{text}</{new}>"
 
     body = HEAD_RE.sub(demote, body)
+    body, folded = fold_back_matter(body)
     print(
         f"  figures: {stats['interactive']} interactive, {stats['static']} static, "
-        f"{stats['passthrough']} passthrough"
+        f"{stats['passthrough']} passthrough (numbered 1-{fig_no})"
     )
+    print(f"  sections numbered: {sum(1 for *_, n in nav if n)} of {len(nav)}")
+    print(f"  back matter folded: {folded}")
     return body, nav
 
 
-def build_nav(nav: list[tuple[int, str, str]]) -> str:
-    out = ['<nav class="spine" aria-label="Contents">']
-    for level, sec_id, title in nav:
-        cls = ' class="sub"' if level == 2 else ""
-        out.append(f'<a href="#{sec_id}"{cls}>{html.escape(title)}</a>')
-    out.append("</nav>")
+# Reference material the reader should be able to skip: it interrupts the
+# argument but must stay on the page and stay linkable.
+BACK_MATTER = ("sec:glossary", "app:provenance", "app:repro_index", "app:assumptions")
+
+
+def fold_back_matter(body: str) -> tuple[str, int]:
+    """Wrap reference sections in a collapsed ``<details>``.
+
+    The section keeps its id and stays in the document, so every cross-reference
+    into it still resolves; browsers open a closed ``<details>`` automatically
+    when a link targets something inside it.
+    """
+    folded = 0
+    for sec_id in BACK_MATTER:
+        pattern = re.compile(
+            rf'(<section id="{re.escape(sec_id)}"[^>]*>)\s*<h2([^>]*)>(.*?)</h2>', re.S
+        )
+        match = pattern.search(body)
+        if not match:
+            continue
+        folded += 1
+        body = pattern.sub(
+            lambda m: (
+                f"{m.group(1)}<details class='backmatter'>"
+                f"<summary><h2{m.group(2)}>{m.group(3)}</h2></summary>"
+            ),
+            body,
+            count=1,
+        )
+        end = body.index("</section>", body.index(f'id="{sec_id}"'))
+        body = body[:end] + "</details>" + body[end:]
+    return body, folded
+
+
+def build_nav(nav: list[tuple[int, str, str, str]]) -> str:
+    """Nested contents: top-level entries always visible, children on demand."""
+    out = ['<nav class="spine" aria-label="Contents"><ul class="toc">']
+    open_sub = False
+    for level, sec_id, title, number in nav:
+        label = f"<i>{number}</i> {html.escape(title)}" if number else html.escape(title)
+        if level == 1:
+            if open_sub:
+                out.append("</ul></li>")
+                open_sub = False
+            out.append(f'<li class="top"><a href="#{sec_id}">{label}</a><ul class="sub">')
+            open_sub = True
+        else:
+            if not open_sub:
+                out.append('<li class="top"><ul class="sub">')
+                open_sub = True
+            out.append(f'<li><a href="#{sec_id}">{label}</a></li>')
+    if open_sub:
+        out.append("</ul></li>")
+    out.append("</ul></nav>")
     return "".join(out)
 
 
