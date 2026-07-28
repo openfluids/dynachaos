@@ -302,7 +302,18 @@ tbody td:first-child{font-weight:700;white-space:nowrap;}
 tbody td math{font-size:1em;}
 table th[style],table td[style]{text-align:left !important;}
 
+/* 144 citations: they must be reachable without shouting over the prose */
 .citation{white-space:nowrap;}
+.citation a,a[role="doc-biblioref"]{
+  color:inherit;border-bottom:1px solid color-mix(in oklab,var(--chaotic) 30%,transparent);
+  transition:color .15s ease,border-color .15s ease;}
+.citation a:hover,a[role="doc-biblioref"]:hover{color:var(--chaotic);border-bottom-color:currentColor;}
+/* the entry you jumped to should be findable when you land on it */
+.csl-entry:target{background:color-mix(in oklab,var(--chaotic) 9%,transparent);
+  border-radius:4px;box-shadow:0 0 0 0.5rem color-mix(in oklab,var(--chaotic) 9%,transparent);}
+.csl-entry a{color:var(--ink-mid);border-bottom-color:color-mix(in oklab,var(--ink-low) 40%,transparent);
+  overflow-wrap:anywhere;}
+.csl-entry a:hover{color:var(--chaotic);}
 #refs,.references{margin-top:1.2rem;font-size:0.82rem;}
 .csl-entry{margin:0 0 0.6em;padding-left:1.5em;text-indent:-1.5em;color:var(--ink-mid);line-height:1.45;}
 

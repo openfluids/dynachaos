@@ -126,6 +126,46 @@ def tabularx_to_tabular(tex: str) -> tuple[str, int]:
     return "".join(out), count
 
 
+TAGGED_ENV = re.compile(r"\\begin\{(equation\*?|align\*?|gather\*?)\}(.*?)\\end\{\1\}", re.S)
+TAG_RE = re.compile(r"\\tag\{(.*?)\}\s*")
+TAG_SYMBOLS = {"\\star": "\u2605", "\\dagger": "\u2020", "\\ddagger": "\u2021", "\\ast": "*"}
+
+
+def tag_text(raw: str) -> str:
+    """Turn a LaTeX ``\\tag`` argument into the text it should display."""
+    out = raw.strip().strip("$").strip()
+    for macro, glyph in TAG_SYMBOLS.items():
+        out = out.replace(macro, glyph)
+    out = re.sub(r"\\[a-zA-Z]+", "", out)
+    return out.replace("{", "").replace("}", "").strip()
+
+
+def extract_tags(tex: str) -> tuple[str, list[str]]:
+    """Pull ``\\tag{...}`` out of display maths and anchor each one.
+
+    Pandoc cannot convert ``\\tag`` and drops the marker, so the manuscript's
+    starred preview equations arrive with no marker at all. Removing the tag
+    lets the maths convert, and the anchor lets the marker be put back beside
+    the equation afterwards.
+    """
+    tags: list[str] = []
+
+    def repl(match: re.Match[str]) -> str:
+        body = match.group(2)
+        found = TAG_RE.search(body)
+        if not found:
+            return match.group(0)
+        index = len(tags)
+        tags.append(tag_text(found.group(1)))
+        cleaned = TAG_RE.sub("", body)
+        return (
+            f"\\hypertarget{{eqtag-{index}}}{{}}"
+            f"\\begin{{{match.group(1)}}}{cleaned}\\end{{{match.group(1)}}}"
+        )
+
+    return TAGGED_ENV.sub(repl, tex), tags
+
+
 def anchor_labels(tex: str) -> tuple[str, int]:
     """Insert ``\\hypertarget`` before every labelled equation and table.
 
@@ -227,7 +267,7 @@ def extract_meta(tex: str) -> dict[str, str]:
     }
 
 
-def run_pandoc(source: Path) -> str:
+def run_pandoc(source: Path) -> tuple[str, list[str]]:
     """Convert a LaTeX manuscript to an HTML fragment with MathML and citations."""
     if shutil.which("pandoc") is None:
         raise SystemExit("pandoc not found on PATH; install it to use --manuscript")
@@ -237,6 +277,9 @@ def run_pandoc(source: Path) -> str:
 
     raw_tex = source.read_text(encoding="utf-8")
     raw_tex, n_tabx = tabularx_to_tabular(raw_tex)
+    raw_tex, eq_tags = extract_tags(raw_tex)
+    if eq_tags:
+        print(f"  preserved {len(eq_tags)} tagged equations: {' '.join(eq_tags)}")
     if n_tabx:
         print(f"  rewrote {n_tabx} tabularx environments as tabular")
     patched, n_anchor = anchor_labels(raw_tex)
@@ -247,6 +290,8 @@ def run_pandoc(source: Path) -> str:
     cmd = [
         "pandoc", str(staged), "-f", "latex", "-t", "html5",
         "--mathml", "--citeproc", "--section-divs", "--wrap=none",
+        # every author-year links to its own bibliography entry, as hyperref does
+        "-M", "link-citations=true", "-M", "link-bibliography=true",
         "--resource-path", str(source.parent),
     ]  # fmt: skip
     if bib.exists():
@@ -257,7 +302,7 @@ def run_pandoc(source: Path) -> str:
     for line in proc.stderr.splitlines():
         if line.startswith("[WARNING]"):
             print(f"  pandoc: {line}")
-    return proc.stdout
+    return proc.stdout, eq_tags
 
 
 HYPERTARGET_RE = re.compile(r'<(span|div) id="((?:eq|tab):[^"]+)"[^>]*>\s*</\1>')
@@ -266,6 +311,26 @@ ANNOTATION_RE = re.compile(r"<annotation\b[^>]*>.*?</annotation>", re.S)
 XREF_RE = re.compile(
     r'(<a href="#([^"]+)"[^>]*data-reference-type="(?:eqref|ref)"[^>]*>)\[([^\]]+)\]</a>'
 )
+
+
+def apply_eq_tags(body: str, tags: list[str]) -> tuple[str, int]:
+    """Put each recovered ``\\tag`` marker beside its equation."""
+    if not tags:
+        return body, 0
+    out, pos, done = [], 0, 0
+    for match in re.finditer(r'<span id="eqtag-(\d+)"[^>]*></span>', body):
+        index = int(match.group(1))
+        if index >= len(tags):
+            continue
+        eq = BLOCK_MATH_RE.search(body, match.end())
+        if not eq or eq.start() - match.end() > 1200:
+            continue
+        done += 1
+        out.append(body[pos : eq.start()])
+        out.append(f'<div class="eqn">{eq.group(0)}<span class="eqno">({tags[index]})</span></div>')
+        pos = eq.end()
+    out.append(body[pos:])
+    return "".join(out), done
 
 
 def number_equations(body: str) -> tuple[str, dict[str, str], int]:
@@ -414,7 +479,9 @@ def thumb_dims() -> dict[str, tuple[int, int]]:
     return out
 
 
-def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
+def transform(
+    body: str, eq_tags: list[str] | None = None
+) -> tuple[str, list[tuple[int, str, str, str]]]:
     """Rewrite pandoc output into the page's own figure, table and heading shapes."""
     dims = thumb_dims()
     stats: dict[str, object] = {"interactive": 0, "static": 0, "arc": 0, "dropped": []}
@@ -507,6 +574,7 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
         return f"<{new}{attrs}>{label}{text}</{new}>"
 
     body = HEAD_RE.sub(demote, body)
+    body, n_tagged = apply_eq_tags(body, eq_tags or [])
     body, eq_numbers, n_eq = number_equations(body)
     body, tab_numbers = number_tables(body)
     body, n_fixed = resolve_refs(body, {**eq_numbers, **tab_numbers})
@@ -522,7 +590,7 @@ def transform(body: str) -> tuple[str, list[tuple[int, str, str]]]:
     if stats["dropped"]:
         print(f"  DROPPED (pandoc could not convert): {', '.join(stats['dropped'])}")
     print(f"  sections numbered: {sum(1 for *_, n in nav if n)} of {len(nav)}")
-    print(f"  equations numbered: {n_eq}; references resolved: {n_fixed}")
+    print(f"  equations numbered: {n_eq}; tagged: {n_tagged}; references resolved: {n_fixed}")
     print(f"  latex annotations stripped: {n_ann}")
     print(f"  back matter folded: {folded}")
     return body, nav
@@ -666,9 +734,10 @@ def main() -> None:
     if args.manuscript:
         WEB.mkdir(parents=True, exist_ok=True)
         tex = args.manuscript.read_text(encoding="utf-8")
-        raw = run_pandoc(args.manuscript)
+        raw, eq_tags = run_pandoc(args.manuscript)
         BODY.write_text(raw, encoding="utf-8")
         meta = extract_meta(tex)
+        meta["eq_tags"] = eq_tags
         missing = [k for k, v in meta.items() if not v]
         if missing:
             print(f"  WARNING: could not parse from the manuscript: {', '.join(missing)}")
@@ -692,7 +761,7 @@ def main() -> None:
         raise SystemExit(f"{META.relative_to(REPO)} is missing. Import it once with --manuscript.")
     meta = json.loads(META.read_text(encoding="utf-8"))
 
-    body, nav = transform(BODY.read_text(encoding="utf-8"))
+    body, nav = transform(BODY.read_text(encoding="utf-8"), meta.get("eq_tags"))
     body, dropped = dedupe_ids(body)
     if dropped:
         print(f"  removed {dropped} duplicate id attributes")
