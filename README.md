@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
-[![Python](https://img.shields.io/pypi/pyversions/dynachaos.svg)](https://pypi.org/project/dynachaos/)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fopenfluids%2Fdynachaos%2Fmain%2Fpyproject.toml&label=python)](https://pypi.org/project/dynachaos/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 `dynachaos` analyses time signals from simulations and experiments: maps and
