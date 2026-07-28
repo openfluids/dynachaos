@@ -47,45 +47,6 @@ AMI histograms, Cao dimension selection, multifractal moments
 **Visualization** — bifurcation diagrams, cobweb plots, return maps,
 curated Swiss-inspired style themes
 
-## Development setup
-
-The setup and backend-check commands in this section are for working on
-dynachaos itself. To *use* the package, see Quick Start above.
-
-```bash
-git clone https://github.com/openfluids/dynachaos.git
-cd dynachaos
-uv sync
-uv run --extra viz pytest tests/ -q
-```
-
-To exercise the installed Rust extension locally:
-
-```bash
-uv run maturin develop --release
-uv run --extra viz pytest tests/ -q
-```
-
-To verify the pure-Python fallback path:
-
-```bash
-DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
-```
-
-## Benchmarks
-
-The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity
-and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
-The local benchmark command is
-`uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`;
-inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. The
-checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at
-N=1000 for the largest common logistic case, and a dense-RQA predicted
-distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at
-4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are
-documented in `docs/rust-acceleration-roadmap.md` and
-`benchmarks/rust_hotspot_profile.py`.
-
 ## Quick Start
 
 From a fresh checkout, run the tested external-signal workflow recipe:
@@ -264,19 +225,66 @@ regression check. It is a demanding stress test of the package rather than its
 boundary: for general use on your own signals, see the quickstart and recipe
 gallery above.
 
+Eight of the thirty-seven figures are shown below; click any of them for the
+full-resolution render. **[Browse the complete gallery](https://openfluids.github.io/dynachaos/)**
+for all thirty-seven, in section order, with captions.
+
+| | |
+|---|---|
+| [![Arnold tongues](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec02_circle_map/arnold_tongues.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec02_circle_map/arnold_tongues.png) | [![Torus doubling in Map IV](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec04_doubling/map_IV_attractors.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec04_doubling/map_IV_attractors.png) |
+| Rotation number over the circle-map parameter plane; the uniform wedges are frequency-locked Arnold tongues. | Torus-doubling cascade of Map (IV): a fourfold torus, an eightfold torus, and chaos. |
+| [![Double devil's staircase](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec06_three_torus/double_staircase.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec06_three_torus/double_staircase.png) | [![Torus fractalization](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec07_fractalization/fractal_attractors.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec07_fractalization/fractal_attractors.png) |
+| Double devil's staircase of the modulated circle map, showing locking plateaus in both rotation numbers. | A smooth torus in the delayed logistic map develops wrinkles at finer and finer scales as it fractalizes. |
+| [![Spatiotemporal intermittency](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec08_sti/spacetime_diagrams.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec08_sti/spacetime_diagrams.png) | [![Globally coupled map clusters](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec10_gcm/gcm_clusters.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec10_gcm/gcm_clusters.png) |
+| Spacetime diagrams of spatiotemporal intermittency in three coupled map lattice models. | Cluster states in a globally coupled map, showing a partially ordered regime. |
+| [![Complexity-entropy plane](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec11_diagnostics/complexity_entropy_plane.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec11_diagnostics/complexity_entropy_plane.png) | [![Type-I intermittency](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec12_intermittency/type_i_intermittency.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec12_intermittency/type_i_intermittency.png) |
+| Complexity-entropy plane locations for the logistic and delayed logistic maps. | Type-I intermittency: a tangent-bifurcation channel, laminar-length statistics, and a Lorenz reinjection channel. |
+
+## Benchmarks
+
+The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity
+and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
+The local benchmark command is
+`uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`;
+inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. The
+checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at
+N=1000 for the largest common logistic case, and a dense-RQA predicted
+distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at
+4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are
+documented in `docs/rust-acceleration-roadmap.md` and
+`benchmarks/rust_hotspot_profile.py`.
+
 ## Development
 
-These are local contributor checks.
+These commands are for working on dynachaos itself. To *use* the package, see
+Quick Start above.
 
 ```bash
+git clone https://github.com/openfluids/dynachaos.git
+cd dynachaos
 uv sync
 uv run --extra viz pytest tests/ -q
-uv run --extra viz ruff check src/ tests/
-uv run --extra viz ruff format src/ tests/ --check
+uv run --extra viz ruff check src/ tests/ scripts/
+uv run --extra viz ruff format --check src/ tests/ scripts/
+```
 
-# With Rust extension:
+To exercise the installed Rust extension locally:
+
+```bash
 uv run maturin develop --release
 uv run --extra viz pytest tests/ -q
+```
+
+To verify the pure-Python fallback path:
+
+```bash
+DYNACHAOS_NO_RUST=1 uv run --extra viz pytest tests/ -q
+```
+
+To rebuild the gallery thumbnails and the static gallery site:
+
+```bash
+uv run --extra viz python scripts/build_gallery.py
 ```
 
 ## Contributing

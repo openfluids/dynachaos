@@ -66,7 +66,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: uv sync --all-extras
-      - run: uv run ruff check src/ tests/
-      - run: uv run ruff format --check src/ tests/
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
       - run: cargo fmt --manifest-path rust/Cargo.toml -- --check
       - run: cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
