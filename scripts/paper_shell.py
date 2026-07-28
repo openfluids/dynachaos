@@ -59,17 +59,17 @@ CSS = (
   --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 
   --base:1.155rem;
-  --measure:clamp(30rem,4rem + 24vw,42rem);
+  --measure:clamp(30rem,16.5rem + 24vw,42rem);
   --rail:clamp(12rem,14vw,17rem);
   --bleed:clamp(34rem,6rem + 44vw,66rem);
   --gutter:clamp(1.15rem,3.5vw,2.75rem);
   --shadow:0 1px 2px rgba(20,22,28,.05), 0 8px 28px rgba(20,22,28,.07);
 }
 
-:root[data-size="s"]{--base:1.0rem;--measure:clamp(28rem,3rem + 22vw,38rem);}
-:root[data-size="m"]{--base:1.075rem;--measure:clamp(29rem,3.5rem + 23vw,40rem);}
-:root[data-size="l"]{--base:1.155rem;--measure:clamp(30rem,4rem + 24vw,42rem);}
-:root[data-size="xl"]{--base:1.26rem;--measure:clamp(31rem,4.5rem + 25vw,44rem);}
+:root[data-size="s"]{--base:1.0rem;--measure:clamp(28rem,16.75rem + 20vw,38rem);}
+:root[data-size="m"]{--base:1.075rem;--measure:clamp(29rem,16.6rem + 22vw,40rem);}
+:root[data-size="l"]{--base:1.155rem;--measure:clamp(30rem,16.5rem + 24vw,42rem);}
+:root[data-size="xl"]{--base:1.26rem;--measure:clamp(31rem,16.4rem + 26vw,44rem);}
 
 @media (prefers-color-scheme: dark){
   :root{
@@ -250,6 +250,8 @@ figure img{display:block;width:100%;height:auto;max-height:clamp(14rem,34vh,26re
 figcaption{padding:0.6rem 0.8rem 0.75rem;font-size:0.82rem;line-height:1.5;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
 figcaption .num{color:var(--ink);font-weight:700;}
 .plot-wrap{position:relative;padding:0.35rem;}
+.plot-title{margin:0 0 0.15rem;text-align:center;font-family:var(--mono);font-size:0.62rem;
+  letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-low);}
 canvas.plot{width:100%;display:block;touch-action:pan-y;}
 .hint{margin:0;padding:0 0.8rem 0.6rem;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;color:var(--ink-low);}
 /* research-arc overview: a timeline, not a table */
@@ -520,9 +522,16 @@ function hero(){
 }
 
 /* ---------------- canvas plotting ---------------- */
-function fmt(v){const a=Math.abs(v);
-  if(a!==0&&(a<1e-3||a>=1e5))return v.toExponential(2);
-  return v.toFixed(a<1?4:3);}
+// Tick text is formatted against the axis *span*, not the value: an axis
+// running 1.4..2.5 wants one decimal, not the four that "1.4000" wasted.
+function fmtSpan(v,span){
+  const a=Math.abs(v);
+  if((a!==0&&(a<1e-3||a>=1e5))||(span&&span<1e-3))return v.toExponential(2);
+  const d=span?Math.max(0,Math.min(6,1-Math.floor(Math.log10(span/4)))):3;
+  const s=v.toFixed(d);
+  return s==="-0"?"0":s;
+}
+function fmt(v){return fmtSpan(v,Math.abs(v)||1);}
 function ticks(lo,hi,n){
   const raw=(hi-lo||1)/n,mag=Math.pow(10,Math.floor(Math.log10(raw))),nm=raw/mag;
   const st=(nm<1.5?1:nm<3?2:nm<7?5:10)*mag,out=[];
@@ -549,7 +558,14 @@ function Plot(canvas,panel,meta){
       if(lo<y0)y0=lo; if(hi>y1)y1=hi;
     }
     const p=(y1-y0)*0.08||0.5;
-    return {x0,x1,y0:y0-p,y1:y1+p};
+    y0-=p;y1+=p;
+    // Reference lines widen the axis, exactly as matplotlib's axvline/axhline
+    // do -- otherwise a threshold the caption depends on falls off the edge.
+    for(const m of (meta.marks||[])){
+      if(m.axis==="x"){x0=Math.min(x0,m.value);x1=Math.max(x1,m.value);}
+      else{y0=Math.min(y0,m.value);y1=Math.max(y1,m.value);}
+    }
+    return {x0,x1,y0,y1};
   }
   const sx=v=>pad.l+(v-dom.x0)/(dom.x1-dom.x0)*(W-pad.l-pad.r);
   const sy=v=>H-pad.b-(v-dom.y0)/(dom.y1-dom.y0)*(H-pad.t-pad.b);
@@ -561,29 +577,117 @@ function Plot(canvas,panel,meta){
       if(v===null||Number.isNaN(v))continue;
       if(v<zmin)zmin=v;if(v>zmax)zmax=v;}}
   const hex=c=>[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];
-  function ramp(t){
-    const stops=[css("--locked"),css("--torus"),css("--chaotic")];
-    const k=Math.max(0,Math.min(0.999,t))*(stops.length-1);
-    const i=Math.floor(k),f=k-i,a=hex(stops[i]),b=hex(stops[i+1]||stops[i]);
-    return `rgb(${a.map((v,j)=>Math.round(v+(b[j]-v)*f)).join(",")})`;
+  // Same viridis the matplotlib figures use, so toggling to the interactive
+  // view never changes what a colour means.
+  const VIRIDIS=[[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
+                 [31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
+  const signed=(panel.cmap||"viridis")==="signed"&&zmin<0&&zmax>0;
+  function lerp3(a,b,f){return [0,1,2].map(j=>Math.round(a[j]+(b[j]-a[j])*f));}
+  function rampRGB(t){
+    t=Math.max(0,Math.min(1,t));
+    if(signed){
+      const stops=[hex(css("--locked")),hex(css("--torus")),hex(css("--chaotic"))];
+      const k=t*2,i=Math.min(1,Math.floor(k));
+      return lerp3(stops[i],stops[i+1],k-i);
+    }
+    const k=t*(VIRIDIS.length-1),i=Math.min(VIRIDIS.length-2,Math.floor(k));
+    return lerp3(VIRIDIS[i],VIRIDIS[i+1],k-i);
+  }
+  // Two-slope norm, as matplotlib's TwoSlopeNorm: z = 0 sits at the ramp's
+  // midpoint (the locked/chaotic boundary) while each side still spans its half
+  // of the ramp, so a lopsided field does not collapse into one hue.
+  const znorm=v=>signed
+    ? (v<0 ? 0.5*(1-v/zmin) : 0.5+0.5*(v/zmax))
+    : (v-zmin)/((zmax-zmin)||1);
+  const zlo=zmin, zhi=zmax;
+  function ramp(t){const c=rampRGB(t);return `rgb(${c[0]},${c[1]},${c[2]})`;}
+
+  const CBAR=13;   // colourbar strip width
+  // Reserve exactly the room the tick text needs, so the rotated axis label
+  // stops landing on top of it.
+  function measurePads(){
+    ctx.font="10px "+css("--mono");
+    let w=0;
+    const yspan=dom.y1-dom.y0;
+    for(const t of ticks(dom.y0,dom.y1,4)) w=Math.max(w,ctx.measureText(fmtSpan(t,yspan)).width);
+    pad.l=Math.ceil(w)+(meta.ylabel?26:12);
+    pad.r=12;
+    if(heat){
+      let zw=0;
+      for(const t of ticks(zlo,zhi,4)) zw=Math.max(zw,ctx.measureText(fmtSpan(t,zhi-zlo)).width);
+      pad.r=12+CBAR+8+Math.ceil(zw)+(zlabel?16:4);
+    }
+  }
+  const zlabel=panel.zlabel||"";
+
+  function drawColorbar(){
+    const x=W-pad.r+12,y0=pad.t,y1=H-pad.b,h=y1-y0;
+    if(h<20) return;
+    // Painted linearly in value, not in ramp position, so a two-slope norm
+    // still reads against evenly spaced ticks.
+    for(let p=0;p<h;p++){
+      ctx.fillStyle=ramp(znorm(zlo+(1-p/(h-1))*(zhi-zlo)));
+      ctx.fillRect(x,y0+p,CBAR,1);
+    }
+    ctx.strokeStyle=css("--rule");ctx.lineWidth=1;
+    ctx.strokeRect(x+0.5,y0+0.5,CBAR-1,h-1);
+    ctx.fillStyle=css("--ink-low");ctx.textAlign="left";ctx.textBaseline="middle";
+    const zspan=zhi-zlo;
+    for(const t of ticks(zlo,zhi,4)){
+      if(t<zlo-1e-12||t>zhi+1e-12)continue;
+      const y=y1-(t-zlo)/(zspan||1)*h;
+      ctx.fillText(fmtSpan(t,zspan),x+CBAR+5,y);
+    }
+    if(zlabel){
+      ctx.save();ctx.fillStyle=css("--ink-mid");
+      ctx.translate(W-3,y0+h/2);ctx.rotate(Math.PI/2);
+      ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(zlabel,0,0);ctx.restore();
+    }
+  }
+
+  // Reference lines the captions promise (critical lines, bifurcation
+  // thresholds). Values come from the payload, never recomputed here.
+  function drawMarks(){
+    const marks=meta.marks||[];
+    if(!marks.length) return;
+    ctx.save();ctx.setLineDash([5,4]);ctx.lineWidth=1;
+    ctx.font="10px "+css("--mono");ctx.textBaseline="bottom";
+    for(const m of marks){
+      const vertical=m.axis==="x";
+      const p=vertical?sx(m.value):sy(m.value);
+      if(vertical?(p<pad.l||p>W-pad.r):(p<pad.t||p>H-pad.b))continue;
+      ctx.strokeStyle=css("--ink-mid");ctx.globalAlpha=.75;
+      ctx.beginPath();
+      if(vertical){ctx.moveTo(p+0.5,pad.t);ctx.lineTo(p+0.5,H-pad.b);}
+      else{ctx.moveTo(pad.l,p+0.5);ctx.lineTo(W-pad.r,p+0.5);}
+      ctx.stroke();
+      if(m.label){
+        ctx.globalAlpha=1;ctx.fillStyle=css("--ink-mid");
+        if(vertical){ctx.textAlign="left";ctx.fillText(m.label,p+4,pad.t+11);}
+        else{ctx.textAlign="right";ctx.fillText(m.label,W-pad.r-4,p-3);}
+      }
+    }
+    ctx.restore();
   }
 
   function draw(){
     if(!W||!H) return;
+    measurePads();
     ctx.clearRect(0,0,W,H);
     const rule=css("--rule"),low=css("--ink-low"),mid=css("--ink-mid");
     ctx.font="10px "+css("--mono");ctx.strokeStyle=rule;ctx.lineWidth=1;ctx.fillStyle=low;
     ctx.textAlign="right";ctx.textBaseline="middle";
+    const yspan=dom.y1-dom.y0,xspan=dom.x1-dom.x0;
     for(const t of ticks(dom.y0,dom.y1,4)){
-      const y=Math.round(sy(t))+0.5;if(y<pad.t||y>H-pad.b)continue;
+      const y=Math.round(sy(t))+0.5;if(y<pad.t-1||y>H-pad.b+1)continue;
       if(!heat){ctx.globalAlpha=.4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;}
-      ctx.fillText(fmt(t),pad.l-7,y);
+      ctx.fillText(fmtSpan(t,yspan),pad.l-7,y);
     }
     ctx.textAlign="center";ctx.textBaseline="top";
     for(const t of ticks(dom.x0,dom.x1,5)){
-      const x=Math.round(sx(t))+0.5;if(x<pad.l||x>W-pad.r)continue;
+      const x=Math.round(sx(t))+0.5;if(x<pad.l-1||x>W-pad.r+1)continue;
       if(!heat){ctx.globalAlpha=.4;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,H-pad.b);ctx.stroke();ctx.globalAlpha=1;}
-      ctx.fillText(fmt(t),x,H-pad.b+7);
+      ctx.fillText(fmtSpan(t,xspan),x,H-pad.b+7);
     }
     ctx.fillStyle=mid;ctx.textAlign="center";ctx.textBaseline="bottom";
     ctx.fillText(meta.xlabel||"",pad.l+(W-pad.l-pad.r)/2,H-2);
@@ -593,15 +697,23 @@ function Plot(canvas,panel,meta){
     ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,W-pad.l-pad.r,H-pad.t-pad.b);ctx.clip();
     if(heat){
       const nx=panel.x.length,ny=panel.y.length;
-      const cw=Math.abs(sx(panel.x[1])-sx(panel.x[0]))+1;
-      const ch=Math.abs(sy(panel.y[1])-sy(panel.y[0]))+1;
+      // Fill to the next sample's edge rather than a fixed +1 fudge, so cells
+      // tile exactly instead of smearing over one another.
+      const edgeX=i=>i<nx-1?(sx(panel.x[i])+sx(panel.x[i+1]))/2:sx(panel.x[i])+(sx(panel.x[i])-sx(panel.x[i-1]))/2;
+      const edgeY=j=>j<ny-1?(sy(panel.y[j])+sy(panel.y[j+1]))/2:sy(panel.y[j])+(sy(panel.y[j])-sy(panel.y[j-1]))/2;
       for(let j=0;j<ny;j++){
-        const yv=sy(panel.y[j]);if(yv<pad.t-ch||yv>H-pad.b+ch)continue;
+        const yb=j>0?edgeY(j-1):sy(panel.y[0])-(edgeY(0)-sy(panel.y[0]));
+        const ya=edgeY(j);
+        const yTop=Math.min(ya,yb),yh=Math.abs(ya-yb)+1;
+        if(yTop>H-pad.b||yTop+yh<pad.t)continue;
         const row=panel.z[j];
         for(let i=0;i<nx;i++){
           const v=row[i];if(v===null||Number.isNaN(v))continue;
-          const xv=sx(panel.x[i]);if(xv<pad.l-cw||xv>W-pad.r+cw)continue;
-          ctx.fillStyle=ramp((v-zmin)/((zmax-zmin)||1));ctx.fillRect(xv,yv-ch,cw,ch);
+          const xb=i>0?edgeX(i-1):sx(panel.x[0])-(edgeX(0)-sx(panel.x[0]));
+          const xa=edgeX(i);
+          const xL=Math.min(xa,xb),xw=Math.abs(xa-xb)+1;
+          if(xL>W-pad.r||xL+xw<pad.l)continue;
+          ctx.fillStyle=ramp(znorm(v));ctx.fillRect(xL,yTop,xw,yh);
         }
       }
     }else{
@@ -624,12 +736,16 @@ function Plot(canvas,panel,meta){
         }
       });
     }
+    drawMarks();
     if(drag&&drag.cur!==null){
       ctx.fillStyle=css("--chaotic");ctx.globalAlpha=.12;
       const a=Math.min(drag.start,drag.cur),b=Math.max(drag.start,drag.cur);
       ctx.fillRect(a,pad.t,b-a,H-pad.t-pad.b);ctx.globalAlpha=1;
     }
     ctx.restore();
+    ctx.strokeStyle=css("--rule");ctx.lineWidth=1;
+    ctx.strokeRect(pad.l+0.5,pad.t+0.5,W-pad.l-pad.r-1,H-pad.t-pad.b-1);
+    if(heat) drawColorbar();
     if(!heat&&multi){
       ctx.font="10px "+css("--mono");ctx.textAlign="left";ctx.textBaseline="middle";
       let lx=pad.l+4;
@@ -662,7 +778,7 @@ function Plot(canvas,panel,meta){
       const i=near(panel.x,xv),j=near(panel.y,yv);
       lines.push((meta.xlabel||"x")+" = "+fmt(panel.x[i]));
       lines.push((meta.ylabel||"y")+" = "+fmt(panel.y[j]));
-      lines.push("value = "+fmt(panel.z[j][i]));
+      lines.push((zlabel||"value")+" = "+fmt(panel.z[j][i]));
     }else{
       lines.push((meta.xlabel||"x")+" = "+fmt(xv));
       for(const s of panel.traces){
@@ -723,14 +839,19 @@ async function mountInteractive(fig){
       const w=document.createElement("div");w.className="plot-wrap";
       const c=document.createElement("canvas");c.className="plot";
       w.appendChild(c);body.appendChild(w);
+      if(spec.panels.length>1&&panel.title){
+        const h=document.createElement("p");h.className="plot-title";
+        h.textContent=panel.title;w.insertBefore(h,c);
+      }
       MOUNTED.push(Plot(c,panel,{
         kind:spec.kind,
+        marks:spec.marks||[],
         xlabel:(spec.axes&&spec.axes.x&&spec.axes.x.label)||"",
         ylabel:(spec.axes&&spec.axes.y&&spec.axes.y.label)||""}));
     });
     const d=spec.decimation,n=document.createElement("p");n.className="hint";
     n.textContent="drag to zoom · double-click to reset · hover to read values"
-      +(d&&d.method!=="none"?" · showing "+d.to.toLocaleString()+" of "+d.from.toLocaleString()+" points":"");
+      +(d&&d.method!=="none"?" · resampled to "+d.to.toLocaleString()+" of "+d.from.toLocaleString()+" grid points; the static image is at full resolution":"");
     body.appendChild(n);
     fig.dataset.state="live";btn.textContent="image";
   }catch(err){

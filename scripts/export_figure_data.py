@@ -64,6 +64,21 @@ def _stride_decimation(n_from: int, n_to: int) -> dict[str, Any]:
     return {"method": "stride", "from": n_from, "to": n_to}
 
 
+#: Delay mixing weight of the delayed logistic map used throughout sec05/sec07.
+ALPHA = 0.3
+
+
+def _neimark_sacker_dc(alpha: float) -> float:
+    """Neimark-Sacker threshold D_c = (3 - 2a) / [4 (1 - a)^2]."""
+    return (3.0 - 2.0 * alpha) / (4.0 * (1.0 - alpha) ** 2)
+
+
+def _lam(i: int) -> str:
+    """Lyapunov exponent name with a real subscript, so the chart legend reads
+    the same as the caption."""
+    return "λ" + "₀₁₂₃₄₅₆₇₈₉"[i]
+
+
 def export_rqa_measures() -> dict[str, Any]:
     """sec11_diagnostics/rqa_measures: four RQA measures vs embedding delay D."""
     source = "sec11_diagnostics/rqa_measures"
@@ -99,11 +114,11 @@ def export_test01_sweep() -> dict[str, Any]:
         "figure": source,
         "kind": "scatter",
         "decimation": _no_decimation(n),
-        "axes": {"x": {"label": "Nonlinearity a"}, "y": {"label": "K_01 (0-1 test)"}},
+        "axes": {"x": {"label": "Nonlinearity a"}, "y": {"label": "K₀₁ (0–1 test)"}},
         "panels": [
             {
                 "title": "0-1 test for chaos: logistic map",
-                "traces": [{"name": "K_01", "x": _round_list(a), "y": _round_list(k)}],
+                "traces": [{"name": "K₀₁", "x": _round_list(a), "y": _round_list(k)}],
             }
         ],
     }
@@ -124,15 +139,15 @@ def export_permutation_entropy() -> dict[str, Any]:
         "figure": source,
         "kind": "lines",
         "decimation": _no_decimation(a.shape[0] + d.shape[0]),
-        "axes": {"x": {"label": "a or D"}, "y": {"label": "H_PE (permutation entropy)"}},
+        "axes": {"x": {"label": "a or D"}, "y": {"label": "Hₚₑ (permutation entropy)"}},
         "panels": [
             {
                 "title": "Logistic map",
-                "traces": [{"name": "H_PE", "x": _round_list(a), "y": _round_list(h_logistic)}],
+                "traces": [{"name": "Hₚₑ", "x": _round_list(a), "y": _round_list(h_logistic)}],
             },
             {
-                "title": "Delayed logistic, alpha = 0.3",
-                "traces": [{"name": "H_PE", "x": _round_list(d), "y": _round_list(h_delayed)}],
+                "title": "Delayed logistic, α = 0.3",
+                "traces": [{"name": "Hₚₑ", "x": _round_list(d), "y": _round_list(h_delayed)}],
             },
         ],
     }
@@ -190,13 +205,13 @@ def export_correlation_dimension() -> dict[str, Any]:
         "figure": source,
         "kind": "lines",
         "decimation": _no_decimation(n),
-        "axes": {"x": {"label": "D"}, "y": {"label": "Correlation dimension D2"}},
+        "axes": {"x": {"label": "D"}, "y": {"label": "Correlation dimension D₂"}},
         "panels": [
             {
-                "title": "Delayed logistic map, alpha = 0.3",
+                "title": "Delayed logistic map, α = 0.3",
                 "traces": [
                     {
-                        "name": "D2",
+                        "name": "D₂",
                         "x": _round_list(d),
                         "y": _round_list(d2),
                         "yerr": _round_list(d2_err),
@@ -219,7 +234,7 @@ def export_lyapunov_vs_d() -> dict[str, Any]:
     for col in range(spectra.shape[1]):
         traces.append(
             {
-                "name": f"lambda_{col + 1}",
+                "name": _lam(col + 1),
                 "x": _round_list(d),
                 "y": _round_list(spectra[:, col]),
                 "yerr": _round_list(spectra_err[:, col]),
@@ -230,7 +245,14 @@ def export_lyapunov_vs_d() -> dict[str, Any]:
         "kind": "lines",
         "decimation": _no_decimation(n),
         "axes": {"x": {"label": "D"}, "y": {"label": "Lyapunov exponent"}},
-        "panels": [{"title": "Delayed logistic map, alpha = 0.3", "traces": traces}],
+        # The caption promises a dashed line at the Neimark-Sacker bifurcation.
+        # Same closed form and same alpha as the matplotlib figure, so the
+        # interactive view cannot drift from the static one.
+        "marks": [
+            {"axis": "x", "value": _neimark_sacker_dc(ALPHA), "label": "D_c"},
+            {"axis": "y", "value": 0.0, "label": "λ = 0"},
+        ],
+        "panels": [{"title": "Delayed logistic map, α = 0.3", "traces": traces}],
     }
 
 
@@ -253,13 +275,13 @@ def export_lyapunov_vs_db() -> dict[str, Any]:
         spectra = _require(npz, key, source)
         traces = [
             {
-                "name": f"lambda_{col + 1}",
+                "name": _lam(col + 1),
                 "x": _round_list(db),
                 "y": _round_list(spectra[:, col]),
             }
             for col in range(3)
         ]
-        panels.append({"title": f"epsilon = {eps:g}", "traces": traces})
+        panels.append({"title": f"ε = {eps:g}", "traces": traces})
     return {
         "figure": source,
         "kind": "lines",
@@ -330,10 +352,14 @@ def export_arnold_tongues(max_axis: int = 600) -> dict[str, Any]:
         "figure": source,
         "kind": "heatmap",
         "decimation": _stride_decimation(n_k * n_omega, rho_ds.shape[0] * rho_ds.shape[1]),
-        "axes": {"x": {"label": "Bare frequency Omega"}, "y": {"label": "Nonlinearity K"}},
+        "axes": {"x": {"label": "Bare frequency Ω"}, "y": {"label": "Nonlinearity K"}},
+        # The critical line the caption names: above it the map is noninvertible.
+        "marks": [{"axis": "y", "value": 1.0 / (2.0 * np.pi), "label": "K_c = 1/2π"}],
         "panels": [
             {
                 "title": "Rotation number over the circle-map parameter plane",
+                "zlabel": "Rotation number ρ",
+                "cmap": "viridis",
                 "x": _round_list(omega[omega_idx]),
                 "y": _round_list(k[k_idx]),
                 "z": _round_grid(rho_ds),
@@ -359,16 +385,22 @@ def export_phase_diagram() -> dict[str, Any]:
         "figure": source,
         "kind": "heatmap",
         "decimation": _no_decimation(n),
-        "axes": {"x": {"label": "Nonlinearity a"}, "y": {"label": "Coupling epsilon"}},
+        "axes": {"x": {"label": "Nonlinearity a"}, "y": {"label": "Coupling ε"}},
         "panels": [
             {
                 "title": "Largest Lyapunov exponent",
+                "zlabel": "λ₁",
+                # Signed quantity: a diverging ramp pinned at zero keeps the
+                # locked / marginal / chaotic reading the rest of the site uses.
+                "cmap": "signed",
                 "x": _round_list(a),
                 "y": _round_list(eps),
                 "z": _round_grid(lam),
             },
             {
                 "title": "Spatial activity map",
+                "zlabel": "Spatial activity",
+                "cmap": "viridis",
                 "x": _round_list(a),
                 "y": _round_list(eps),
                 "z": _round_grid(spatial_activity),
