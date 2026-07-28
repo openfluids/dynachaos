@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only token: nothing here pushes, comments or publishes.
+permissions:
+  contents: read
+
 jobs:
   python-tests:
     name: Python ${{ matrix.python-version }} (pure)
