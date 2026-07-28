@@ -5,9 +5,11 @@
 [![Python](https://img.shields.io/pypi/pyversions/dynachaos.svg)](https://pypi.org/project/dynachaos/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
-
-Available on PyPI: `pip install dynachaos`
+`dynachaos` analyses time signals from simulations and experiments: maps and
+coupled-map lattices, Lyapunov exponents, recurrence quantification, entropy
+diagnostics, correlation dimension and multifractal spectra. Performance-critical
+kernels have Rust backends where those have parity tests, with pure-Python
+fallbacks everywhere else.
 
 > *"Chaos: When the present determines the future, but the approximate present*
 > *does not approximately determine the future."*
