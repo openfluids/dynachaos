@@ -1,8 +1,9 @@
 ![dynachaos banner](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/readme-banner-v1.png)
 
 [![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/openfluids/dynachaos/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
+[![Python](https://img.shields.io/pypi/pyversions/dynachaos.svg)](https://pypi.org/project/dynachaos/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Reusable dynamical-systems analysis for simulated or measured time signals, with Rust-accelerated kernels where they are tested.**
 
