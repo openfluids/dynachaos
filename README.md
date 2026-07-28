@@ -11,12 +11,6 @@ diagnostics, correlation dimension and multifractal spectra. Performance-critica
 kernels have Rust backends where those have parity tests, with pure-Python
 fallbacks everywhere else.
 
-> *"Chaos: When the present determines the future, but the approximate present*
-> *does not approximately determine the future."*
-> — Edward Lorenz
-
-![Bifurcation diagram of the logistic map](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/bifurcation.png)
-
 ## Why dynachaos?
 
 dynachaos is a reusable Python/Rust package for inspecting simulated or

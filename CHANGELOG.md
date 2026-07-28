@@ -3,6 +3,26 @@
 Versions before 0.4.0 were private and unpublished; their entries were
 reconstructed from git history. 0.4.0 is the first public release.
 
+## 0.4.1 — 2026-07-28
+
+Packaging and documentation only. No functional change to the library.
+
+### Fixed
+
+- The published 0.4.0 metadata carried only `Programming Language :: Python ::
+  3`, so PyPI — and every badge reading from it — reported the supported version
+  as "3". The per-version classifiers for 3.12, 3.13 and 3.14 were added to
+  `pyproject.toml` after 0.4.0 shipped, which left the released artifact
+  disagreeing with the source at the same version number. This release carries
+  them.
+
+### Changed
+
+- README: banner-first layout with no H1, and the opening sentence now leads
+  with `dynachaos` and names the actual diagnostics, matching the other
+  openfluids repositories. Dropped the Lorenz epigraph, the redundant
+  "Available on PyPI" line, and the logistic-map bifurcation figure.
+
 ## 0.4.0 — 2026-07-26
 
 First public release, under the openfluids organization and on PyPI.
