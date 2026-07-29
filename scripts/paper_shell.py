@@ -329,6 +329,65 @@ table th[style],table td[style]{text-align:left !important;}
 .lb img{max-width:100%;max-height:88svh;object-fit:contain;border-radius:3px;box-shadow:0 24px 70px rgba(0,0,0,.45);}
 .lb-cap{position:absolute;left:0;right:0;bottom:0;padding:0.9rem 1.5rem;font-size:0.8rem;color:var(--ink-mid);text-align:center;max-width:60rem;margin:0 auto;}
 .lb-close{position:absolute;top:0.9rem;right:1.1rem;background:var(--raised);color:var(--ink);border:1px solid var(--rule);border-radius:5px;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0.65rem;cursor:pointer;}
+.lb-nav{
+  position:absolute;top:50%;transform:translateY(-50%);
+  appearance:none;background:var(--raised);color:var(--ink);
+  border:1px solid var(--rule);border-radius:5px;
+  font-family:var(--mono);font-size:1rem;line-height:1;
+  width:2.2rem;height:2.2rem;padding:0;cursor:pointer;
+  opacity:.72;transition:opacity .15s,border-color .15s,color .15s;
+}
+.lb-nav:hover{opacity:1;border-color:var(--chaotic);color:var(--chaotic);}
+.lb-prev{left:0.9rem;}
+.lb-next{right:0.9rem;}
+/* A position in the sequence rather than a figure number. Kept visually apart
+   from the caption so neither can be read as the other. */
+.lb-pos{position:absolute;top:1rem;left:50%;transform:translateX(-50%);margin:0;
+  font-family:var(--mono);font-size:0.68rem;letter-spacing:0.12em;
+  color:var(--ink-low);pointer-events:none;}
+
+/* ------------------------------ xref popover + return pill ------------------------------ */
+.xref-pop{
+  position:fixed;z-index:65;max-width:min(32rem,calc(100vw - 2rem));
+  background:var(--raised);color:var(--ink);border:1px solid var(--rule);
+  border-radius:6px;box-shadow:var(--shadow);padding:0.7rem 0.85rem;
+  font-size:0.82rem;line-height:1.45;
+  opacity:0;transform:scale(.98) translateY(4px);visibility:hidden;
+  transition:opacity .12s ease,transform .12s ease,visibility .12s;
+  pointer-events:none;
+}
+.xref-pop.on{opacity:1;transform:none;visibility:visible;pointer-events:auto;}
+.xref-pop .xref-body{max-height:min(40vh,22rem);overflow:auto;}
+.xref-pop .xref-body .csl-entry{margin:0;padding-left:0;text-indent:0;color:var(--ink-mid);}
+.xref-pop .xref-body .eqn{margin:0.35em 0;}
+.xref-pop .xref-label{font-family:var(--mono);font-size:0.66rem;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-low);margin:0 0 0.35rem;}
+.xref-pop .xref-figimg{display:block;max-width:100%;height:auto;max-height:12rem;
+  object-fit:contain;margin:0 0 0.4rem;border-radius:3px;}
+.xref-pop .xref-cap{color:var(--ink-mid);font-size:0.78rem;margin:0;line-height:1.45;}
+.xref-pop .xref-jump{display:inline-block;margin-top:0.55rem;padding-top:0.45rem;
+  border-top:1px solid var(--rule-soft);font-family:var(--mono);font-size:0.66rem;
+  letter-spacing:0.04em;color:var(--chaotic);border-bottom:none;text-decoration:none;}
+.xref-pop .xref-jump:hover{color:var(--ink);}
+
+.return-pill{
+  position:fixed;left:1rem;bottom:1.2rem;z-index:55;
+  appearance:none;background:var(--raised);color:var(--ink);
+  border:1px solid var(--rule);border-radius:999px;box-shadow:var(--shadow);
+  font-family:var(--mono);font-size:0.7rem;letter-spacing:0.02em;
+  padding:0.55rem 0.95rem;cursor:pointer;line-height:1;
+  opacity:0;transform:translateY(8px);visibility:hidden;pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease,visibility .18s;
+}
+.return-pill.on{opacity:1;transform:none;visibility:visible;pointer-events:auto;}
+.return-pill:hover{border-color:var(--chaotic);color:var(--chaotic);}
+
+.cited-in{
+  margin:0.2em 0 0.65em;padding-left:1.5em;text-indent:0;
+  font-family:var(--mono);font-size:0.72em;color:var(--ink-low);line-height:1.4;
+}
+.cited-in a{color:var(--ink-low);border-bottom-color:color-mix(in oklab,var(--ink-low) 35%,transparent);}
+.cited-in a:hover{color:var(--chaotic);}
 
 html.js .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s cubic-bezier(.22,.68,.28,1),transform .6s cubic-bezier(.22,.68,.28,1);}
 html.js figure{opacity:0;transform:translateX(-50%) translateY(22px) scale(.985);}
@@ -336,12 +395,17 @@ html.js figure.seen{opacity:1;transform:translateX(-50%) translateY(0) scale(1);
   transition:opacity .7s cubic-bezier(.22,.68,.28,1),transform .7s cubic-bezier(.22,.68,.28,1),box-shadow .3s ease,border-color .3s ease;}
 @media (prefers-reduced-motion:reduce){html.js figure{opacity:1;transform:translateX(-50%);}}
 html.js .reveal.in{opacity:1;transform:none;}
-@media (prefers-reduced-motion:reduce){html.js .reveal{opacity:1;transform:none;transition:none;}html{scroll-behavior:auto;}.progress{transition:none;}}
+@media (prefers-reduced-motion:reduce){
+  html.js .reveal{opacity:1;transform:none;transition:none;}
+  html{scroll-behavior:auto;}.progress{transition:none;}
+  .xref-pop,.return-pill{transition:none;transform:none;}
+}
 
 @media print{
   :root{--ground:#fff;--raised:#fff;--ink:#000;--ink-mid:#333;--ink-low:#666;--rule:#bbb;--rule-soft:#ddd;}
   .hero{min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
-  #bifurcation,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts{display:none !important;}
+  #bifurcation,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
+  .xref-pop,.return-pill,.lb-nav,.lb-pos{display:none !important;}
   .shell{display:block;max-width:none;padding:0;}
   article{max-width:none;}
   figure{break-inside:avoid;box-shadow:none;border:1px solid #bbb;}
@@ -864,24 +928,379 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
   if(btn) btn.addEventListener("click",()=>mountInteractive(fig));
 });
 
-/* ---------------- lightbox ---------------- */
+/* ---------------- lightbox + figure nav ---------------- */
 (function(){
   const lb=document.querySelector(".lb");if(!lb)return;
   const img=lb.querySelector("img"),cap=lb.querySelector(".lb-cap");
+  const figs=[...document.querySelectorAll("figure")].filter(f=>f.querySelector(".fig-body img, img"));
+  let idx=-1;
+  const prev=document.createElement("button");
+  prev.type="button";prev.className="lb-nav lb-prev";
+  prev.setAttribute("aria-label","Previous figure");prev.textContent="\u2190";
+  const next=document.createElement("button");
+  next.type="button";next.className="lb-nav lb-next";
+  next.setAttribute("aria-label","Next figure");next.textContent="\u2192";
+  const pos=document.createElement("p");
+  pos.className="lb-pos";pos.setAttribute("aria-label","Position in the figure sequence");
+  lb.appendChild(prev);lb.appendChild(next);lb.appendChild(pos);
+
+  function show(i){
+    if(!figs.length) return;
+    idx=((i%figs.length)+figs.length)%figs.length;
+    const f=figs[idx],t=f.querySelector("img");
+    img.src=t.dataset.full||t.src;img.alt=t.alt||"";
+    const c=f.querySelector("figcaption");
+    // "Figure N of M" would invent a second numbering authority: N is the
+    // figure's own number, M the size of the enlargeable set, and the two only
+    // agree while the one figure without an image happens to sit last. Name the
+    // figure exactly as its caption does, and report the position separately as
+    // a position, so neither can be read as the other.
+    const n=f.dataset.fignum||"";
+    const head=n?("Figure "+n):("Figure "+(idx+1));
+    let body=c?c.textContent.trim():"";
+    body=body.replace(/^Figure\s*\d+\.\s*/i,"");
+    if(body.length>220) body=body.slice(0,217)+"\u2026";
+    cap.textContent=body?head+". "+body:head;
+    pos.textContent=(idx+1)+" / "+figs.length;
+    lb.classList.add("on");
+  }
   const open=t=>{
-    img.src=t.dataset.full||t.src;img.alt=t.alt;
-    const f=t.closest("figure"),c=f&&f.querySelector("figcaption");
-    cap.textContent=c?c.textContent.trim().slice(0,240):"";
-    lb.classList.add("on");lb.querySelector(".lb-close").focus();
+    const f=t.closest("figure");
+    const i=f?figs.indexOf(f):-1;
+    show(i>=0?i:0);
+    lb.querySelector(".lb-close").focus();
   };
+  const close=()=>lb.classList.remove("on");
   document.addEventListener("click",e=>{
     const t=e.target;
-    if(t.tagName==="IMG"&&t.closest("figure")){open(t);return;}
+    if(t.closest&&t.closest(".lb-nav")) return;
+    if(t.tagName==="IMG"&&t.closest("figure")&&!t.closest(".xref-pop")){open(t);return;}
     if(t.classList.contains("act-zoom")){
       const i=t.closest("figure").querySelector("img");if(i)open(i);return;}
-    if(t.closest(".lb")) lb.classList.remove("on");
+    if(t.closest(".lb")) close();
   });
-  addEventListener("keydown",e=>{if(e.key==="Escape")lb.classList.remove("on");});
+  prev.addEventListener("click",e=>{e.stopPropagation();show(idx-1);});
+  next.addEventListener("click",e=>{e.stopPropagation();show(idx+1);});
+  addEventListener("keydown",e=>{
+    if(!lb.classList.contains("on")) return;
+    if(e.key==="Escape") close();
+    else if(e.key==="ArrowLeft") show(idx-1);
+    else if(e.key==="ArrowRight") show(idx+1);
+  });
+})();
+
+/* ---------------- hover / focus / tap previews ---------------- */
+(function(){
+  const coarse=matchMedia("(pointer:coarse)").matches;
+  const pop=document.createElement("div");
+  pop.className="xref-pop";pop.id="xref-pop";pop.setAttribute("role","tooltip");
+  pop.hidden=true;document.body.appendChild(pop);
+  let cur=null,hideT=null,armed=null;
+
+  /* The equation anchor is an empty span that pandoc emits *inside* the
+     paragraph, immediately before the display equation. A <div> cannot live in
+     a <p>, so the parser closes the paragraph and hoists the .eqn out: in the
+     DOM the anchor is the paragraph's last child and the equation is the
+     paragraph's next sibling, one level up. Checking nextElementSibling alone
+     finds nothing and the preview comes up blank -- which is how this shipped
+     looking correct. Climb until an .eqn turns up, bounded so a stray anchor
+     cannot drag in an unrelated equation from further down the section. */
+  function eqnAfter(anchor){
+    let node=anchor;
+    for(let up=0;node&&up<3;up++,node=node.parentElement){
+      for(let s=node.nextElementSibling;s;s=s.nextElementSibling){
+        if(s.classList&&s.classList.contains("eqn")) return s;
+        if(s.querySelector){const inner=s.querySelector(".eqn");if(inner) return inner;}
+        if(s.textContent&&s.textContent.trim()) return null;   // real prose intervened
+      }
+    }
+    return null;
+  }
+
+  function classify(a){
+    const href=a.getAttribute("href")||"";
+    if(href[0]!=="#") return null;
+    let id;try{id=decodeURIComponent(href.slice(1));}catch(e){id=href.slice(1);}
+    if(!id) return null;
+    const el=document.getElementById(id);
+    if(!el) return null;
+    if(a.getAttribute("role")==="doc-biblioref"||el.classList.contains("csl-entry")||id.startsWith("ref-"))
+      return {kind:"cite",el,href};
+    if(a.dataset.referenceType==="eqref"||el.hasAttribute("data-eqno")||el.classList.contains("eqn")
+       ||id.startsWith("eq:")||id.startsWith("eq-u")){
+      let content=el;
+      if(el.hasAttribute("data-eqno")) content=eqnAfter(el)||el;
+      return {kind:"eq",el:content,href};
+    }
+    if((el.matches&&el.matches("figure"))||id.startsWith("fig:"))
+      return {kind:"fig",el:el.matches&&el.matches("figure")?el:(el.closest("figure")||el),href};
+    return null;
+  }
+
+  function fill(info){
+    pop.replaceChildren();
+    const body=document.createElement("div");body.className="xref-body";
+    if(info.kind==="cite"){
+      const c=info.el.cloneNode(true);
+      c.removeAttribute("id");
+      c.querySelectorAll(".cited-in").forEach(n=>n.remove());
+      body.appendChild(c);pop.appendChild(body);
+      const jump=document.createElement("a");
+      jump.className="xref-jump";jump.href=info.href;jump.textContent="\u2192 jump";
+      pop.appendChild(jump);
+    }else if(info.kind==="eq"){
+      const c=info.el.cloneNode(true);
+      if(c.removeAttribute) c.removeAttribute("id");
+      body.appendChild(c);pop.appendChild(body);
+    }else{
+      const lab=document.createElement("p");lab.className="xref-label";
+      lab.textContent="Figure "+(info.el.dataset.fignum||"");
+      body.appendChild(lab);
+      const im=info.el.querySelector("img");
+      if(im){
+        const c=document.createElement("img");
+        c.className="xref-figimg";c.src=im.getAttribute("src")||im.src;c.alt=im.alt||"";
+        body.appendChild(c);
+      }
+      const fc=info.el.querySelector("figcaption");
+      if(fc){
+        // The caption opens with its own "Figure N." span; keeping it here
+        // would print the number twice under the label we just added.
+        const c=fc.cloneNode(true);
+        c.querySelectorAll(".num").forEach(n=>n.remove());
+        const p=document.createElement("p");p.className="xref-cap";
+        let t=c.textContent.trim();
+        if(t.length>200) t=t.slice(0,197)+"\u2026";
+        p.textContent=t;body.appendChild(p);
+      }
+      pop.appendChild(body);
+    }
+  }
+
+  function place(a){
+    const r=a.getBoundingClientRect();
+    const pw=pop.offsetWidth,ph=pop.offsetHeight;
+    let top=r.top-ph-10;
+    if(top<8) top=Math.min(r.bottom+10,innerHeight-ph-8);
+    top=Math.max(8,Math.min(top,innerHeight-ph-8));
+    let left=r.left+r.width/2-pw/2;
+    left=Math.max(8,Math.min(left,innerWidth-pw-8));
+    pop.style.top=top+"px";pop.style.left=left+"px";
+  }
+
+  function hide(){
+    clearTimeout(hideT);hideT=null;
+    pop.classList.remove("on");
+    if(cur){cur.removeAttribute("aria-describedby");cur=null;}
+    const done=()=>{if(!pop.classList.contains("on")) pop.hidden=true;};
+    if(reduced) done(); else setTimeout(done,120);
+  }
+  function scheduleHide(){clearTimeout(hideT);hideT=setTimeout(hide,120);}
+  function cancelHide(){clearTimeout(hideT);hideT=null;}
+
+  function open(a,info){
+    cancelHide();
+    fill(info);
+    pop.hidden=false;
+    if(cur&&cur!==a) cur.removeAttribute("aria-describedby");
+    cur=a;a.setAttribute("aria-describedby","xref-pop");
+    // measure then fade in
+    pop.style.left="0";pop.style.top="0";
+    place(a);
+    if(reduced) pop.classList.add("on");
+    else requestAnimationFrame(()=>{place(a);pop.classList.add("on");});
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(a=>{
+    if(!classify(a)) return;
+    a.addEventListener("pointerenter",()=>{if(!coarse) open(a,classify(a));});
+    a.addEventListener("pointerleave",()=>{if(!coarse) scheduleHide();});
+    a.addEventListener("focus",()=>open(a,classify(a)));
+    a.addEventListener("blur",scheduleHide);
+  });
+  pop.addEventListener("pointerenter",cancelHide);
+  pop.addEventListener("pointerleave",scheduleHide);
+
+  // first tap on coarse pointers opens the preview instead of navigating
+  document.addEventListener("click",e=>{
+    const a=e.target.closest&&e.target.closest('a[href^="#"]');
+    if(!a||a.closest(".xref-pop")) return;
+    const info=classify(a);
+    if(!info){armed=null;return;}
+    if(coarse){
+      if(armed!==a){
+        e.preventDefault();
+        armed=a;open(a,info);return;
+      }
+      armed=null;hide();
+    }
+  },true);
+
+  addEventListener("keydown",e=>{if(e.key==="Escape") hide();});
+  addEventListener("scroll",()=>{if(cur) hide();},{passive:true});
+  addEventListener("resize",()=>{if(cur) hide();});
+})();
+
+/* ---------------- return pill ---------------- */
+(function(){
+  const pill=document.createElement("button");
+  pill.type="button";pill.className="return-pill";pill.hidden=true;
+  document.body.appendChild(pill);
+  let origin=null,landY=null,hideTimer=null,landTimer=null;
+
+  function currentSecno(){
+    const on=document.querySelector(".spine a.on i");
+    if(on&&on.textContent.trim()) return on.textContent.trim();
+    const secs=[...document.querySelectorAll("article section[id]")];
+    let cur=null;
+    for(const s of secs){
+      if(s.getBoundingClientRect().top<=innerHeight*0.35) cur=s;
+    }
+    if(!cur) return "";
+    const h=cur.querySelector("h2, h3");
+    const sn=h&&h.querySelector(".secno");
+    return sn?sn.textContent.trim():"";
+  }
+
+  function hide(){
+    clearTimeout(hideTimer);hideTimer=null;
+    clearTimeout(landTimer);landTimer=null;
+    origin=null;landY=null;
+    pill.classList.remove("on");
+    const done=()=>{if(!pill.classList.contains("on")) pill.hidden=true;};
+    if(reduced) done(); else setTimeout(done,180);
+  }
+  function show(y,sec){
+    origin={y,sec};landY=null;
+    pill.textContent=sec?("\u21A9 back to \u00A7"+sec):"\u21A9 back";
+    pill.hidden=false;
+    // Reading offsetWidth flushes layout, which gives the transition the frame
+    // boundary it needs. requestAnimationFrame would do the same but does not
+    // run in a hidden tab -- a reader who jumps and immediately switches tabs
+    // would come back to a pill that never appeared and never armed its timeout.
+    void pill.offsetWidth;
+    pill.classList.add("on");
+    clearTimeout(hideTimer);
+    hideTimer=setTimeout(hide,45000);
+    // snapshot landing position after smooth-scroll settles
+    clearTimeout(landTimer);
+    landTimer=setTimeout(()=>{landY=scrollY;},reduced?0:550);
+  }
+
+  pill.addEventListener("click",()=>{
+    if(!origin) return;
+    const y=origin.y;hide();
+    scrollTo({top:y,behavior:reduced?"auto":"smooth"});
+  });
+
+  document.addEventListener("click",e=>{
+    const a=e.target.closest&&e.target.closest('a[href^="#"]');
+    if(!a) return;
+    // skip the coarse first-tap that only opens a preview
+    if(e.defaultPrevented) return;
+    const href=a.getAttribute("href")||"";
+    if(href[0]!=="#") return;
+    let id;try{id=decodeURIComponent(href.slice(1));}catch(err){id=href.slice(1);}
+    if(!id||!document.getElementById(id)) return;
+    show(scrollY,currentSecno());
+  });
+
+  addEventListener("scroll",()=>{
+    if(!origin||landY===null) return;
+    if(Math.abs(scrollY-landY)>innerHeight*0.7) hide();
+  },{passive:true});
+  // never cover the lightbox
+  const lb=document.querySelector(".lb");
+  if(lb) new MutationObserver(()=>{
+    if(lb.classList.contains("on")) pill.style.visibility="hidden";
+    else if(pill.classList.contains("on")) pill.style.visibility="";
+  }).observe(lb,{attributes:true,attributeFilter:["class"]});
+})();
+
+/* ---------------- cited-in back-links ---------------- */
+(function(){
+  // Walk out of unnumbered subsections to the nearest numbered section so a
+  // citation in "Notation" still lists under §1 rather than vanishing.
+  function numberedSection(from){
+    let sec=from&&from.closest("section");
+    while(sec){
+      if(sec.id){
+        let h=null;
+        for(const c of sec.children){
+          if(c.matches("h2, h3")){h=c;break;}
+          if(c.matches("details")){
+            const s=c.querySelector(":scope > summary > h2");
+            if(s){h=s;break;}
+          }
+        }
+        const sn=h&&h.querySelector(".secno");
+        const label=sn&&sn.textContent.trim();
+        if(label) return {id:sec.id,label};
+      }
+      sec=sec.parentElement&&sec.parentElement.closest("section");
+    }
+    return null;
+  }
+  const map=new Map();
+  document.querySelectorAll('a[role="doc-biblioref"]').forEach(a=>{
+    const href=a.getAttribute("href")||"";
+    if(href[0]!=="#") return;
+    const key=href.slice(1);
+    const where=numberedSection(a);
+    if(!where) return;
+    if(!map.has(key)) map.set(key,[]);
+    const list=map.get(key);
+    if(!list.some(x=>x.id===where.id)) list.push(where);
+  });
+  const rank=s=>s.split(".").map(n=>parseInt(n,10)||0);
+  const cmp=(a,b)=>{
+    const A=rank(a.label),B=rank(b.label);
+    for(let i=0;i<Math.max(A.length,B.length);i++){
+      const d=(A[i]||0)-(B[i]||0);if(d) return d;
+    }
+    return 0;
+  };
+  for(const [key,cites] of map){
+    const el=document.getElementById(key);
+    if(!el) continue;
+    cites.sort(cmp);
+    const cap=cites.slice(0,6),rest=cites.length-cap.length;
+    const line=document.createElement("div");
+    line.className="cited-in";
+    line.appendChild(document.createTextNode("Cited in "));
+    cap.forEach((c,i)=>{
+      if(i) line.appendChild(document.createTextNode(", "));
+      const a=document.createElement("a");
+      a.href="#"+c.id;a.textContent="\u00A7"+c.label;
+      line.appendChild(a);
+    });
+    if(rest) line.appendChild(document.createTextNode(" + "+rest+" more"));
+    el.appendChild(line);
+  }
+})();
+
+/* ---------------- print: open closed details ---------------- */
+(function(){
+  // CSS display:block does not open a closed <details>; force the open attribute.
+  let opened=null;
+  const openAll=()=>{
+    if(opened) return;
+    opened=[];
+    document.querySelectorAll("details").forEach(d=>{
+      if(!d.open){d.open=true;opened.push(d);}
+    });
+  };
+  const restore=()=>{
+    if(!opened) return;
+    opened.forEach(d=>{d.open=false;});
+    opened=null;
+  };
+  addEventListener("beforeprint",openAll);
+  addEventListener("afterprint",restore);
+  const mq=matchMedia("print");
+  const onMq=e=>{if(e.matches) openAll(); else restore();};
+  if(mq.addEventListener) mq.addEventListener("change",onMq);
+  else if(mq.addListener) mq.addListener(onMq);
 })();
 
 /* ---------------- cross-references into folded back matter ---------------- */
