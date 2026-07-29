@@ -8,11 +8,14 @@ from pathlib import Path
 
 from PIL import Image
 
-from dynachaos.pipelines.registry import SECTION_ORDER, SECTION_SPECS
-
-# Import gallery_meta from same directory
+# Import gallery_meta from same directory; the registry must also resolve
+# under a bare interpreter with no installed dynachaos (CI), hence src/.
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 from gallery_meta import CAPTIONS, SECTION_TITLES
+
+from dynachaos.pipelines.registry import SECTION_ORDER, SECTION_SPECS
 
 DATA_FULL_RE = re.compile(r'data-full="full/([a-zA-Z0-9_]+)/([a-zA-Z0-9_]+)\.png"')
 FIGURE_RE = re.compile(r"<figure\b.*?</figure>", re.S)

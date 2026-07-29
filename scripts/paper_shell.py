@@ -41,6 +41,7 @@ CSS = (
     + r"""
 :root{
   --locked:#a8620a;   /* lambda < 0  mode-locked / periodic */
+  --locked-hero:#c07410; /* hero canvas only: same gold, one notch brighter */
   --torus:#54489f;    /* lambda ~ 0  quasiperiodic */
   --chaotic:#0d6f6a;  /* lambda > 0  chaotic */
 
@@ -73,7 +74,7 @@ CSS = (
 
 @media (prefers-color-scheme: dark){
   :root{
-    --locked:#f0a830; --torus:#9086dc; --chaotic:#3fd0c8;
+    --locked:#f0a830; --locked-hero:#f9bb46; --torus:#9086dc; --chaotic:#3fd0c8;
     --ground:#0a0d15; --raised:#111624; --sunken:#070911;
     --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
     --rule:#1e2537; --rule-soft:#161c2b;
@@ -81,14 +82,14 @@ CSS = (
   }
 }
 :root[data-theme="dark"]{
-  --locked:#f0a830; --torus:#9086dc; --chaotic:#3fd0c8;
+  --locked:#f0a830; --locked-hero:#f9bb46; --torus:#9086dc; --chaotic:#3fd0c8;
   --ground:#0a0d15; --raised:#111624; --sunken:#070911;
   --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
   --rule:#1e2537; --rule-soft:#161c2b;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
 }
 :root[data-theme="light"]{
-  --locked:#a8620a; --torus:#54489f; --chaotic:#0d6f6a;
+  --locked:#a8620a; --locked-hero:#c07410; --torus:#54489f; --chaotic:#0d6f6a;
   --ground:#faf8f3; --raised:#ffffff; --sunken:#efece3;
   --ink:#14161c; --ink-mid:#454b59; --ink-low:#6c7284; /* WCAG AA: 4.52:1 on --ground, 4.80:1 on --raised */
   --rule:#e0dccf; --rule-soft:#ebe7dc;
@@ -703,7 +704,7 @@ function hero(){
     for(let i=0;i<380;i++) x=r*x*(1-x);
     for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
     l/=160;
-    ctx.fillStyle=l>0.005?css("--chaotic"):l<-0.005?css("--locked"):css("--torus");
+    ctx.fillStyle=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
     ctx.globalAlpha=alpha;
     for(let i=0;i<iters;i++){x=r*x*(1-x);ctx.fillRect(px,(1-x)*H,1.15,1.15);}
     ctx.globalAlpha=1;
