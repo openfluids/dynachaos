@@ -285,7 +285,10 @@ uv run --extra viz python scripts/build_gallery.py
 
 ## Contributing
 
-Please see [CONTRIBUTING.md](https://github.com/openfluids/dynachaos/blob/main/CONTRIBUTING.md) for development setup and contribution guidelines. All participants are expected to follow the [Code of Conduct](https://github.com/openfluids/dynachaos/blob/main/CODE_OF_CONDUCT.md).
+Contributions are welcome, and questions and bug reports count. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup and the checks CI runs, and the
+[openfluids Code of Conduct](https://github.com/openfluids/.github/blob/main/CODE_OF_CONDUCT.md)
+for how we work together.
 
 ## Citation
 
