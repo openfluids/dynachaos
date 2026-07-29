@@ -407,9 +407,7 @@ def number_tables(body: str) -> tuple[str, dict[str, str]]:
     return body, numbers
 
 
-FIGREF_RE = re.compile(
-    r'(<a href="#(fig:[^"]+)"[^>]*data-reference-type="ref"[^>]*>)([^<]*)</a>'
-)
+FIGREF_RE = re.compile(r'(<a href="#(fig:[^"]+)"[^>]*data-reference-type="ref"[^>]*>)([^<]*)</a>')
 
 
 def renumber_figure_refs(body: str) -> tuple[str, int, int]:
