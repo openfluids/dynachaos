@@ -245,14 +245,19 @@ def plot_clusters(data):
     n_clusters = np.array([len(np.unique(row)) for row in cluster_labels])
 
     spec = figure_spec("double")
-    fig, ax = plt.subplots(figsize=spec.figsize)
+    # Taller panel than the default "double" height: 500 recorded time steps
+    # resampled into a short, wide thumbnail aliases badly (moire in the
+    # striped transition bands). Giving the vertical axis more room, plus an
+    # antialiased (area-averaging) resampling filter instead of "nearest",
+    # keeps the decimation from beating against the period-2 structure.
+    fig, ax = plt.subplots(figsize=(spec.figsize[0], spec.figsize[1] * 1.8))
 
     im = ax.imshow(
         sorted_x,
         aspect="auto",
         origin="lower",
         cmap=CMAP_SEQUENTIAL,
-        interpolation="nearest",
+        interpolation="antialiased",
     )
 
     ax.set_xlabel("Ordered site rank")
@@ -327,8 +332,11 @@ def plot_collective(data):
             0.0,
             lyap_c,
             where=positive,
-            alpha=0.15,
+            alpha=0.22,
             color=COLORS["red"],
+            edgecolor=COLORS["red"],
+            linewidth=0.8,
+            hatch="//",
             label=r"sustained $\lambda_c > 0$",
         )
 

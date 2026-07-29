@@ -120,28 +120,21 @@ def plot(data):
     # Critical line K_c = 1/(2π)
     K_c = 1.0 / (2.0 * np.pi)
     ax.axhline(K_c, color=COLORS["red"], lw=0.8, ls="--", alpha=0.85)
+    # No bbox: an opaque box here punches a hole in the field. Contour levels
+    # coincide with locked plateaus (rho is exactly constant over a finite
+    # area), so contouring them floods the tongue interiors with degenerate
+    # hash; the tongue boundaries are already visible as colour
+    # discontinuities in the pcolormesh, so no overlay is drawn here.
     annotate_on_field(
         ax,
-        0.985,
+        0.93,
         K_c + 0.005,
         r"$K_c = 1/(2\pi)$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
         ha="right",
         va="center",
-    )
-
-    # Highlight the dominant primary tongues directly on the field.
-    Omega_grid, K_grid = np.meshgrid(Omega, K)
-    contour_levels = [1.0 / 3.0, 0.5, 2.0 / 3.0]
-    ax.contour(
-        Omega_grid,
-        K_grid,
-        rho,
-        levels=contour_levels,
-        colors=COLORS["offwhite"],
-        linewidths=0.35,
-        alpha=0.55,
+        bbox=None,
     )
 
     ax.set_xlabel(r"Bare frequency $\Omega$")
@@ -156,6 +149,11 @@ def plot(data):
         fontsize=spec.tick_size,
     )
     top.tick_params(axis="x", pad=2, length=0)
+    # Nudge the corner fraction labels (0/1, 1/1) inboard so they don't sit
+    # flush against the plot edges.
+    top_labels = top.get_xticklabels()
+    top_labels[0].set_ha("left")
+    top_labels[-1].set_ha("right")
 
     add_field_colorbar(fig, pcm, ax, label=r"Rotation number $\rho$", pad=0.02, aspect=30)
 

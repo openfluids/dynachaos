@@ -181,7 +181,14 @@ def plot_phase_diagram(data):
     ax.set_ylabel(r"Coupling $\varepsilon$")
     ax.set_title("Spatial activity map", loc="left")
     add_field_colorbar(fig, im, ax, label=r"$\langle |x_i - x_{i-1}| \rangle$")
-    ax.set_xlim(float(a.min()), float(a.max()))
+    # Pad the left edge so the a=1.50 state marker does not sit exactly on
+    # the spine, and drop the eps=0 row from view: at zero coupling the
+    # lattice is uncoupled and the plotted quantity has no dynamical
+    # meaning there, which otherwise reads as a corrupted-tile artifact.
+    a_pad = 0.01 * (float(a.max()) - float(a.min()))
+    ax.set_xlim(float(a.min()) - a_pad, float(a.max()))
+    eps_floor = 0.02
+    ax.set_ylim(eps_floor, float(eps.max()))
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
 
     eps_slice = 0.10
@@ -215,6 +222,7 @@ def plot_space_amplitude(data):
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
+        CMAP_SEQUENTIAL,
         apply_axes_polish,
         figure_spec,
         panel_label,
@@ -251,9 +259,16 @@ def plot_space_amplitude(data):
         snapshots = data[key]
         N = snapshots.shape[1]
         sites = np.arange(N)
-        greys = np.linspace(0.82, 0.18, snapshots.shape[0])
-        for shade, snap in zip(greys, snapshots, strict=False):
-            ax.plot(sites, snap, color=(shade, shade, shade), lw=0.55, alpha=0.9)
+        # Colour each snapshot by its time index (sequential map) rather than
+        # overplotting all 12 in near-identical dark grey: at lw~1.2 that
+        # overplotted into solid ink. A thinner, more transparent, colour-
+        # ramped line lets the reader see whether curves coincide (frozen)
+        # or spread apart (turbulent).
+        cmap = plt.get_cmap(CMAP_SEQUENTIAL)
+        n_snap = snapshots.shape[0]
+        colors = cmap(np.linspace(0.0, 1.0, n_snap))
+        for shade_idx, snap in enumerate(snapshots):
+            ax.plot(sites, snap, color=colors[shade_idx], lw=0.6, alpha=0.55)
         label = str(data[label_key][0]) if label_key in data else ""
         label = (
             "\n".join(textwrap.wrap(label.replace("\n", " "), width=12, break_long_words=False))

@@ -147,12 +147,16 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_cbar = axes["cbar"]
 
     vmin, vmax = np.percentile(spacetime, [1.0, 99.0])
+    # A 512x480 field resampled down to web-thumbnail width with "nearest"
+    # interpolation aliases into visual noise; an antialiased (area-
+    # averaging) resampling filter keeps the turbulent/laminar texture
+    # interpretable at display size.
     image = ax_space.imshow(
         spacetime,
         aspect="auto",
         cmap=CMAP_SPACETIME,
         origin="lower",
-        interpolation="nearest",
+        interpolation="antialiased",
         vmin=vmin,
         vmax=vmax,
     )

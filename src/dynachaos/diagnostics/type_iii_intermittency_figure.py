@@ -181,10 +181,20 @@ def plot(data, output_path=OUTPUT_PNG):
 
     bins = np.arange(np.min(lengths), np.max(lengths) + 2)
     ax_lengths.hist(lengths, bins=bins, density=True, color=COLORS["black"], alpha=0.75)
-    ax_lengths.set_title(
-        f"Laminar tail $\\alpha$={tail_alpha:.2f}, "
-        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}], GoF p={tail_gof_p:.2f}",
-        loc="left",
+    # Bottom-row titles used to be long enough to overwrite the neighbouring
+    # panel's title (e.g. "GoF p=0.03" ran into "M(x) slope=0.482"); keep the
+    # title short and put the fit statistics in an in-axes text box instead.
+    ax_lengths.set_title("Laminar tail (power-law check)", loc="left")
+    ax_lengths.text(
+        0.97,
+        0.95,
+        f"$\\alpha$={tail_alpha:.2f}\n"
+        f"95% CI [{tail_ci[0]:.2f}, {tail_ci[1]:.2f}]\n"
+        f"GoF p={tail_gof_p:.2f}",
+        transform=ax_lengths.transAxes,
+        ha="right",
+        va="top",
+        fontsize=spec.legend_size,
     )
     ax_lengths.set_xlabel("laminar length $\\ell$")
     ax_lengths.set_ylabel("density")
@@ -192,7 +202,16 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_rpd.plot(thresholds, conditional_means, color=COLORS["black"], lw=1.2)
     fit = rpd_slope * thresholds + rpd_intercept
     ax_rpd.plot(thresholds, fit, color=COLORS["grey"], lw=0.9, ls="--")
-    ax_rpd.set_title(f"$M(x)$ slope={rpd_slope:.3f}, $\\alpha$={rpd_alpha:.3f}", loc="left")
+    ax_rpd.set_title("Recurrence-plot-diagram slope", loc="left")
+    ax_rpd.text(
+        0.97,
+        0.08,
+        f"slope={rpd_slope:.3f}\n$\\alpha$={rpd_alpha:.3f}",
+        transform=ax_rpd.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=spec.legend_size,
+    )
     ax_rpd.set_xlabel("threshold $x$")
     ax_rpd.set_ylabel("$M(x)$")
 

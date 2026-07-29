@@ -289,13 +289,19 @@ def plot_lyapunov(data):
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
     ax.plot(D, spectra[:, 0], color=lyap_color(0), linestyle="-", lw=0.8, label=r"$\lambda_1$")
+    # Finite-time convergence band (Benettin running estimate spread). The
+    # underlying spread is genuinely narrow, so alpha/edges are pushed up to
+    # keep it visible rather than sub-pixel; see plan-figures.md sec05
+    # lyapunov_vs_D notes.
     ax.fill_between(
         D,
         spectra[:, 0] - spectra_err[:, 0],
         spectra[:, 0] + spectra_err[:, 0],
-        alpha=0.15,
+        alpha=0.45,
         color=lyap_color(0),
-        linewidth=0,
+        edgecolor=lyap_color(0),
+        linewidth=0.3,
+        zorder=1.5,
     )
     ax.plot(D, spectra[:, 1], color=lyap_color(1), linestyle="-", lw=0.8, label=r"$\lambda_2$")
     reference_line(ax, 0, axis="y", lw=0.7)
@@ -316,6 +322,33 @@ def plot_lyapunov(data):
         fontsize=spec.tick_size,
         color=COLORS["grey"],
     )
+
+    # The convergence band (spectra_err) is a few x1e-3 wide against a
+    # y-range of ~0.6, so it is genuinely sub-pixel at the full-panel scale
+    # above -- an inset over the locking/transition region (D in
+    # [1.85, 2.15], where the running Benettin estimate is least converged)
+    # is the only way the shaded band the caption describes is actually
+    # visible, and it reuses the empty lower-right quadrant of the panel.
+    inset_mask = (D >= 1.85) & (D <= 2.15)
+    if np.any(inset_mask) and np.any(spectra_err[inset_mask, 0] > 0):
+        ax_inset = ax.inset_axes((0.60, 0.06, 0.38, 0.42))
+        D_in = D[inset_mask]
+        lam1_in = spectra[inset_mask, 0]
+        err_in = spectra_err[inset_mask, 0]
+        ax_inset.plot(D_in, lam1_in, color=lyap_color(0), lw=0.8)
+        ax_inset.fill_between(
+            D_in,
+            lam1_in - err_in,
+            lam1_in + err_in,
+            alpha=0.45,
+            color=lyap_color(0),
+            edgecolor=lyap_color(0),
+            linewidth=0.3,
+        )
+        reference_line(ax_inset, 0, axis="y", lw=0.5)
+        ax_inset.set_xlim(1.85, 2.15)
+        ax_inset.tick_params(labelsize=spec.tick_size - 1)
+        ax_inset.set_title("convergence band (inset)", fontsize=spec.tick_size, loc="left", pad=2)
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -357,6 +390,7 @@ def compute_locking_sequence(
 def plot_locking_sequence(data):
     """Plot 2x4 grid of locking-to-chaos transition."""
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
 
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
@@ -398,6 +432,11 @@ def plot_locking_sequence(data):
         apply_axes_polish(ax, kind="grid", title_loc="left", grid=False, equal=True)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
+        # The default locator drops any tick that falls outside the padded
+        # data limits, which silently removed every negative candidate here
+        # (ylim reaches ~-0.35) and left "0.0, 0.5" as the only labels. A
+        # fixed step guarantees at least one negative tick survives.
+        ax.yaxis.set_major_locator(mticker.MultipleLocator(0.25))
 
     fig.suptitle(
         r"Locking$\to$chaos transition, $\alpha = 0.3$",

@@ -298,6 +298,19 @@ def plot(data):
             label += rf", $\xi \approx {xi:.1f}$"
         ax1.semilogy(r_plot, c_plot, label=label, **sty)
 
+        if np.isfinite(xi) and xi > 0:
+            r_fit_max = min(3.0 * xi, r_plot.max() if r_plot.size else xi)
+            r_fit = np.linspace(0.0, r_fit_max, 100)
+            ax1.semilogy(
+                r_fit,
+                np.exp(-r_fit / xi),
+                color=sty["color"],
+                linestyle=":",
+                linewidth=1.1,
+                alpha=0.8,
+                zorder=sty.get("zorder", 2) + 0.5,
+            )
+
     ax1.set_xlabel(r"Separation $r$")
     ax1.set_ylabel(r"$|C(r)|/C(0)$")
     ax1.set_title(r"(a) Spatial correlation decay", loc="left")

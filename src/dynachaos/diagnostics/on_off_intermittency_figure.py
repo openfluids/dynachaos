@@ -202,6 +202,11 @@ def plot(data, output_path=OUTPUT_PNG):
     inset.set_yticks([])
     inset.spines["top"].set_visible(False)
     inset.spines["right"].set_visible(False)
+    # Tick-free is fine, but the inset needs to say what window it shows:
+    # it is the same |y_n| trace as the main panel, zoomed to n in [0, 2000].
+    inset.set_title("zoom, $n\\in[0,2000]$", fontsize=spec.legend_size, pad=2.0)
+    inset.set_xlabel("$n$", fontsize=spec.legend_size, labelpad=1.0)
+    inset.set_ylabel("$|y_n|$", fontsize=spec.legend_size, labelpad=1.0)
     ax_series.set_title("On-off laminar epochs and bursts", loc="left")
     ax_series.set_xlabel("$n$")
     ax_series.set_ylabel("$|y_n|$")
@@ -251,8 +256,13 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_scaling.set_xlabel("$|\\lambda_\\perp|$")
     ax_scaling.set_ylabel("$\\langle \\tau \\rangle$")
 
+    # Panels (a), (c), (d) are monotone-decreasing curves that start right at
+    # the default upper-left tag position, stamping the label on top of the
+    # y-axis spine and the leading data points. Each curve leaves the
+    # opposite (lower-left) corner clear.
+    label_locs = {"a": "lower left", "c": "lower left", "d": "lower left"}
     for label, ax in zip(("a", "b", "c", "d"), axes.ravel(), strict=True):
-        panel_label(ax, f"({label})")
+        panel_label(ax, f"({label})", loc=label_locs.get(label, "upper left"))
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

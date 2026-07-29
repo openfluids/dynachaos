@@ -187,9 +187,21 @@ def plot_lyapunov(data):
     for idx, eps in enumerate(eps_values):
         ax = axes[idx]
         spectra = data[f"eps_{eps}_spectra"]
+        # Draw the zero-exponent guide first, below and thinner than the
+        # data: at the default weight/zorder it rendered on top of
+        # lambda_1/lambda_2 exactly where those curves flatten near zero,
+        # hiding the two-vs-one-zero-exponent distinction the panel exists
+        # to show.
+        reference_line(ax, 0, axis="y", lw=0.5, zorder=1)
         for k in range(3):
-            ax.plot(DB, spectra[:, k], color=lyap_color(k), lw=0.9, label=rf"$\lambda_{k + 1}$")
-        reference_line(ax, 0, axis="y")
+            ax.plot(
+                DB,
+                spectra[:, k],
+                color=lyap_color(k),
+                lw=0.9,
+                label=rf"$\lambda_{k + 1}$",
+                zorder=2,
+            )
         if np.isclose(eps, 5e-3):
             for db in gallery_db:
                 ax.axvline(db, color=COLORS["grey"], lw=0.45, alpha=0.3)
@@ -236,6 +248,12 @@ def plot_projections(data):
 
     spec = figure_spec("grid")
     fig, axes = plt.subplots(2, 3, figsize=spec.figsize)
+    # Panels (d) and (f) each grow their own colorbar via fig.colorbar(ax=...),
+    # which shrinks only that axes and steals from the wspace gap rather than
+    # from the whole row -- at the default spacing the colorbar (and its
+    # rotated label) intruded into the neighbouring panel, printing "visitation
+    # density" over panel (e) and overprinting panel (e)'s y-tick labels.
+    fig.subplots_adjust(wspace=0.6, hspace=0.55)
     axes_flat = axes.flatten()
     x_limits = []
     z_limits = []

@@ -157,7 +157,12 @@ def plot_attractors(data):
     for idx, D in enumerate(D_values):
         ax = axes_flat[idx]
         traj = data[f"D_{D}_traj"]
-        ax.scatter(traj[:, 0], traj[:, 1], s=0.012, c=COLORS["black"], alpha=0.16, rasterized=True)
+        # s=0.012 is far below one device pixel even at 600 dpi: dense panels
+        # hid this, but the sparser panels (few hundred distinct points)
+        # rendered as hollow white-centred rings instead of filled ink.
+        # A larger marker with lower alpha keeps the dense panels from
+        # saturating while making sparse points read as dots, not rings.
+        ax.scatter(traj[:, 0], traj[:, 1], s=0.35, c=COLORS["black"], alpha=0.05, rasterized=True)
         panel_label(ax, chr(ord("a") + idx))
         ax.set_title(f"$D = {D}$\n{labels[idx]}", loc="left")
         if idx // 3 == 1:
@@ -218,7 +223,14 @@ def plot_dimension(data):
     ax.set_xlabel(r"$D$")
     ax.set_ylabel(r"Correlation dimension $D_2$")
     ax.set_title(r"Delayed logistic map, $\alpha = 0.3$", loc="left")
-    ax.set_ylim(0.9, 1.45)
+    # The old fixed (0.9, 1.45) ylim silently clipped the D2-D2_err dip near
+    # D~1.94 (down to ~0.886), cutting off the exact "local dips near the
+    # transition" the caption asks the reader to see. Derive the limits from
+    # the data (with the +/-1 sigma band included) so nothing is cropped.
+    y_lo = float(np.min(D2 - D2_err))
+    y_hi = float(np.max(D2 + D2_err))
+    y_pad = 0.05 * (y_hi - y_lo)
+    ax.set_ylim(y_lo - y_pad, y_hi + y_pad)
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
     finalize_legend(ax, kind="single", loc="upper left")
 

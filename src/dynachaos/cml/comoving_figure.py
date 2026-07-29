@@ -111,6 +111,7 @@ def plot(data):
 
     y_min = np.inf
     y_max = -np.inf
+    crossings = []
     for i, a in enumerate(a_values):
         key = f"lambda_a{a:.2f}"
         lam_v = np.array(data[key], dtype=float)
@@ -135,7 +136,21 @@ def plot(data):
                 v_cross = (v_values[j] * abs(lam_v[j + 1]) + v_values[j + 1] * abs(lam_v[j])) / (
                     abs(lam_v[j]) + abs(lam_v[j + 1])
                 )
-                ax.axvline(v_cross, color=sty["color"], lw=0.6, ls="--", alpha=0.5)
+                ax.axvline(v_cross, color=sty["color"], lw=1.4, ls="--", alpha=0.9, zorder=4)
+                if v_cross > 0:
+                    crossings.append((a, sty["color"], v_cross))
+
+    for k, (a, color, v_cross) in enumerate(sorted(crossings, key=lambda c: -c[2])):
+        ax.text(
+            0.98,
+            0.97 - 0.06 * k,
+            rf"$v_p(a={a:.2f}) \approx {v_cross:.2f}$",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize="small",
+            color=color,
+        )
 
     reference_line(ax, 0, axis="y", label=None)
     ax.set_xlabel(r"Velocity $v$ (sites/iteration)")

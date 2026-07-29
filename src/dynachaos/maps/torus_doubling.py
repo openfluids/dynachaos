@@ -242,7 +242,7 @@ def plot_map_I(data):
 def plot_map_IV(data):
     """Plot Map (IV) attractor projections onto (X, Y) plane with zoom insets."""
     import matplotlib.pyplot as plt
-    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
     from dynachaos.utils.style import COLORS, apply_axes_polish, figure_spec, panel_label, setup
 
@@ -264,23 +264,32 @@ def plot_map_IV(data):
             )
 
             # Add zoom inset to reveal strand structure
-            axins = inset_axes(ax, width="40%", height="40%", loc="upper left", borderpad=0.5)
+            axins = inset_axes(ax, width="40%", height="40%", loc="upper right", borderpad=0.5)
+            # Centre the zoom on the densest patch of the attractor: the
+            # median lands in the loop's empty interior, which left the inset
+            # magnifying blank space with the strands clinging to its edges.
+            counts, xedges, yedges = np.histogram2d(traj[:, 0], traj[:, 1], bins=24)
+            i_max, j_max = np.unravel_index(np.argmax(counts), counts.shape)
+            xmid = 0.5 * (xedges[i_max] + xedges[i_max + 1])
+            ymid = 0.5 * (yedges[j_max] + yedges[j_max + 1])
+            xspan = np.ptp(traj[:, 0]) * 0.08
+            yspan = np.ptp(traj[:, 1]) * 0.08
             axins.scatter(
-                traj[:, 0], traj[:, 1], s=0.02, c=COLORS["black"], alpha=0.5, rasterized=True
+                traj[:, 0], traj[:, 1], s=0.35, c=COLORS["black"], alpha=0.85, rasterized=True
             )
-            # Zoom into a region showing strand separation
-            xmid = np.median(traj[:, 0])
-            ymid = np.median(traj[:, 1])
-            xspan = np.ptp(traj[:, 0]) * 0.12
-            yspan = np.ptp(traj[:, 1]) * 0.12
             axins.set_xlim(xmid - xspan, xmid + xspan)
             axins.set_ylim(ymid - yspan, ymid + yspan)
             axins.tick_params(labelsize=5)
             axins.set_xticks([])
             axins.set_yticks([])
+            axins.set_facecolor(COLORS["offwhite"])
             for spine in axins.spines.values():
                 spine.set_edgecolor(COLORS["red"])
-                spine.set_linewidth(0.6)
+                spine.set_linewidth(0.8)
+                spine.set_visible(True)
+            # Draw the magnified region on the parent axes and connect it to
+            # the inset so the reader can see what is being zoomed into.
+            mark_inset(ax, axins, loc1=3, loc2=4, fc="none", ec=COLORS["red"], lw=0.5, alpha=0.6)
 
         ax.set_title(f"$D={D}$ ({labels[idx]})", loc="left")
         ax.set_xlabel("$X$")
@@ -304,7 +313,6 @@ def plot_lyapunov(data):
     """Plot Lyapunov exponents for Map (IV) vs D."""
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MaxNLocator
-    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
     from dynachaos.utils.style import (
         COLORS,
@@ -322,7 +330,16 @@ def plot_lyapunov(data):
     spectra = data["spectra"]
 
     spec = figure_spec("double")
-    fig, ax = plt.subplots(figsize=spec.figsize)
+    # A stacked, shared-x layout instead of an inset: the lambda_2 zoom spans
+    # the full D range (it is a y-zoom, not an x-zoom), so an inset can only
+    # ever sit on top of some of the main-panel data. A second row never does.
+    fig, (ax, ax_zoom) = plt.subplots(
+        2,
+        1,
+        figsize=(spec.figsize[0], spec.figsize[1] + 1.3),
+        sharex=True,
+        gridspec_kw={"height_ratios": [2.2, 1.0], "hspace": 0.12},
+    )
     labels_le = [r"$\lambda_1$", r"$\lambda_2$"]
     colors = [COLORS["black"], lyap_color(1)]
     linewidths = [0.6, 1.0]
@@ -332,24 +349,28 @@ def plot_lyapunov(data):
             D, spectra[:, k], color=colors[k], lw=linewidths[k], label=labels_le[k], zorder=3 - k
         )
     reference_line(ax, 0, axis="y")
-    ax.set_xlabel(r"$D$")
     ax.set_ylabel("Lyapunov exponent")
     ax.set_title("Map (IV), $\\alpha = 0.3$", loc="left")
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
-    finalize_legend(ax, kind="double", loc="upper right")
+    # Upper left is empty in both series (lambda_1 is flat at 0, lambda_2 is
+    # well below it there), unlike upper right where lambda_1 rises steeply.
+    finalize_legend(ax, kind="double", loc="upper left")
 
-    axins = inset_axes(ax, width="32%", height="34%", loc="lower right", borderpad=1.0)
-    axins.plot(D, spectra[:, 1], color=lyap_color(1), lw=0.8)
-    reference_line(axins, 0, axis="y")
-    axins.set_xlim(D.min(), D.max())
-    axins.set_ylim(-1.8e-4, 2.0e-5)
-    axins.set_title(r"$\lambda_2$ near zero", loc="left", fontsize=spec.tick_size)
-    apply_axes_polish(axins, kind="grid", title_loc="left", grid=False)
-    axins.yaxis.set_major_locator(MaxNLocator(3))
+    ax_zoom.plot(D, spectra[:, 1], color=lyap_color(1), lw=0.8)
+    reference_line(ax_zoom, 0, axis="y")
+    ax_zoom.set_xlim(D.min(), D.max())
+    # lambda_2 in the transition window spans roughly [-6e-2, +1.2e-4]; these
+    # limits keep its near-zero approach and the D > 1.52 plateau on scale
+    # instead of clipping the curve to isolated spikes.
+    ax_zoom.set_ylim(-6.0e-3, 6.0e-4)
+    ax_zoom.set_xlabel(r"$D$")
+    ax_zoom.set_ylabel(r"$\lambda_2$ (zoom)")
+    apply_axes_polish(ax_zoom, kind="double", title_loc="left", grid=False)
+    ax_zoom.yaxis.set_major_locator(MaxNLocator(3))
     # Compact scientific tick labels so the tiny-magnitude values do not collide.
-    axins.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
-    axins.yaxis.get_offset_text().set_fontsize(spec.tick_size - 1.5)
-    axins.tick_params(labelsize=spec.tick_size - 1.5)
+    ax_zoom.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    ax_zoom.yaxis.get_offset_text().set_fontsize(spec.tick_size)
+    ax_zoom.tick_params(labelsize=spec.tick_size)
 
     fig.savefig(LYAP_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)

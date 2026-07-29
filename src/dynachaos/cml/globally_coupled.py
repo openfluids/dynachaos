@@ -102,6 +102,7 @@ def plot_msd(data):
     import matplotlib.pyplot as plt
 
     from dynachaos.utils.style import (
+        CMAP_SEQUENTIAL,
         COLORS,
         apply_axes_polish,
         figure_spec,
@@ -118,18 +119,24 @@ def plot_msd(data):
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
+    # a is an ordered parameter; a sequential colormap lets the reader read
+    # the ordering of the five curves directly instead of decoding an
+    # unordered qualitative palette against the legend.
+    cmap = plt.get_cmap(CMAP_SEQUENTIAL)
+    n_a = len(a_vals)
     for ia, a_val in enumerate(a_vals):
         sty = series_style(ia)
+        color = cmap(ia / max(n_a - 1, 1))
         ax.loglog(
             N_grid,
             msd_grid[ia],
             label=f"$a = {a_val}$",
-            color=sty["color"],
+            color=color,
             marker=sty["marker"],
             markersize=3.0,
             markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.75,
-            linewidth=1.1,
+            linewidth=1.3,
         )
 
     ref_idx = int(np.argmin(np.abs(a_vals - 1.99)))
@@ -147,8 +154,18 @@ def plot_msd(data):
     ax.set_xlabel(r"System size $N$")
     ax.set_ylabel(r"MSD $\langle (\delta h)^2 \rangle$")
     ax.set_title(rf"Mean-field fluctuations, $\varepsilon = {data['eps'][0]}$", loc="left")
+    # Every curve lives in the top decade; the 1/N guide falling away below
+    # ~5e-4 buys nothing but empty panel, so clip the floor.
+    ax.set_ylim(5e-4, ax.get_ylim()[1])
     apply_axes_polish(ax, kind="double", title_loc="left", grid=False)
-    finalize_legend(ax, kind="double", loc="lower left", ncol=2, columnspacing=1.1)
+    finalize_legend(
+        ax,
+        kind="double",
+        loc="lower left",
+        ncol=2,
+        columnspacing=1.1,
+        fontsize=spec.legend_size + 1.0,
+    )
 
     fig.savefig(GCM_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
@@ -161,6 +178,7 @@ def plot_distribution(data):
 
     from dynachaos.utils.style import (
         COLOR_CYCLE,
+        COLORS,
         apply_axes_polish,
         figure_spec,
         finalize_legend,
@@ -189,14 +207,35 @@ def plot_distribution(data):
     ax.set_xlabel(r"Mean field $h$")
     ax.set_ylabel(r"$P(h)$")
     ax.set_title(rf"$a = {data['a'][0]}$, $\varepsilon = {data['eps'][0]}$", loc="left")
+    # The histograms are all confined to a narrow band; the generous default
+    # x-range is mostly empty and leaves less room for the inset.
+    all_h = np.concatenate([data[f"N_{N}_h"] for N in N_values])
+    ax.set_xlim(max(float(all_h.min()) - 0.02, 0.1), min(float(all_h.max()) + 0.02, 0.55))
     apply_axes_polish(ax, kind="single", title_loc="left", grid=False)
     finalize_legend(ax, kind="single", loc="upper left")
 
-    inset = ax.inset_axes([0.16, 0.12, 0.28, 0.22])
+    inset = ax.inset_axes([0.16, 0.12, 0.30, 0.24])
+    inset.set_facecolor("white")
+    inset.patch.set_alpha(1.0)
+    inset.set_zorder(5)
     msd_values = np.array([float(data[f"N_{N}_msd"][0]) for N in N_values])
-    inset.loglog(N_values, msd_values, color=COLOR_CYCLE[0], marker="o", lw=1.0, ms=2.8)
+    for idx, (N, msd) in enumerate(zip(N_values, msd_values, strict=False)):
+        inset.loglog(N, msd, color=COLOR_CYCLE[idx], marker="o", ms=3.2, ls="none")
+    inset.loglog(N_values, msd_values, color=COLORS["grey"], lw=0.8, zorder=1)
+    # 1/N guide anchored at the first point, so the reader can judge how
+    # much the LLN would have demanded the variance to fall by N=20000.
+    n_ref = np.array([float(N_values[0]), float(N_values[-1])])
+    inset.loglog(
+        n_ref,
+        msd_values[0] * N_values[0] / n_ref,
+        color=COLORS["grey"],
+        lw=0.8,
+        ls="--",
+        zorder=1,
+    )
     inset.set_title(r"Var$(h)$", fontsize=spec.legend_size, pad=2.0)
-    inset.tick_params(axis="both", which="both", labelsize=spec.legend_size - 1.5)
+    inset.set_xlabel("$N$", fontsize=spec.legend_size - 1.0, labelpad=1.0)
+    inset.tick_params(axis="both", which="both", labelsize=spec.legend_size - 1.0, pad=1.5)
     inset.grid(False)
 
     fig.savefig(DIST_PNG, dpi=600, bbox_inches="tight")

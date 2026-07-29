@@ -265,7 +265,16 @@ def plot_01_test(data):
 
     spec = figure_spec("double")
     fig, ax = plt.subplots(figsize=spec.figsize)
-    ax.plot(data["a"], data["K"], ".", ms=0.5, rasterized=True, color=COLORS["black"])
+    ax.plot(
+        data["a"],
+        data["K"],
+        "o",
+        ms=2.6,
+        alpha=0.55,
+        markeredgewidth=0.0,
+        rasterized=True,
+        color=COLORS["black"],
+    )
     reference_line(ax, 0.5, lw=0.7, alpha=0.55)
     ax.set_xlabel(r"Nonlinearity $a$")
     ax.set_ylabel(r"$K_{01}$ (0-1 test)")
@@ -276,20 +285,26 @@ def plot_01_test(data):
         1.5,
         0.6,
         "$K_{01} \\approx 1$: chaos",
-        fontsize=spec.tick_size,
+        fontsize=spec.tick_size * 1.5,
         color=COLORS["grey"],
     )
     ax.text(
         1.1,
         0.15,
         "$K_{01} \\approx 0$: regular",
-        fontsize=spec.tick_size,
+        fontsize=spec.tick_size * 1.5,
         color=COLORS["grey"],
     )
 
     fig.savefig(TEST01_PNG, dpi=600, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {TEST01_PNG}")
+
+
+def _mathtext_sci(value, sig=2):
+    """Format a float as consistent mathtext scientific notation, e.g. 9.46e-06."""
+    mantissa, exponent = f"{value:.{sig}e}".split("e")
+    return rf"{mantissa} \times 10^{{{int(exponent)}}}"
 
 
 def plot_sali(data):
@@ -318,18 +333,35 @@ def plot_sali(data):
     for idx, DB in enumerate(DB_values):
         s = data[f"DB_{DB}_sali"]
         # Avoid log(0)
-        s_safe = np.where(s > 1e-16, s, 1e-16)
+        floor = 1e-16
+        valid = s > floor
+        s_safe = np.where(valid, s, floor)
+        n = np.arange(len(s))
+        lam_str = _mathtext_sci(lambda1_values[idx])
+        label = rf"$D_B={DB}$ ({labels[idx]}, $\lambda_1={lam_str}$)"
         ax.semilogy(
-            np.arange(len(s)),
+            n,
             s_safe,
             lw=1.1,
             color=color_for(idx),
+            label=label,
+        )
+        # Only mark points that are genuinely above the machine-underflow
+        # floor: once a curve saturates at 1e-16, drawing periodic markers
+        # along the clipped floor reads as a separate dataset lying on the
+        # frame rather than as a saturated series.
+        step = max(len(s) // 14, 1)
+        marker_idx = n[::step]
+        marker_idx = marker_idx[valid[marker_idx]]
+        ax.plot(
+            marker_idx,
+            s_safe[marker_idx],
+            linestyle="none",
             marker=marker_for(idx),
             markersize=3.0,
-            markevery=max(len(s) // 14, 1),
+            color=color_for(idx),
             markerfacecolor=COLORS["offwhite"],
             markeredgewidth=0.8,
-            label=rf"$D_B={DB}$ ({labels[idx]}, $\lambda_1={lambda1_values[idx]:.3g}$)",
         )
 
     ax.set_xlabel("Iteration $n$")
@@ -366,7 +398,11 @@ def plot_permutation_entropy(data):
     spec = figure_spec("double")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=spec.figsize)
     h_all = np.concatenate([data["H_logistic"], data["H_delayed"]])
-    y_pad = 0.04 * (h_all.max() - h_all.min())
+    h_range = h_all.max() - h_all.min()
+    y_pad_top = 0.04 * h_range
+    # The a<1.25 period-doubling plateau sits at the data floor; a 4% pad
+    # still lands the curve on the spine, so give the bottom more room.
+    y_pad_bottom = 0.10 * h_range
 
     ax1.plot(
         data["a"],
@@ -378,7 +414,7 @@ def plot_permutation_entropy(data):
     ax1.set_xlabel(r"$a$")
     ax1.set_ylabel(r"$H_\mathrm{PE}$")
     ax1.set_title(r"Logistic map $1-ax^2$", loc="left")
-    ax1.set_ylim(h_all.min() - y_pad, h_all.max() + y_pad)
+    ax1.set_ylim(h_all.min() - y_pad_bottom, h_all.max() + y_pad_top)
     apply_axes_polish(ax1, kind="double", title_loc="left", grid=False)
     panel_label(ax1, "(a)")
 
@@ -392,7 +428,7 @@ def plot_permutation_entropy(data):
     ax2.set_xlabel(r"$D$")
     ax2.set_ylabel(r"$H_\mathrm{PE}$")
     ax2.set_title(r"Delayed logistic, $\alpha = 0.3$", loc="left")
-    ax2.set_ylim(h_all.min() - y_pad, h_all.max() + y_pad)
+    ax2.set_ylim(h_all.min() - y_pad_bottom, h_all.max() + y_pad_top)
     apply_axes_polish(ax2, kind="double", title_loc="left", grid=False)
     panel_label(ax2, "(b)")
 
@@ -499,7 +535,10 @@ def plot_rqa(data):
     axes[1, 1].set_xlabel(r"$D$")
     axes[1, 1].set_title("Entropy of diag. lines", loc="left")
     apply_axes_polish(axes[1, 1], kind="grid", title_loc="left")
-    panel_label(axes[1, 1], "(d)")
+    # The ENTR curve dips sharply right where the default upper-left tag
+    # sits (D ~ 1.51-1.55); the data line and its close cousin dip cut
+    # straight through the label there. Bottom-left is clear for this panel.
+    panel_label(axes[1, 1], "(d)", loc="lower left")
 
     fig.subplots_adjust(wspace=0.24, hspace=0.34)
     fig.savefig(RQA_PNG, dpi=600, bbox_inches="tight")

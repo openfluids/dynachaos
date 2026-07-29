@@ -165,12 +165,35 @@ def plot(data):
             continue
         pad = 0.003 if target < 0.4 else 0.002
         ax.axvspan(window[0] - pad, window[1] + pad, color=color, alpha=0.10, lw=0.0)
-        ax.text(
-            window[0],
-            target + (0.03 if target < 0.4 else 0.018),
+        # Anchor the label to the shaded band with a short leader line rather
+        # than printing it at (window[0], target): that point sits directly
+        # on the rho_theta=D climb, so the text was struck through by the
+        # curve and, being left-aligned, visually drifted away from the
+        # sliver it names. The label now sits in the clear band above the
+        # curve and points straight down at the band's centre.
+        center = 0.5 * (window[0] + window[1])
+        # zoom (a) sits under the rho_phi/reference-line annotation block
+        # (top-left, x below ~0.5 in axes fraction), so its label is placed
+        # lower to stay clear of that text instead of colliding with it.
+        label_y = 0.83 if target < 0.4 else 0.97
+        ax.annotate(
             label,
+            xy=(center, label_y - 0.19),
+            xycoords=("data", "axes fraction"),
+            xytext=(center, label_y),
+            textcoords=("data", "axes fraction"),
+            ha="center",
+            va="top",
             color=color,
             fontsize=spec.legend_size - 0.3,
+            arrowprops={
+                "arrowstyle": "-",
+                "color": color,
+                "lw": 0.6,
+                "alpha": 0.8,
+                "shrinkA": 0,
+                "shrinkB": 0,
+            },
         )
 
     # Rigid-rotation reference rho_theta = D (grey dashed diagonal).
@@ -248,8 +271,13 @@ def plot_zoom(data):
     pad1 = 0.008
     mask1 = (D >= window1[0] - pad1) & (D <= window1[1] + pad1)
     rt1 = rho_theta[mask1]
-    ax1.plot(D[mask1], rt1, color=COLORS["black"], lw=0.3, rasterized=True)
-    reference_line(ax1, 0.25, axis="y")
+    # The rho=1/4 guide used to be drawn after the data at the default
+    # linewidth (1.0) with the curve at a hairline 0.3 -- the guide sat
+    # exactly on the locking plateau it was meant to mark and buried it.
+    # Draw the guide behind the data (lower zorder) and thinner, and give
+    # the data curve enough weight to read as the primary feature.
+    reference_line(ax1, 0.25, axis="y", lw=0.5, zorder=1)
+    ax1.plot(D[mask1], rt1, color=COLORS["black"], lw=0.9, rasterized=True, zorder=2)
     ax1.axvspan(window1[0], window1[1], color=COLORS["blue"], alpha=0.10, lw=0.0)
     ax1.set_xlabel(r"$D$")
     ax1.set_ylabel(r"$\rho_\theta$")
@@ -262,8 +290,8 @@ def plot_zoom(data):
     pad2 = 0.006
     mask2 = (D >= window2[0] - pad2) & (D <= window2[1] + pad2)
     rt2 = rho_theta[mask2]
-    ax2.plot(D[mask2], rt2, color=COLORS["black"], lw=0.3, rasterized=True)
-    reference_line(ax2, C_GOLDEN, axis="y")
+    reference_line(ax2, C_GOLDEN, axis="y", lw=0.5, zorder=1)
+    ax2.plot(D[mask2], rt2, color=COLORS["black"], lw=0.9, rasterized=True, zorder=2)
     ax2.axvspan(window2[0], window2[1], color=COLORS["red"], alpha=0.10, lw=0.0)
     ax2.set_xlabel(r"$D$")
     ax2.set_title(r"plateau near $C$", loc="left")

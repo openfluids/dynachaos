@@ -476,7 +476,10 @@ def plot_phase_diagram(data):
     axes[0].set_title(r"Symmetry breaking: $\langle |x-y| \rangle$", loc="left")
     panel_label(axes[0], "(a)")
     apply_axes_polish(axes[0], kind="double", title_loc="left", grid=False)
-    add_field_colorbar(fig, im0, axes[0], label=r"$\langle |x-y| \rangle$", pad=0.02)
+    # Panel (b) sits immediately right of this colorbar, so a right-side
+    # label lands inside its axes; put the label in the pad gap on the left.
+    cbar0 = add_field_colorbar(fig, im0, axes[0], label=r"$\langle |x-y| \rangle$", pad=0.12)
+    cbar0.ax.yaxis.set_label_position("left")
 
     lyap_cmap = plt.get_cmap(CMAP_DIVERGING).copy()
     lyap_cmap.set_bad(COLORS["offwhite"])
@@ -642,7 +645,13 @@ def plot_basins(data):
     ax1.set_xlabel("$x_0$")
     ax1.set_ylabel("$y_0$")
     ax1.set_title(f"Full basin at $a = {A_val:.5f}$", loc="left")
-    panel_label(ax1, "(a)")
+    # Opaque backing: the default semi-transparent tag picks up a two-tone
+    # tint from the red/blue basin field directly underneath it.
+    panel_label(
+        ax1,
+        "(a)",
+        bbox={"facecolor": COLORS["offwhite"], "alpha": 1.0, "pad": 1.2, "edgecolor": "none"},
+    )
     apply_axes_polish(ax1, kind="double", title_loc="left", grid=False, equal=True)
 
     zx0, zx1, zy0, zy1 = -0.16, 0.04, -0.11, 0.09
@@ -678,7 +687,11 @@ def plot_basins(data):
     ax2.set_xlabel("$x_0$")
     ax2.set_ylabel("$y_0$")
     ax2.set_title("Zoom near the invariant diagonal", loc="left")
-    panel_label(ax2, "(b)")
+    panel_label(
+        ax2,
+        "(b)",
+        bbox={"facecolor": COLORS["offwhite"], "alpha": 1.0, "pad": 1.2, "edgecolor": "none"},
+    )
     apply_axes_polish(ax2, kind="double", title_loc="left", grid=False, equal=True)
 
     legend_elements = [
@@ -700,7 +713,10 @@ def plot_basins(data):
         bbox_to_anchor=(0.5, -0.02),
     )
 
-    fig.savefig(BASIN_PNG, dpi=600, bbox_inches="tight")
+    # Higher dpi than the section default: the 800x800 basin grid needs
+    # >=2 device pixels per cell so the web-derivative downsample area-averages
+    # the field instead of aliasing it into salt-and-pepper speckle.
+    fig.savefig(BASIN_PNG, dpi=1200, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {BASIN_PNG}")
 

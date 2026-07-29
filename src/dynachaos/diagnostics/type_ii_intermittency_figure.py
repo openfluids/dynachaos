@@ -210,12 +210,17 @@ def plot(data, output_path=OUTPUT_PNG):
     ax_survival.set_xlabel("laminar length $\\ell$")
     ax_survival.set_ylabel("$P(L \\geq \\ell)$")
 
+    # Panel (c)'s tall leading bar plus a wide y-tick label ("0.0025") leave
+    # no margin for the default upper-left tag, which then renders with its
+    # opening parenthesis clipped by the left spine. The histogram's upper
+    # right is empty (density falls off with laminar length), so put it there.
+    label_locs = {"c": "upper right"}
     for label, ax in zip(
         ("a", "b", "c", "d"),
         (ax_spiral, ax_radius, ax_hist, ax_survival),
         strict=True,
     ):
-        panel_label(ax, f"({label})")
+        panel_label(ax, f"({label})", loc=label_locs.get(label, "upper left"))
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         apply_axes_polish(ax, kind="grid")

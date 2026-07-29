@@ -170,7 +170,7 @@ def plot(data):
         1,
         figsize=(spec.figsize[0], spec.figsize[1] * 1.64),
         sharex=True,
-        height_ratios=[3, 1],
+        height_ratios=[3, 2],
     )
     fig.subplots_adjust(hspace=0.08)
 
@@ -214,26 +214,34 @@ def plot(data):
         ax.axvline(K_chaos_onset, color=COLORS["red"], lw=0.7, ls=":", alpha=0.8)
     annotate_on_field(
         ax1,
-        K_inf + 0.002,
+        K_inf - 0.003,
         0.244,
-        r"$K_\infty$: onset of $1/5$ locking",
+        r"$K_\infty$: $1/5$ lock",
         fontsize=spec.tick_size,
         color=COLORS["blue"],
-        ha="left",
+        ha="right",
         va="center",
     )
-    ax2.set_ylim(min(-2.4, lam.min() * 1.05), 0.18)
+    # Clip (not scale) the Lyapunov axis to the physically interesting band:
+    # three isolated superstable spikes reach lam ~ -2.3-2.35 and, if used to
+    # set the range, crush the |lambda| < 0.05 band the caption relies on onto
+    # the zero line. Let those spikes run off the bottom instead.
+    ax2.set_ylim(-0.35, 0.15)
     # Format chaos onset to 3 sig figs for display
     K_chaos_display = round(K_chaos_onset, 3)
+    # The band right of the onset marker is solid data at this y-range, so the
+    # label sits in the empty quadrant left of the marker, reading toward the
+    # feature it names -- no bbox needed there.
     annotate_on_field(
         ax2,
-        K_chaos_onset + 0.002,
+        K_chaos_onset - 0.003,
         0.07,
         rf"$K \approx {K_chaos_display}$: sustained $\lambda>0$",
         fontsize=spec.tick_size,
         color=COLORS["red"],
-        ha="left",
+        ha="right",
         va="bottom",
+        bbox=None,
     )
 
     apply_axes_polish(ax1, kind="double", grid=False)
@@ -339,7 +347,10 @@ def plot_zoom(zoom_data, full_data):
     ax_zoom.set_title(r"Period-adding sequence approaching $1/5$", loc="left")
     ax_zoom.set_xlim(*zoom_K)
     ax_zoom.set_ylim(*zoom_rho)
-    panel_label(ax_zoom, "(b)")
+    # The staircase descends from high rho at low K to 1/5 at high K, so the
+    # curve (and the 2/9 plateau) runs through the default upper-left corner;
+    # the lower-left corner is empty of data, so the label is moved there.
+    panel_label(ax_zoom, "(b)", loc="lower left")
 
     # Mark the dominant period-adding sequence n/(5n-1) and the 1/5 accumulation plateau.
     rationals = {
@@ -351,7 +362,7 @@ def plot_zoom(zoom_data, full_data):
     for label, val in rationals.items():
         reference_line(ax_zoom, val, axis="y", lw=0.3, alpha=0.5)
         ax_zoom.text(
-            zoom_K[1] - 0.0008,
+            zoom_K[1] - 0.0025,
             val + 0.0006,
             label,
             fontsize=spec.tick_size - 1,

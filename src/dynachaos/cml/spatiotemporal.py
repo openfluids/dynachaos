@@ -142,8 +142,14 @@ def plot(data):
         ("C", [0.16, 0.20, 0.30], "Model (C): logistic"),
     ]
 
+    # The caption commits to the full field (N = 200 sites, 500 steps), so
+    # the panels must show all of it: cropping to a prettier window would
+    # contradict the text. The moire banding came from resampling 500 rows
+    # with nearest-neighbour interpolation, not from the aspect -- antialiased
+    # interpolation removes it; the non-isotropic aspect stays, as in
+    # Kaneko's own plates, and taller panels keep the stretch modest.
     spec = figure_spec("grid")
-    fig, axes = plt.subplots(3, 3, figsize=(spec.figsize[0], spec.figsize[1] * 1.42))
+    fig, axes = plt.subplots(3, 3, figsize=(spec.figsize[0], spec.figsize[1] * 1.7))
 
     for row, (model, eps_vals, title) in enumerate(configs):
         row_arrays = [
@@ -165,7 +171,7 @@ def plot(data):
                     aspect="auto",
                     cmap=CMAP_SPACETIME,
                     origin="lower",
-                    interpolation="nearest",
+                    interpolation="antialiased",
                     vmin=vmin,
                     vmax=vmax,
                 )

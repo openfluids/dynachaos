@@ -281,13 +281,19 @@ def plot(data, output_path=OUTPUT_PNG):
     )
     lorenz_bounds = np.array([np.min(lorenz_return), np.max(lorenz_return)], dtype=np.float64)
     ax_lorenz.plot(lorenz_bounds, lorenz_bounds, color=COLORS["black"], lw=0.8, ls="--")
-    inset = ax_lorenz.inset_axes([0.08, 0.58, 0.38, 0.34])
+    # Moved out of the upper-left corner: it used to sit directly over the
+    # panel letter (clipping the closing parenthesis) and over part of the
+    # negative-y_k branch of the scatter. The lower-right of this panel is
+    # comparatively empty.
+    inset = ax_lorenz.inset_axes([0.56, 0.08, 0.40, 0.32])
     inset.plot(
         lorenz_time[:1_200],
         lorenz_observable[:1_200],
         color=COLORS["black"],
         lw=0.6,
     )
+    inset.set_xlabel("time", fontsize=spec.legend_size - 1.0, labelpad=1.0)
+    inset.set_ylabel("$y$", fontsize=spec.legend_size - 1.0, labelpad=1.0)
     inset.set_xticks([])
     inset.set_yticks([])
     inset.spines["top"].set_visible(False)
