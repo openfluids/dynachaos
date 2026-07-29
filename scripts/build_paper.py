@@ -28,11 +28,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The registry import must also work under a bare interpreter with no
+# installed dynachaos -- CI builds the page without installing the package.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from paper_shell import CSS, JS  # noqa: E402
+
+from dynachaos.pipelines.registry import get_figure, get_section  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 WEB = REPO / "web"
@@ -392,18 +398,28 @@ def anchor_unnumbered_equations(body: str) -> tuple[str, int]:
     return "".join(out), count
 
 
+TABLE_CAP_RE = re.compile(r'(<table id="(tab:[^"]+)"[^>]*>\s*<caption>)(.*?)(</caption>)', re.S)
+
+
 def number_tables(body: str) -> tuple[str, dict[str, str]]:
-    """Number the tables in reading order so table references resolve."""
+    """Number the tables in reading order so table references resolve.
+
+    The number shown beside each caption comes from this same map, so a table
+    citation and its caption cannot disagree -- the same fix ``renumber_figure_refs``
+    applies to figures.
+    """
     numbers: dict[str, str] = {}
-    count = 0
+    for match in HYPERTARGET_RE.finditer(body):
+        if match.group(2).startswith("tab:"):
+            numbers[match.group(2)] = str(len(numbers) + 1)
 
-    def tag(match: re.Match[str]) -> str:
-        nonlocal count
-        count += 1
-        numbers[match.group(2)] = str(count)
-        return match.group(0)
+    def number_caption(match: re.Match[str]) -> str:
+        number = numbers.get(match.group(2))
+        if not number:
+            return match.group(0)
+        return f'{match.group(1)}<span class="num">Table {number}.</span> {match.group(3)}{match.group(4)}'
 
-    HYPERTARGET_RE.sub(lambda m: tag(m) if m.group(2).startswith("tab:") else m.group(0), body)
+    body = TABLE_CAP_RE.sub(number_caption, body)
     return body, numbers
 
 
@@ -549,6 +565,210 @@ def strip_tags(fragment: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", fragment)).strip()
 
 
+_ANNOTATION_RE = re.compile(r"<annotation[^>]*>.*?</annotation>", re.S)
+_XREF_LABEL_RE = re.compile(r"\[(?:eq|fig|tab|sec|app):[^\]]*\]")
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+_ALT_MAX = 200
+
+
+def build_alt_text(caption: str) -> str:
+    """Build a short, clean alt string from a figure caption.
+
+    The caption HTML carries MathML with a raw-LaTeX ``<annotation>`` fallback
+    (so every symbol would otherwise be spoken twice) and pandoc's unresolved
+    ``[eq:label]``/``[fig:label]`` cross-reference placeholders. Both are
+    stripped before the text is cut at a sentence boundary near ``_ALT_MAX``
+    characters -- never mid-word, and never mid-sentence when the sentence
+    itself is short enough to keep whole.
+    """
+    text = _ANNOTATION_RE.sub("", caption)
+    text = strip_tags(text)
+    text = _XREF_LABEL_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+([.,;:])", r"\1", text)
+    if len(text) <= _ALT_MAX:
+        return text
+    window = text[:_ALT_MAX]
+    last_end = None
+    for m in _SENTENCE_END_RE.finditer(window):
+        last_end = m
+    if last_end:
+        return window[: last_end.end()].strip()
+    cut = window.rsplit(" ", 1)[0].rstrip(".,;: ")
+    return cut + "…"
+
+
+_INDEX_HEADING_TAGS = {"h2", "h3", "h4"}
+_INDEX_TEXT_TAGS = {"p", "figcaption", "caption"}
+_INDEX_TRUNCATE_AT = 300
+_INDEX_BYTE_BUDGET = 150_000
+
+
+class _SearchIndexParser(HTMLParser):
+    """Walk the assembled body collecting headings and paragraph/caption text.
+
+    A regex pass cannot track "nearest ancestor id" or "which heading a
+    paragraph currently falls under" across nested tags, so this uses a real
+    (if lenient) parse instead. Folded ``<details>`` are not special-cased --
+    everything inside one is walked exactly like everything else, which is the
+    whole point: a browser's own Ctrl+F cannot see in there, so this index has
+    to. Text inside a MathML ``<annotation>`` (the raw-LaTeX fallback) is
+    skipped rather than concatenated, or every symbol would be indexed twice.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.id_stack: list[str] = [""]
+        self.section = ""
+        self.units: list[dict[str, str]] = []
+        self._capture: list[list[str]] = []
+        self._annotation_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._open(tag, attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._open(tag, attrs)
+        self._close(tag)
+
+    def _open(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs_d = dict(attrs)
+        self.id_stack.append(attrs_d.get("id") or self.id_stack[-1])
+        if tag in ("annotation", "annotation-xml"):
+            self._annotation_depth += 1
+        if tag in _INDEX_HEADING_TAGS or tag in _INDEX_TEXT_TAGS:
+            self._capture.append([])
+
+    def handle_endtag(self, tag: str) -> None:
+        self._close(tag)
+
+    def _close(self, tag: str) -> None:
+        if (tag in _INDEX_HEADING_TAGS or tag in _INDEX_TEXT_TAGS) and self._capture:
+            text = re.sub(r"\s+", " ", "".join(self._capture.pop())).strip()
+            is_heading = tag in _INDEX_HEADING_TAGS
+            section = text if is_heading else self.section
+            if is_heading:
+                self.section = text
+            if text:
+                unit_id = self.id_stack[-1]
+                self.units.append({"id": unit_id, "section": section, "tag": tag, "text": text})
+        if tag in ("annotation", "annotation-xml") and self._annotation_depth:
+            self._annotation_depth -= 1
+        if len(self.id_stack) > 1:
+            self.id_stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        if self._annotation_depth or not self._capture:
+            return
+        self._capture[-1].append(data)
+
+
+def build_search_index(body: str) -> list[dict[str, str]]:
+    """Extract searchable units (headings, paragraphs, captions) from the body.
+
+    Runs on the final assembled body -- after figures, tables and back matter
+    are folded -- so ids are the page's own anchors and folded ``<details>``
+    content is included, not skipped.
+    """
+    parser = _SearchIndexParser()
+    parser.feed(body)
+    parser.close()
+    return parser.units
+
+
+def search_index_json(units: list[dict[str, str]]) -> tuple[str, bool]:
+    """Serialise the search index, truncating unit text if it runs too large.
+
+    Relevance for a jump-to-section search does not need a whole paragraph, so
+    once the raw JSON would exceed roughly 150 KB, each unit's text is cut to
+    its first ~300 characters rather than shipping the full page twice over.
+    """
+
+    def dump(units: list[dict[str, str]]) -> str:
+        return json.dumps(units, ensure_ascii=False, separators=(",", ":"))
+
+    raw = dump(units)
+    truncated = False
+    if len(raw.encode("utf-8")) > _INDEX_BYTE_BUDGET:
+        truncated = True
+        units = [
+            {
+                **u,
+                "text": (
+                    u["text"][:_INDEX_TRUNCATE_AT] + "…"
+                    if len(u["text"]) > _INDEX_TRUNCATE_AT
+                    else u["text"]
+                ),
+            }
+            for u in units
+        ]
+        raw = dump(units)
+    # a paragraph's own text could contain "</script" and prematurely close
+    # the block this gets embedded in
+    raw = raw.replace("</", "<\\/")
+    return raw, truncated
+
+
+# ---------------------------------------------------------------------------
+# figure snippets: hand-rolled server-side syntax highlighting (no pygments --
+# the page stays zero-dependency and the build stays stdlib+repo-only)
+# ---------------------------------------------------------------------------
+
+_PY_KEYWORDS = (
+    "False|None|True|and|as|assert|async|await|break|class|continue|def|del|"
+    "elif|else|except|finally|for|from|global|if|import|in|is|lambda|"
+    "nonlocal|not|or|pass|raise|return|try|while|with|yield"
+)
+_SNIPPET_TOKEN_RE = re.compile(
+    r"(?P<comment>#[^\n]*)"
+    r"|(?P<string>'''(?:.|\n)*?'''|\"\"\"(?:.|\n)*?\"\"\"|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\")"
+    r"|(?P<fn>(?<=def\s)[A-Za-z_]\w*|(?<=class\s)[A-Za-z_]\w*)"
+    r"|(?P<mod>(?<=import\s)[A-Za-z_][\w.]*|(?<=from\s)[A-Za-z_][\w.]*)"
+    r"|(?P<kw>\b(?:" + _PY_KEYWORDS + r")\b)"
+    r"|(?P<num>\b\d+\.?\d*(?:[eE][+-]?\d+)?\b)"
+    r"|(?P<other>.)",
+    re.S,
+)
+
+
+def highlight_python(source: str) -> str:
+    """Tokenize a Python snippet into HTML spans, without any third-party lexer."""
+    out = []
+    for m in _SNIPPET_TOKEN_RE.finditer(source):
+        text = html.escape(m.group())
+        kind = m.lastgroup
+        out.append(text if kind == "other" else f'<span class="tok-{kind}">{text}</span>')
+    return "".join(out)
+
+
+def figure_code_block(section: str, name: str) -> tuple[str, bool]:
+    """Render the "how this figure was computed" panel for one figure.
+
+    Returns the HTML (empty string when the figure has no registered snippet)
+    and whether a snippet was found, so the caller can gate the page stats.
+    """
+    figure = get_figure(section, f"{name}.png")
+    if figure is None or not figure.snippet:
+        return "", False
+    snippet_path = REPO / figure.snippet
+    if not snippet_path.exists():
+        return "", False
+    source = snippet_path.read_text(encoding="utf-8")
+    footer = ""
+    if figure.npz:
+        keys = get_section(section).required_npz_keys(figure.npz)
+        key_list = ", ".join(keys) if keys else "no contract keys"
+        footer = f'<p class="fig-code-footer">Artifact: <code>{figure.npz}</code> ({key_list})</p>'
+    return (
+        '<details class="fig-code">'
+        "<summary>How this figure was computed</summary>"
+        f'<pre><code class="fig-snippet">{highlight_python(source)}</code></pre>'
+        f'<div class="fig-code-actions"><button type="button" class="fig-code-copy">copy</button></div>'
+        f"{footer}"
+        "</details>"
+    ), True
+
+
 def figure_block(
     fig_id: str, section: str, name: str, caption: str, dims: dict[str, tuple[int, int]]
 ) -> str:
@@ -565,23 +785,34 @@ def figure_block(
     if (section, name) in dims:
         w, h = dims[(section, name)]
         size = f' width="{w}" height="{h}"'
-    alt = html.escape(strip_tags(caption)[:150], quote=True)
+    alt = html.escape(build_alt_text(caption), quote=True)
 
     acts = ['<button type="button" class="act-zoom">enlarge</button>']
     attrs = f' id="{fig_id}"'
+    badge = ""
     if data.exists():
         acts.insert(0, '<button type="button" class="act-interact">interact</button>')
+        acts.insert(1, '<button type="button" class="act-copylink">copy link</button>')
         attrs += f' data-src="data/{section}/{name}.json" data-state="static"'
+        badge = (
+            '<button type="button" class="fig-badge" hidden'
+            ' aria-label="Figure modified from published defaults — reset to published values">'
+            "modified — reset</button>"
+        )
+
+    code_html, has_snippet = figure_code_block(section, name)
+    if has_snippet:
+        acts.insert(0, '<button type="button" class="act-code">code</button>')
 
     return (
         f"<figure{attrs}>"
-        f'<div class="fig-head"><span class="name">{section}/{name}</span>'
+        f'<div class="fig-head"><span class="name">{section}/{name}</span>{badge}'
         f'<span class="acts">{"".join(acts)}</span></div>'
         f'<div class="fig-body">'
         f'<img src="{src}" data-full="full/{section}/{name}.png" alt="{alt}"'
-        f' loading="lazy"{size}>'
+        f' loading="lazy" decoding="async"{size}>'
         f"</div>"
-        f"<figcaption>{caption}</figcaption></figure>"
+        f"<figcaption>{caption}</figcaption>{code_html}</figure>"
     )
 
 
@@ -602,7 +833,14 @@ def transform(
 ) -> tuple[str, list[tuple[int, str, str, str]]]:
     """Rewrite pandoc output into the page's own figure, table and heading shapes."""
     dims = thumb_dims()
-    stats: dict[str, object] = {"interactive": 0, "static": 0, "arc": 0, "dropped": []}
+    stats: dict[str, object] = {
+        "interactive": 0,
+        "static": 0,
+        "arc": 0,
+        "dropped": [],
+        "snippets_present": 0,
+        "snippets_missing": [],
+    }
 
     def do_figure(match: re.Match[str]) -> str:
         block = match.group(0)
@@ -616,6 +854,7 @@ def transform(
             # separators as prose. Render it as a purpose-built timeline instead.
             if fig_id == "fig:program_map":
                 stats["arc"] += 1
+                stats["arc_caption"] = caption
                 return PROGRAM_ARC_SLOT
             stats["dropped"].append(fig_id or "(unlabelled)")
             return ""
@@ -624,6 +863,11 @@ def transform(
             stats["interactive"] += 1
         else:
             stats["static"] += 1
+        figure = get_figure(section, f"{name}.png")
+        if figure is not None and figure.snippet:
+            stats["snippets_present"] += 1
+        else:
+            stats["snippets_missing"].append(f"{section}/{name}")
         return figure_block(fig_id, section, name, caption, dims)
 
     body = FIG_RE.sub(do_figure, body)
@@ -643,13 +887,12 @@ def transform(
 
     body = FIG_RE.sub(number_figure, body)
     if PROGRAM_ARC_SLOT in body:
-        arc_caption = (
-            "Arc of Kaneko's research programme, from one-dimensional phase-locking "
-            "analysis (1982) through coupled map lattices and globally coupled maps "
-            "to biological applications (1990s). The columns mark the extension of "
-            "the framework to higher complexity. Abbreviations: CML, coupled map "
-            "lattice; GCM, globally coupled map."
-        )
+        arc_caption = stats.get("arc_caption")
+        if not arc_caption:
+            raise SystemExit(
+                "could not find the fig:program_map caption in the manuscript body "
+                "to build the timeline figure"
+            )
         fig_no += 1
         body = body.replace(
             PROGRAM_ARC_SLOT, program_arc("fig:program_map", arc_caption, fig_no), 1
@@ -683,13 +926,25 @@ def transform(
         nav.append((level, sec_id, strip_tags(h.group(3)), number))
 
     numbers = iter(n for *_, n in nav)
+    # nav was built by walking sections in document order and pairing each with
+    # the next heading found in its tail (see the loop just above): the same
+    # order HEAD_RE.sub below visits headings in, so this second iterator can
+    # ride along with `numbers` and hand demote() the enclosing section's id
+    # for the copy-link anchor without re-parsing anything.
+    heading_ids = iter(sec_id for _, sec_id, _, _ in nav)
 
     def demote(match: re.Match[str]) -> str:
         tag, attrs, text = match.group(1), match.group(2), match.group(3)
         new = "h2" if tag == "h1" else "h3"
         number = next(numbers, "")
         label = f'<span class="secno">{number}</span> ' if number else ""
-        return f"<{new}{attrs}>{label}{text}</{new}>"
+        sec_id = next(heading_ids, "")
+        anchor = (
+            f' <a class="head-anchor" href="#{sec_id}" aria-label="Copy link to this section">#</a>'
+            if sec_id
+            else ""
+        )
+        return f"<{new}{attrs}>{label}{text}{anchor}</{new}>"
 
     body = HEAD_RE.sub(demote, body)
     body, n_tagged = apply_eq_tags(body, eq_tags or [])
@@ -709,6 +964,10 @@ def transform(
     )
     if stats["dropped"]:
         print(f"  DROPPED (pandoc could not convert): {', '.join(stats['dropped'])}")
+    n_total_figs = stats["snippets_present"] + len(stats["snippets_missing"])
+    print(f"  figure snippets: {stats['snippets_present']} of {n_total_figs}")
+    if stats["snippets_missing"]:
+        print(f"  WARNING: figures without a code snippet: {', '.join(stats['snippets_missing'])}")
     print(f"  sections numbered: {sum(1 for *_, n in nav if n)} of {len(nav)}")
     print(
         f"  equations numbered: {n_eq}; tagged: {n_tagged}; "
@@ -753,6 +1012,24 @@ def fold_back_matter(body: str) -> tuple[str, int]:
         )
         end = body.index("</section>", body.index(f'id="{sec_id}"'))
         body = body[:end] + "</details>" + body[end:]
+
+    # The reader has just been told which manuscript figure each one reproduces;
+    # this is where the two numbering schemes are most likely to be compared.
+    note = (
+        '<p class="fig-note">Figure numbers on this page follow the order figures '
+        "appear here, not the order of the manuscript PDF -- the programme-arc "
+        "figure, for instance, is moved to the end of this page.</p>"
+    )
+    marker = '<table id="tab:repro_index"'
+    if marker not in body:
+        # Without the note a reader comparing this page against the manuscript
+        # PDF meets renumbered figures with no explanation -- fail the build
+        # rather than ship that silently.
+        raise SystemExit(
+            "fold_back_matter: reproduction-index table not found; "
+            "the figure-numbering note has nowhere to go"
+        )
+    body = body.replace(marker, note + marker, 1)
     return body, folded
 
 
@@ -779,13 +1056,41 @@ def build_nav(nav: list[tuple[int, str, str, str]]) -> str:
     return "".join(out)
 
 
-def hero(meta: dict[str, str]) -> str:
+ATLAS_TABLE_RE = re.compile(
+    r'<table\b[^>]*>\s*<caption>(?:<span class="num">[^<]*</span>\s*)?Mechanistic atlas.*?</table>',
+    re.S,
+)
+
+
+def count_model_systems(body: str) -> int:
+    """Count the rows of the Mechanistic atlas table -- the model systems it covers."""
+    table = ATLAS_TABLE_RE.search(body)
+    if not table:
+        raise SystemExit("could not find the 'Mechanistic atlas' table to count model systems")
+    tbody = re.search(r"<tbody>(.*?)</tbody>", table.group(0), re.S)
+    count = len(re.findall(r"<tr>", tbody.group(1))) if tbody else 0
+    if not count:
+        raise SystemExit("the 'Mechanistic atlas' table has no body rows to count")
+    return count
+
+
+def count_diagnostic_spotlights(body: str) -> int:
+    """Count the 'Diagnostic spotlight' subsections the manuscript actually has."""
+    count = len(re.findall(r"Diagnostic spotlight", body))
+    if not count:
+        raise SystemExit("found no 'Diagnostic spotlight' subsections to count")
+    return count
+
+
+def hero(meta: dict[str, str], body: str) -> str:
     stats = "".join(
         f"<li><b>{b}</b><span>{lab}</span></li>"
         for b, lab in (
-            ("6", "mechanisms"),
-            ("5&ndash;1000&times;", "finer resolution"),
-            ("4", "modern diagnostics"),
+            (str(count_model_systems(body)), "model systems"),
+            # "at 100x finer resolution" (stated twice) and "10-100x" are the
+            # manuscript's own claim; "1000x" was never made in the text.
+            ("100&times;", "finer resolution"),
+            (str(count_diagnostic_spotlights(body)), "diagnostic spotlights"),
         )
     )
     return f"""<header class="hero">
@@ -815,10 +1120,49 @@ CONTROLS = """<div class="progress" aria-hidden="true"></div>
 <span class="sep"></span>
 <button type="button" class="c-fig" title="Toggle larger figures">figures</button>
 <button type="button" class="c-theme" title="Cycle theme: auto, light, dark">auto</button>
+<span class="sep"></span>
+<button type="button" class="c-search" title="Search this page (/)">search</button>
+<button type="button" class="c-help" title="Keyboard shortcuts (?)">keys</button>
 </div>"""
 
+SEARCH_OVERLAY = """<div class="search-overlay" role="dialog" aria-modal="true" aria-label="Search this page">
+<div class="search-panel">
+<input type="text" class="search-input" placeholder="Search this page&hellip;" aria-label="Search this page" autocomplete="off" spellcheck="false">
+<ul class="search-results" role="listbox" aria-label="Search results"></ul>
+<p class="search-empty">No matches.</p>
+</div>
+</div>"""
 
-def assemble(body: str, nav: str, meta: dict[str, str]) -> str:
+# Rows are rendered by JS from a single source array (see SHORTCUTS in the
+# main script) so this table cannot list a key that nothing actually wires up.
+HELP_OVERLAY = """<div class="help-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+<div class="help-panel">
+<div class="help-head"><h2>Keyboard shortcuts</h2>
+<button type="button" class="help-close" aria-label="Close">close</button></div>
+<table class="help-table"><thead><tr><th>Key</th><th>Action</th></tr></thead>
+<tbody></tbody></table>
+</div>
+</div>"""
+
+TOC_BACKDROP = '<div class="toc-backdrop" hidden></div>'
+
+
+# Applied before the ~24 KB inline <style>, so a reader with a saved theme or
+# font size never sees the default flash while the rest of the page parses.
+# Same localStorage keys and attribute names as the controls IIFE in JS below
+# -- that script re-applies them harmlessly once it runs, it never fights this.
+PREF_SCRIPT = """<script>(function(){"use strict";try{
+var d=document.documentElement;
+var g=function(k){return localStorage.getItem(k);};
+var th=g("dc-theme");
+if(th)d.setAttribute("data-theme",th);
+d.setAttribute("data-size",g("dc-size")||"l");
+d.setAttribute("data-rail",g("dc-rail")||"on");
+d.setAttribute("data-figsize",g("dc-fig")||"short");
+}catch(e){}})();</script>"""
+
+
+def assemble(body: str, nav: str, meta: dict[str, str], index_json: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -826,14 +1170,16 @@ def assemble(body: str, nav: str, meta: dict[str, str]) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(meta["title"])}</title>
 <meta name="description" content="{html.escape(meta["lede"][:180])}">
+{PREF_SCRIPT}
 <style>{CSS}</style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 {CONTROLS}
-{hero(meta)}
+{hero(meta, body)}
 <div class="shell">
 {nav}
-<article>
+<article id="main-content">
 {body}
 </article>
 </div>
@@ -845,7 +1191,17 @@ dynachaos run all</code></pre>
 <p><a href="gallery.html">Figure index</a> &middot;
 <a href="https://github.com/openfluids/dynachaos">dynachaos on GitHub</a></p>
 </footer>
-<div class="lb"><button class="lb-close" type="button">close</button><img alt=""><p class="lb-cap"></p></div>
+<div class="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
+<button class="lb-close" type="button">close</button>
+<img alt="">
+<p class="lb-cap"></p>
+<p class="lb-actions"><a class="lb-goto" href="#" data-fig-target="">go to figure in text</a></p>
+<p class="lb-announce sr-only" aria-live="polite"></p>
+</div>
+{SEARCH_OVERLAY}
+{HELP_OVERLAY}
+{TOC_BACKDROP}
+<script type="application/json" id="search-index">{index_json}</script>
 <script>{JS}</script>
 </body>
 </html>
@@ -898,14 +1254,23 @@ def main() -> None:
     body, dropped = dedupe_ids(body)
     if dropped:
         print(f"  removed {dropped} duplicate id attributes")
-    page = assemble(body, build_nav(nav), meta)
+
+    index_units = build_search_index(body)
+    index_json, index_truncated = search_index_json(index_units)
+
+    page = assemble(body, build_nav(nav), meta, index_json)
     out = SITE / "index.html"
     out.write_text(page, encoding="utf-8")
 
     print(f"  sections in nav: {len(nav)}")
     print(f"  MathML nodes:    {page.count('<math')}")
-    print(f"  references:      {page.count('csl-entry')}")
+    print(f"  references:      {body.count('csl-entry')}")
     print(f"  fonts copied:    {len(list(fonts_dst.glob('*.woff2')))}")
+    print(
+        f"  search index:    {len(index_units)} units, "
+        f"{len(index_json.encode('utf-8')):,} bytes"
+        + (" (truncated to fit the byte budget)" if index_truncated else "")
+    )
     print(f"  wrote {out.relative_to(REPO)} ({len(page):,} bytes)")
 
 

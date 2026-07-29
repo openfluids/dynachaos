@@ -49,7 +49,7 @@ CSS = (
   --sunken:#efece3;
   --ink:#14161c;
   --ink-mid:#454b59;
-  --ink-low:#828899;
+  --ink-low:#6c7284; /* WCAG AA: 4.52:1 on --ground, 4.80:1 on --raised */
   --rule:#e0dccf;
   --rule-soft:#ebe7dc;
 
@@ -75,7 +75,7 @@ CSS = (
   :root{
     --locked:#f0a830; --torus:#9086dc; --chaotic:#3fd0c8;
     --ground:#0a0d15; --raised:#111624; --sunken:#070911;
-    --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#6b748f;
+    --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
     --rule:#1e2537; --rule-soft:#161c2b;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
   }
@@ -83,17 +83,26 @@ CSS = (
 :root[data-theme="dark"]{
   --locked:#f0a830; --torus:#9086dc; --chaotic:#3fd0c8;
   --ground:#0a0d15; --raised:#111624; --sunken:#070911;
-  --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#6b748f;
+  --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
   --rule:#1e2537; --rule-soft:#161c2b;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
 }
 :root[data-theme="light"]{
   --locked:#a8620a; --torus:#54489f; --chaotic:#0d6f6a;
   --ground:#faf8f3; --raised:#ffffff; --sunken:#efece3;
-  --ink:#14161c; --ink-mid:#454b59; --ink-low:#828899;
+  --ink:#14161c; --ink-mid:#454b59; --ink-low:#6c7284; /* WCAG AA: 4.52:1 on --ground, 4.80:1 on --raised */
   --rule:#e0dccf; --rule-soft:#ebe7dc;
   --shadow:0 1px 2px rgba(20,22,28,.05), 0 8px 28px rgba(20,22,28,.07);
 }
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+.skip-link{position:absolute;left:0.6rem;top:-3.2rem;z-index:100;
+  background:var(--raised);color:var(--ink);border:1px solid var(--rule);border-radius:4px;
+  padding:0.6rem 1rem;font-family:var(--sans);font-size:0.85rem;
+  transition:top .15s ease;}
+.skip-link:focus{top:0.6rem;}
 
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
@@ -176,6 +185,14 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .controls button[aria-pressed="true"]{color:var(--chaotic);border-color:color-mix(in oklab,var(--chaotic) 40%,transparent);}
 .controls .sep{width:1px;height:1.1rem;background:var(--rule);margin:0 0.25rem;}
 @media print{.controls,.progress{display:none;}}
+/* Phones: 22-24 px buttons are below the 44 px comfortable touch target, and a
+   top-right fixed bar can end up under iOS Safari's floating bottom chrome
+   when the page is scrolled. Grow padding (not font-size) and reserve the
+   safe-area inset so the bar always clears it. */
+@media (max-width:36rem){
+  .controls{padding:0.5rem 0.55rem calc(0.5rem + env(safe-area-inset-bottom,0px));}
+  .controls button{padding:0.75rem 0.85rem;min-width:44px;min-height:44px;}
+}
 
 .progress{position:fixed;top:0;left:0;height:2px;background:var(--chaotic);z-index:61;width:0;transition:width .1s linear;}
 
@@ -206,7 +223,27 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .toc > li.top.open > .sub{max-height:40rem;opacity:1;}
 .toc .sub a{padding-left:1.55rem;font-size:0.735rem;}
 .toc .sub a.on{color:var(--ink);border-left-color:var(--chaotic);}
-@media (max-width:66rem){.shell{grid-template-columns:minmax(0,1fr);}.spine{display:none;}}
+@media (max-width:66rem){
+  .shell{grid-template-columns:minmax(0,1fr);}
+  .spine{display:none;}
+  /* Drawer: the very same .spine/.toc markup, not a duplicate list. The
+     "contents" control toggles html.toc-open at this same breakpoint. */
+  html.toc-open .spine{
+    display:block;position:fixed;inset:0 auto 0 0;z-index:90;
+    width:min(20rem,84vw);height:100svh;max-height:none;
+    background:var(--raised);box-shadow:var(--shadow);
+    padding:4.5rem 1.2rem 2rem;overflow-y:auto;
+    animation:drawer-in .22s ease forwards;
+  }
+  html.toc-open .toc-backdrop{display:block;}
+}
+@keyframes drawer-in{from{transform:translateX(-100%);}to{transform:translateX(0);}}
+@media (prefers-reduced-motion:reduce){html.toc-open .spine{animation:none;}}
+.toc-backdrop{
+  display:none;position:fixed;inset:0;z-index:89;
+  background:color-mix(in oklab,var(--sunken) 70%,transparent);backdrop-filter:blur(4px);
+}
+.toc-backdrop[hidden]{display:none;}
 
 .secno{color:var(--ink-low);font-variant-numeric:tabular-nums;font-weight:400;margin-right:0.5em;letter-spacing:0.01em;}
 h2 .secno{font-size:0.78em;}
@@ -243,12 +280,39 @@ figure:hover{border-color:color-mix(in oklab,var(--chaotic) 30%,var(--rule));
 .fig-head button{appearance:none;background:none;border:1px solid var(--rule);border-radius:4px;color:var(--ink-mid);
   font-family:var(--mono);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.24rem 0.45rem;cursor:pointer;transition:all .15s;}
 .fig-head button:hover{color:var(--chaotic);border-color:var(--chaotic);}
+/* always-visible: a reader who followed a shared link must never be silently
+   looking at a non-published view without a way to tell and undo it. */
+.fig-badge{appearance:none;background:none;border:1px solid var(--chaotic);border-radius:4px;
+  color:var(--chaotic);font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;
+  text-transform:uppercase;padding:0.24rem 0.5rem;cursor:pointer;white-space:nowrap;flex:none;}
+.fig-badge:hover{background:var(--chaotic);color:var(--raised);}
+.fig-badge[hidden]{display:none;}
 .fig-body{position:relative;background:var(--raised);}
 figure img{display:block;width:100%;height:auto;max-height:clamp(14rem,34vh,26rem);object-fit:contain;object-position:center;
   cursor:zoom-in;padding:0.5rem;transition:max-height .35s ease;}
 :root[data-figsize="tall"] figure img{max-height:min(78vh,46rem);}
 figcaption{padding:0.6rem 0.8rem 0.75rem;font-size:0.82rem;line-height:1.5;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
 figcaption .num{color:var(--ink);font-weight:700;}
+/* ------------------------------ figure code snippets ------------------------------ */
+details.fig-code{margin:0;border-top:1px solid var(--rule-soft);background:var(--sunken);}
+details.fig-code > summary{list-style:none;cursor:pointer;display:none;}
+details.fig-code > summary::-webkit-details-marker{display:none;}
+details.fig-code pre{margin:0;padding:0.7rem 0.8rem;overflow-x:auto;background:var(--sunken);}
+details.fig-code code.fig-snippet{font-family:var(--mono);font-size:0.72rem;line-height:1.5;color:var(--ink);white-space:pre;}
+.fig-code-actions{display:flex;justify-content:flex-end;padding:0 0.8rem 0.5rem;}
+.fig-code-copy{appearance:none;background:none;border:1px solid var(--rule);border-radius:4px;color:var(--ink-mid);
+  font-family:var(--mono);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.22rem 0.45rem;cursor:pointer;transition:all .15s;}
+.fig-code-copy:hover{color:var(--chaotic);border-color:var(--chaotic);}
+.fig-code-copy.copied{color:var(--chaotic);border-color:var(--chaotic);}
+.fig-code-copy.copied::after{content:" copied";}
+.fig-code-footer{margin:0;padding:0 0.8rem 0.7rem;font-family:var(--mono);font-size:0.62rem;letter-spacing:0.02em;color:var(--ink-low);}
+.fig-code-footer code{color:var(--ink-mid);}
+.tok-comment{color:var(--ink-low);font-style:italic;}
+.tok-string{color:var(--locked);}
+.tok-kw{color:var(--chaotic);}
+.tok-num{color:var(--torus);}
+.tok-fn{color:var(--ink);font-weight:700;}
+.tok-mod{color:var(--ink);font-weight:700;}
 .plot-wrap{position:relative;padding:0.35rem;}
 .plot-title{margin:0 0 0.15rem;text-align:center;font-family:var(--mono);font-size:0.62rem;
   letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-low);}
@@ -279,8 +343,17 @@ figure.arc{background:var(--raised);}
   border-radius:4px;padding:0.3rem 0.45rem;font-family:var(--mono);font-size:0.66rem;line-height:1.45;
   color:var(--ink);white-space:pre;opacity:0;transition:opacity .1s;box-shadow:var(--shadow);}
 .readout.on{opacity:1;}
+/* touch has no dblclick, so a zoomed plot needs a visible way back; shown only
+   once the domain has actually moved away from its base extent. */
+.plot-reset{position:absolute;top:0.45rem;right:0.45rem;z-index:5;appearance:none;
+  background:var(--raised);color:var(--ink-mid);border:1px solid var(--rule);border-radius:4px;
+  font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;
+  padding:0.3rem 0.5rem;cursor:pointer;}
+.plot-reset:hover{color:var(--chaotic);border-color:var(--chaotic);}
+.fetch-err{font-family:var(--mono);font-size:0.6rem;letter-spacing:0.02em;color:var(--locked);margin-left:0.4rem;}
 
 /* ------------------------------ tables + refs ------------------------------ */
+.fig-note{margin:0 0 0.8rem;font-size:0.82rem;line-height:1.5;color:var(--ink-mid);}
 .table-wrap{overflow-x:auto;margin:2.2rem 0;border:1px solid var(--rule);border-radius:6px;
   background:var(--raised);box-shadow:var(--shadow);
   width:var(--bleed);max-width:calc(100vw - 2*var(--gutter));position:relative;left:50%;transform:translateX(-50%);}
@@ -327,7 +400,11 @@ table th[style],table td[style]{text-align:left !important;}
 @keyframes lbimg{from{opacity:0;transform:scale(.975);}to{opacity:1;transform:none;}}
 @media (prefers-reduced-motion:reduce){.lb.on,.lb.on img{animation:none;}}
 .lb img{max-width:100%;max-height:88svh;object-fit:contain;border-radius:3px;box-shadow:0 24px 70px rgba(0,0,0,.45);}
-.lb-cap{position:absolute;left:0;right:0;bottom:0;padding:0.9rem 1.5rem;font-size:0.8rem;color:var(--ink-mid);text-align:center;max-width:60rem;margin:0 auto;}
+.lb-cap{position:absolute;left:0;right:0;bottom:2.4rem;padding:0.9rem 1.5rem 0;font-size:0.8rem;color:var(--ink-mid);text-align:center;max-width:60rem;margin:0 auto;}
+.lb-actions{position:absolute;left:0;right:0;bottom:0;margin:0;padding:0 1.5rem 0.7rem;text-align:center;}
+.lb-goto{font-family:var(--mono);font-size:0.7rem;letter-spacing:0.03em;color:var(--ink-mid);
+  border-bottom:1px solid color-mix(in oklab,var(--ink-mid) 40%,transparent);}
+.lb-goto:hover{color:var(--chaotic);}
 .lb-close{position:absolute;top:0.9rem;right:1.1rem;background:var(--raised);color:var(--ink);border:1px solid var(--rule);border-radius:5px;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0.65rem;cursor:pointer;}
 .lb-nav{
   position:absolute;top:50%;transform:translateY(-50%);
@@ -345,6 +422,73 @@ table th[style],table td[style]{text-align:left !important;}
 .lb-pos{position:absolute;top:1rem;left:50%;transform:translateX(-50%);margin:0;
   font-family:var(--mono);font-size:0.68rem;letter-spacing:0.12em;
   color:var(--ink-low);pointer-events:none;}
+/* Cheapest possible shortcut-discovery fix: the keys are already wired, they
+   were just never mentioned. Decorative only -- .lb-pos already carries its
+   own aria-label, so this is not read twice by a screen reader. */
+.lb-pos::after{content:" \00b7 \2190 \2192 esc";opacity:.7;}
+
+/* ------------------------------ search ------------------------------ */
+.search-overlay{position:fixed;inset:0;z-index:80;display:none;place-items:start center;
+  background:color-mix(in oklab,var(--sunken) 88%,transparent);backdrop-filter:blur(6px);
+  padding:4.5rem 1.2rem 2rem;}
+.search-overlay.on{display:grid;animation:lbin .18s ease forwards;}
+@media (prefers-reduced-motion:reduce){.search-overlay.on{animation:none;}}
+.search-panel{width:100%;max-width:38rem;background:var(--raised);color:var(--ink);
+  border:1px solid var(--rule);border-radius:8px;box-shadow:var(--shadow);
+  overflow:hidden;display:flex;flex-direction:column;max-height:calc(100svh - 6rem);}
+.search-input{border:0;border-bottom:1px solid var(--rule);background:none;color:var(--ink);
+  font-family:var(--serif);font-size:1.05rem;padding:0.9rem 1rem;width:100%;outline:none;flex:none;}
+.search-results{list-style:none;margin:0;padding:0.3rem;overflow-y:auto;}
+.search-results li{margin:0;}
+.search-results button{appearance:none;display:block;width:100%;text-align:left;background:none;
+  border:0;border-radius:5px;padding:0.55rem 0.7rem;cursor:pointer;color:var(--ink);
+  font-family:var(--serif);}
+.search-results button:hover,.search-results button.sel{background:var(--sunken);}
+.search-hit-sec{display:block;font-family:var(--mono);font-size:0.62rem;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-low);margin-bottom:0.2rem;}
+.search-hit-snip{display:block;font-size:0.85rem;line-height:1.4;color:var(--ink-mid);}
+.search-hit-snip mark{background:color-mix(in oklab,var(--chaotic) 32%,transparent);
+  color:var(--ink);border-radius:2px;}
+.search-empty{margin:0;padding:1rem;font-size:0.85rem;color:var(--ink-low);}
+.search-overlay:not(.empty) .search-empty{display:none;}
+@media (max-width:36rem){
+  .search-overlay{padding:0;}
+  .search-panel{max-width:none;height:100svh;max-height:none;border-radius:0;border:0;}
+  .search-input{font-size:16px;padding:1.1rem 1rem;}
+}
+
+/* ------------------------------ help dialog ------------------------------ */
+.help-overlay{position:fixed;inset:0;z-index:80;display:none;place-items:center;
+  background:color-mix(in oklab,var(--sunken) 88%,transparent);backdrop-filter:blur(6px);
+  padding:2rem 1.2rem;}
+.help-overlay.on{display:grid;animation:lbin .18s ease forwards;}
+@media (prefers-reduced-motion:reduce){.help-overlay.on{animation:none;}}
+.help-panel{width:100%;max-width:30rem;max-height:calc(100svh - 4rem);overflow-y:auto;
+  background:var(--raised);color:var(--ink);border:1px solid var(--rule);
+  border-radius:8px;box-shadow:var(--shadow);padding:1rem 1.2rem 1.3rem;}
+.help-head{display:flex;align-items:baseline;gap:1rem;margin-bottom:0.5rem;}
+.help-head h2{margin:0;flex:1;font-size:1.05rem;}
+.help-close{appearance:none;background:none;border:1px solid var(--rule);border-radius:5px;
+  color:var(--ink-mid);font-family:var(--mono);font-size:0.66rem;letter-spacing:0.08em;
+  text-transform:uppercase;padding:0.34rem 0.55rem;cursor:pointer;flex:none;}
+.help-close:hover{color:var(--chaotic);border-color:var(--chaotic);}
+.help-table{width:100%;border-collapse:collapse;font-size:0.85rem;}
+.help-table th{text-align:left;font-family:var(--sans);font-size:0.68rem;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-low);
+  padding:0.3rem 0.5rem;border-bottom:1px solid var(--rule);}
+.help-table td{padding:0.4rem 0.5rem;border-bottom:1px solid var(--rule-soft);vertical-align:top;}
+.help-table td:first-child{font-family:var(--mono);white-space:nowrap;color:var(--ink);}
+
+/* ------------------------------ heading copy-link ------------------------------ */
+h2 .head-anchor,h3 .head-anchor{
+  display:inline-block;opacity:0;margin-left:0.45em;font-family:var(--mono);
+  font-size:0.75em;font-weight:400;color:var(--ink-low);text-decoration:none;
+  border-bottom:none;transition:opacity .15s ease;
+}
+h2:hover .head-anchor,h2:focus-within .head-anchor,
+h3:hover .head-anchor,h3:focus-within .head-anchor{opacity:1;}
+.head-anchor.copied::after,.act-copylink.copied::after{content:" copied";font-size:0.85em;color:var(--chaotic);}
+@media (prefers-reduced-motion:reduce){h2 .head-anchor,h3 .head-anchor{transition:none;}}
 
 /* ------------------------------ xref popover + return pill ------------------------------ */
 .xref-pop{
@@ -365,10 +509,6 @@ table th[style],table td[style]{text-align:left !important;}
 .xref-pop .xref-figimg{display:block;max-width:100%;height:auto;max-height:12rem;
   object-fit:contain;margin:0 0 0.4rem;border-radius:3px;}
 .xref-pop .xref-cap{color:var(--ink-mid);font-size:0.78rem;margin:0;line-height:1.45;}
-.xref-pop .xref-jump{display:inline-block;margin-top:0.55rem;padding-top:0.45rem;
-  border-top:1px solid var(--rule-soft);font-family:var(--mono);font-size:0.66rem;
-  letter-spacing:0.04em;color:var(--chaotic);border-bottom:none;text-decoration:none;}
-.xref-pop .xref-jump:hover{color:var(--ink);}
 
 .return-pill{
   position:fixed;left:1rem;bottom:1.2rem;z-index:55;
@@ -405,7 +545,7 @@ html.js .reveal.in{opacity:1;transform:none;}
   :root{--ground:#fff;--raised:#fff;--ink:#000;--ink-mid:#333;--ink-low:#666;--rule:#bbb;--rule-soft:#ddd;}
   .hero{min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
   #bifurcation,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
-  .xref-pop,.return-pill,.lb-nav,.lb-pos{display:none !important;}
+  .xref-pop,.return-pill,.lb-nav,.lb-pos,.search-overlay{display:none !important;}
   .shell{display:block;max-width:none;padding:0;}
   article{max-width:none;}
   figure{break-inside:avoid;box-shadow:none;border:1px solid #bbb;}
@@ -428,9 +568,30 @@ JS = r"""
 document.documentElement.classList.add("js");
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
+// prefers-reduced-data has patchy support; matchMedia on an unrecognised media
+// feature simply never matches, so testing it is always safe.
+const reducedData=matchMedia("(prefers-reduced-data: reduce)").matches;
 const root=document.documentElement;
 const store=(k,v)=>{try{v===null?localStorage.removeItem(k):localStorage.setItem(k,v);}catch(e){}};
 const load=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+
+// Shared by every dialog-like overlay (lightbox, search, help, the mobile TOC
+// drawer): a Tab keydown handler that cycles focus among `getFocusables()`
+// instead of letting it escape into the page behind the overlay.
+function makeFocusTrap(getFocusables){
+  return function(e){
+    if(e.key!=="Tab") return;
+    const els=getFocusables();
+    if(!els.length) return;
+    const first=els[0],last=els[els.length-1];
+    const active=document.activeElement;
+    if(e.shiftKey&&(active===first||!els.includes(active))){
+      e.preventDefault();last.focus();
+    }else if(!e.shiftKey&&(active===last||!els.includes(active))){
+      e.preventDefault();first.focus();
+    }
+  };
+}
 
 /* ---------------- reading controls ---------------- */
 (function(){
@@ -495,6 +656,36 @@ const load=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
   addEventListener("resize",upd);upd();
 })();
 
+/* ---------------- reading position: persist + restore scroll ---------------- */
+(function(){
+  const KEY="dc-scroll:"+location.pathname;
+  let pending=null;
+  addEventListener("scroll",()=>{
+    if(pending) return;
+    pending=setTimeout(()=>{
+      pending=null;
+      try{sessionStorage.setItem(KEY,String(Math.round(scrollY)));}catch(e){}
+    },200);
+  },{passive:true});
+
+  function restore(){
+    // A hash already names a place to land; do not fight it with a second
+    // scroll target.
+    if(location.hash) return;
+    let y=null;
+    try{y=sessionStorage.getItem(KEY);}catch(e){}
+    y=y?parseInt(y,10):0;
+    if(!y) return;
+    scrollTo(0,y);
+  }
+  function afterSettle(){
+    const idle=window.requestIdleCallback||(cb=>setTimeout(cb,0));
+    idle(restore);
+  }
+  if(document.readyState==="complete") afterSettle();
+  else addEventListener("load",afterSettle);
+})();
+
 /* ---------------- hero: logistic attractor coloured by sign of lambda ----------------
    After the initial sweep the map keeps iterating: random columns gain a few
    more points every frame while a faint wash of the ground colour holds the
@@ -525,7 +716,7 @@ function hero(){
       column(col,330,0.46);
     }
     if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
-    else if(!reduced){live=true;raf=requestAnimationFrame(shimmer);}
+    else if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
   }
 
   function shimmer(){
@@ -562,7 +753,7 @@ function hero(){
   // pause when off-screen; an attractor nobody can see should not burn a core
   new IntersectionObserver(es=>{
     for(const e of es){
-      if(e.isIntersecting){ if(!live&&col>=W&&!reduced){live=true;raf=requestAnimationFrame(shimmer);} }
+      if(e.isIntersecting){ if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
       else { live=false; if(raf)cancelAnimationFrame(raf); }
     }
   },{threshold:0.01}).observe(cv);
@@ -603,6 +794,12 @@ function ticks(lo,hi,n){
   return out;}
 const PAL=["--chaotic","--locked","--torus"];
 const MOUNTED=[];
+// Shared by extent()/draw()/renderReadout(): a decimated export can carry a
+// non-finite sample as JSON null (see export_figure_data.py's _round_to()),
+// and a bare numeric compare against null silently coerces it to 0 instead
+// of skipping it.
+const finite=v=>typeof v==="number"&&Number.isFinite(v);
+const LEGEND_ROWH=14;
 
 function Plot(canvas,panel,meta){
   const ctx=canvas.getContext("2d");
@@ -610,15 +807,43 @@ function Plot(canvas,panel,meta){
   const pad={l:58,r:12,t:multi?24:10,b:34};
   const wrap=canvas.parentElement;
   const tip=document.createElement("div");tip.className="readout";wrap.appendChild(tip);
-  let W=0,H=0,dom=null,base=null,drag=null;
+  // Only shown once the domain has moved away from its base extent -- the
+  // one always-visible touch affordance back to the full view (no dblclick
+  // on touch, and the keyboard "0"/Escape reset is invisible to a tap reader).
+  const resetBtn=document.createElement("button");
+  resetBtn.type="button";resetBtn.className="plot-reset";resetBtn.hidden=true;
+  resetBtn.textContent="reset view";
+  wrap.appendChild(resetBtn);
+  let W=0,H=0,dom=null,base=null,drag=null,kx=null,dpr=1,legendLayout=null;
   const heat=meta.kind==="heatmap";
+  // Offscreen cache for the heatmap raster: the per-cell fillRect loop below
+  // is the ~150-900ms cost a drag used to re-pay on every pointermove. It is
+  // keyed on everything that can change what the raster looks like (visible
+  // sub-domain, pixel size, and -- only for the "signed" cmap, which reads
+  // theme custom properties -- the current theme), so a zoom/reset/resize or
+  // a light/dark toggle invalidates it, while a same-domain pointermove
+  // during a drag hits the cache and just blits.
+  let heatCanvas=null,heatCtx=null,heatCacheKey=null;
+  // Every place the visible domain actually changes funnels through here, so
+  // the URL-state hook (meta.onDomainChange, wired in mountInteractive) fires
+  // exactly once per real change instead of being sprinkled at each call site.
+  function resetDom(){kx=null;dom={...base};draw();if(meta.onDomainChange)meta.onDomainChange();}
+  function applyDom(d){dom=d;draw();if(meta.onDomainChange)meta.onDomainChange();}
+  resetBtn.addEventListener("click",resetDom);
+  function syncResetBtn(){
+    resetBtn.hidden=!dom||!base||(dom.x0===base.x0&&dom.x1===base.x1&&dom.y0===base.y0&&dom.y1===base.y1);
+  }
 
   function extent(){
     if(heat) return {x0:Math.min(...panel.x),x1:Math.max(...panel.x),y0:Math.min(...panel.y),y1:Math.max(...panel.y)};
     let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
     for(const s of panel.traces) for(let i=0;i<s.x.length;i++){
+      // A NaN/Inf sample round-trips through JSON as null; skip it rather
+      // than let a bare compare coerce it to 0 and drag the extent there.
+      if(!finite(s.x[i])||!finite(s.y[i])) continue;
       if(s.x[i]<x0)x0=s.x[i]; if(s.x[i]>x1)x1=s.x[i];
-      const lo=s.yerr?s.y[i]-s.yerr[i]:s.y[i], hi=s.yerr?s.y[i]+s.yerr[i]:s.y[i];
+      const e=s.yerr&&finite(s.yerr[i])?s.yerr[i]:0;
+      const lo=s.y[i]-e, hi=s.y[i]+e;
       if(lo<y0)y0=lo; if(hi>y1)y1=hi;
     }
     const p=(y1-y0)*0.08||0.5;
@@ -669,6 +894,26 @@ function Plot(canvas,panel,meta){
   const CBAR=13;   // colourbar strip width
   // Reserve exactly the room the tick text needs, so the rotated axis label
   // stops landing on top of it.
+  // Wraps the legend into as many rows as the plot width needs (measured
+  // against the font actually used to draw it), instead of letting entries
+  // run off the right edge past ~4-5 traces.
+  function layoutLegend(){
+    if(heat||!multi) return null;
+    ctx.font="10px "+css("--mono");
+    const avail=Math.max(40,W-pad.l-pad.r-4);
+    const items=panel.traces.map((s,k)=>({
+      name:s.name||"",color:s.color||PAL[k%PAL.length],
+      w:17+ctx.measureText(s.name||"").width+8}));
+    const rows=[[]];
+    let lx=0;
+    for(const it of items){
+      if(lx+it.w>avail&&rows[rows.length-1].length){rows.push([]);lx=0;}
+      rows[rows.length-1].push(it);lx+=it.w;
+    }
+    return rows;
+  }
+  // Reserve exactly the room the tick text needs, so the rotated axis label
+  // stops landing on top of it.
   function measurePads(){
     ctx.font="10px "+css("--mono");
     let w=0;
@@ -681,6 +926,11 @@ function Plot(canvas,panel,meta){
       for(const t of ticks(zlo,zhi,4)) zw=Math.max(zw,ctx.measureText(fmtSpan(t,zhi-zlo)).width);
       pad.r=12+CBAR+8+Math.ceil(zw)+(zlabel?16:4);
     }
+    // Legend rows need pad.l/pad.r settled first (they bound the available
+    // width); pad.t is then sized to whatever the legend actually needs
+    // instead of a fixed guess, so traces are never drawn under it.
+    legendLayout=layoutLegend();
+    pad.t=legendLayout?10+legendLayout.length*LEGEND_ROWH+4:10;
   }
   const zlabel=panel.zlabel||"";
 
@@ -707,6 +957,44 @@ function Plot(canvas,panel,meta){
       ctx.translate(W-3,y0+h/2);ctx.rotate(Math.PI/2);
       ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(zlabel,0,0);ctx.restore();
     }
+  }
+
+  // Cache key for the heatmap raster: the visible sub-domain, the pixel size
+  // (CSS px and device-pixel ratio), and -- only relevant to the "signed"
+  // cmap, which reads --locked/--torus/--chaotic -- the resolved theme
+  // colours. Anything else (marks, legend, drag overlay) is drawn fresh every
+  // frame on top and does not need to be in this key.
+  function heatDomainKey(){
+    const themeBit=signed?css("--locked")+"|"+css("--torus")+"|"+css("--chaotic"):"v";
+    return [dom.x0,dom.x1,dom.y0,dom.y1,W,H,dpr,themeBit].join(",");
+  }
+  function renderHeatRaster(){
+    if(!heatCanvas){heatCanvas=document.createElement("canvas");heatCtx=heatCanvas.getContext("2d");}
+    const pw=Math.max(1,Math.round(W*dpr)),ph=Math.max(1,Math.round(H*dpr));
+    if(heatCanvas.width!==pw||heatCanvas.height!==ph){heatCanvas.width=pw;heatCanvas.height=ph;}
+    heatCtx.setTransform(dpr,0,0,dpr,0,0);
+    heatCtx.clearRect(0,0,W,H);
+    const nx=panel.x.length,ny=panel.y.length;
+    // Fill to the next sample's edge rather than a fixed +1 fudge, so cells
+    // tile exactly instead of smearing over one another.
+    const edgeX=i=>i<nx-1?(sx(panel.x[i])+sx(panel.x[i+1]))/2:sx(panel.x[i])+(sx(panel.x[i])-sx(panel.x[i-1]))/2;
+    const edgeY=j=>j<ny-1?(sy(panel.y[j])+sy(panel.y[j+1]))/2:sy(panel.y[j])+(sy(panel.y[j])-sy(panel.y[j-1]))/2;
+    for(let j=0;j<ny;j++){
+      const yb=j>0?edgeY(j-1):sy(panel.y[0])-(edgeY(0)-sy(panel.y[0]));
+      const ya=edgeY(j);
+      const yTop=Math.min(ya,yb),yh=Math.abs(ya-yb)+1;
+      if(yTop>H-pad.b||yTop+yh<pad.t)continue;
+      const row=panel.z[j];
+      for(let i=0;i<nx;i++){
+        const v=row[i];if(v===null||Number.isNaN(v))continue;
+        const xb=i>0?edgeX(i-1):sx(panel.x[0])-(edgeX(0)-sx(panel.x[0]));
+        const xa=edgeX(i);
+        const xL=Math.min(xa,xb),xw=Math.abs(xa-xb)+1;
+        if(xL>W-pad.r||xL+xw<pad.l)continue;
+        heatCtx.fillStyle=ramp(znorm(v));heatCtx.fillRect(xL,yTop,xw,yh);
+      }
+    }
+    heatCacheKey=heatDomainKey();
   }
 
   // Reference lines the captions promise (critical lines, bifurcation
@@ -760,69 +1048,76 @@ function Plot(canvas,panel,meta){
 
     ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,W-pad.l-pad.r,H-pad.t-pad.b);ctx.clip();
     if(heat){
-      const nx=panel.x.length,ny=panel.y.length;
-      // Fill to the next sample's edge rather than a fixed +1 fudge, so cells
-      // tile exactly instead of smearing over one another.
-      const edgeX=i=>i<nx-1?(sx(panel.x[i])+sx(panel.x[i+1]))/2:sx(panel.x[i])+(sx(panel.x[i])-sx(panel.x[i-1]))/2;
-      const edgeY=j=>j<ny-1?(sy(panel.y[j])+sy(panel.y[j+1]))/2:sy(panel.y[j])+(sy(panel.y[j])-sy(panel.y[j-1]))/2;
-      for(let j=0;j<ny;j++){
-        const yb=j>0?edgeY(j-1):sy(panel.y[0])-(edgeY(0)-sy(panel.y[0]));
-        const ya=edgeY(j);
-        const yTop=Math.min(ya,yb),yh=Math.abs(ya-yb)+1;
-        if(yTop>H-pad.b||yTop+yh<pad.t)continue;
-        const row=panel.z[j];
-        for(let i=0;i<nx;i++){
-          const v=row[i];if(v===null||Number.isNaN(v))continue;
-          const xb=i>0?edgeX(i-1):sx(panel.x[0])-(edgeX(0)-sx(panel.x[0]));
-          const xa=edgeX(i);
-          const xL=Math.min(xa,xb),xw=Math.abs(xa-xb)+1;
-          if(xL>W-pad.r||xL+xw<pad.l)continue;
-          ctx.fillStyle=ramp(znorm(v));ctx.fillRect(xL,yTop,xw,yh);
-        }
-      }
+      if(heatCacheKey!==heatDomainKey()) renderHeatRaster();
+      ctx.drawImage(heatCanvas,0,0,W,H);
     }else{
       panel.traces.forEach((s,k)=>{
         const c=css(s.color||PAL[k%PAL.length]);
         if(s.yerr){
           ctx.fillStyle=c;ctx.globalAlpha=.15;ctx.beginPath();
-          for(let i=0;i<s.x.length;i++) ctx.lineTo(sx(s.x[i]),sy(s.y[i]+s.yerr[i]));
-          for(let i=s.x.length-1;i>=0;i--) ctx.lineTo(sx(s.x[i]),sy(s.y[i]-s.yerr[i]));
+          for(let i=0;i<s.x.length;i++) ctx.lineTo(sx(s.x[i]),sy(s.y[i]+(finite(s.yerr[i])?s.yerr[i]:0)));
+          for(let i=s.x.length-1;i>=0;i--) ctx.lineTo(sx(s.x[i]),sy(s.y[i]-(finite(s.yerr[i])?s.yerr[i]:0)));
           ctx.closePath();ctx.fill();ctx.globalAlpha=1;
         }
         if(meta.kind==="scatter"){
           ctx.fillStyle=c;ctx.globalAlpha=.72;
-          for(let i=0;i<s.x.length;i++) ctx.fillRect(sx(s.x[i])-1,sy(s.y[i])-1,2,2);
+          for(let i=0;i<s.x.length;i++){
+            if(!finite(s.x[i])||!finite(s.y[i]))continue;
+            ctx.fillRect(sx(s.x[i])-1,sy(s.y[i])-1,2,2);
+          }
           ctx.globalAlpha=1;
         }else{
+          // A non-finite sample breaks the polyline (moveTo on the next
+          // finite point) instead of drawing straight through the gap --
+          // otherwise sx()/sy() of a null coerces to (0-domain) and a stray
+          // segment shoots across the whole plot.
           ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.lineJoin="round";ctx.beginPath();
-          for(let i=0;i<s.x.length;i++) ctx.lineTo(sx(s.x[i]),sy(s.y[i]));
+          let open=false;
+          for(let i=0;i<s.x.length;i++){
+            if(!finite(s.x[i])||!finite(s.y[i])){open=false;continue;}
+            const px=sx(s.x[i]),py=sy(s.y[i]);
+            if(open) ctx.lineTo(px,py); else {ctx.moveTo(px,py);open=true;}
+          }
           ctx.stroke();
         }
       });
     }
     drawMarks();
     if(drag&&drag.cur!==null){
+      // Heatmaps rubber-band a rectangle (x and y both narrow); line/scatter
+      // plots keep the vertical band, since their y-domain is refit from the
+      // visible data on release rather than dragged directly.
       ctx.fillStyle=css("--chaotic");ctx.globalAlpha=.12;
       const a=Math.min(drag.start,drag.cur),b=Math.max(drag.start,drag.cur);
-      ctx.fillRect(a,pad.t,b-a,H-pad.t-pad.b);ctx.globalAlpha=1;
+      if(heat&&drag.py!==null){
+        const c=Math.min(drag.py0,drag.py),d=Math.max(drag.py0,drag.py);
+        ctx.fillRect(a,c,b-a,d-c);
+      }else{
+        ctx.fillRect(a,pad.t,b-a,H-pad.t-pad.b);
+      }
+      ctx.globalAlpha=1;
     }
     ctx.restore();
     ctx.strokeStyle=css("--rule");ctx.lineWidth=1;
     ctx.strokeRect(pad.l+0.5,pad.t+0.5,W-pad.l-pad.r-1,H-pad.t-pad.b-1);
     if(heat) drawColorbar();
-    if(!heat&&multi){
+    if(!heat&&multi&&legendLayout){
       ctx.font="10px "+css("--mono");ctx.textAlign="left";ctx.textBaseline="middle";
-      let lx=pad.l+4;
-      panel.traces.forEach((s,k)=>{
-        ctx.fillStyle=css(s.color||PAL[k%PAL.length]);ctx.fillRect(lx,pad.t-10,12,2);
-        ctx.fillStyle=mid;ctx.fillText(s.name||"",lx+17,pad.t-9);
-        lx+=25+ctx.measureText(s.name||"").width;
+      legendLayout.forEach((row,ri)=>{
+        let lx=pad.l+4;
+        const cy=10+ri*LEGEND_ROWH+LEGEND_ROWH/2-2;
+        row.forEach(it=>{
+          ctx.fillStyle=css(it.color);ctx.fillRect(lx,cy-1,12,2);
+          ctx.fillStyle=mid;ctx.fillText(it.name,lx+17,cy);
+          lx+=it.w;
+        });
       });
     }
+    syncResetBtn();
   }
 
   function resize(){
-    const dpr=Math.min(devicePixelRatio||1,2);
+    dpr=Math.min(devicePixelRatio||1,2);
     const cw=canvas.clientWidth;if(!cw) return;
     const chh=Math.round(Math.min(340,Math.max(200,cw*(heat?0.5:0.42))));
     canvas.style.height=chh+"px";
@@ -830,9 +1125,10 @@ function Plot(canvas,panel,meta){
     ctx.setTransform(dpr,0,0,dpr,0,0);W=cw;H=chh;draw();
   }
 
-  canvas.addEventListener("pointermove",e=>{
-    const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
-    if(drag){drag.cur=Math.max(pad.l,Math.min(W-pad.r,px));draw();return;}
+  // Shared by pointer hover and keyboard-panned reads, so both paths report
+  // the same values the same way.
+  const SCATTER_MAXR=18; // px cutoff beyond which no point is "under" the pointer
+  function renderReadout(px,py){
     if(px<pad.l||px>W-pad.r||py<pad.t||py>H-pad.b){tip.classList.remove("on");return;}
     const xv=ux(px);const lines=[];
     if(heat){
@@ -843,44 +1139,155 @@ function Plot(canvas,panel,meta){
       lines.push((meta.xlabel||"x")+" = "+fmt(panel.x[i]));
       lines.push((meta.ylabel||"y")+" = "+fmt(panel.y[j]));
       lines.push((zlabel||"value")+" = "+fmt(panel.z[j][i]));
+    }else if(meta.kind==="scatter"){
+      // A scatter cloud has no natural x-ordering, so "nearest in x" can
+      // report a y value from a completely different part of the cloud.
+      // Nearest in screen-space distance (with a cutoff) is what the cursor
+      // actually looks like it is pointing at.
+      let bestD2=Infinity,bestS=null,bestI=-1;
+      for(const s of panel.traces) for(let i=0;i<s.x.length;i++){
+        if(!finite(s.x[i])||!finite(s.y[i]))continue;
+        const dx=sx(s.x[i])-px,dy=sy(s.y[i])-py,d2=dx*dx+dy*dy;
+        if(d2<bestD2){bestD2=d2;bestS=s;bestI=i;}
+      }
+      if(!bestS||Math.sqrt(bestD2)>SCATTER_MAXR){tip.classList.remove("on");return;}
+      lines.push((meta.xlabel||"x")+" = "+fmt(bestS.x[bestI]));
+      lines.push((bestS.name||meta.ylabel||"y")+" = "+fmt(bestS.y[bestI]));
     }else{
       lines.push((meta.xlabel||"x")+" = "+fmt(xv));
       for(const s of panel.traces){
         let b=0,d=Infinity;
-        for(let i=0;i<s.x.length;i++){const q=Math.abs(s.x[i]-xv);if(q<d){d=q;b=i;}}
-        lines.push((s.name||"y")+" = "+fmt(s.y[b]));
+        for(let i=0;i<s.x.length;i++){
+          if(!finite(s.x[i])||!finite(s.y[i]))continue;
+          const q=Math.abs(s.x[i]-xv);if(q<d){d=q;b=i;}
+        }
+        lines.push((s.name||"y")+" = "+(d===Infinity?"—":fmt(s.y[b])));
       }
     }
     tip.textContent=lines.join("\n");tip.classList.add("on");
     const tw=tip.offsetWidth,th=tip.offsetHeight;
     tip.style.left=Math.min(px+12,W-tw-4)+"px";
     tip.style.top=Math.max(4,Math.min(py-th-8,H-th-4))+"px";
+  }
+
+  // uy() is renderReadout's heat y-pixel-to-value inverse, factored out so
+  // the drag rectangle can convert its y edges the same way.
+  function uy(py){return dom.y0+(H-pad.b-py)/(H-pad.t-pad.b)*(dom.y1-dom.y0);}
+  canvas.addEventListener("pointermove",e=>{
+    const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+    if(drag){
+      drag.cur=Math.max(pad.l,Math.min(W-pad.r,px));
+      if(heat) drag.py=Math.max(pad.t,Math.min(H-pad.b,py));
+      draw();return;
+    }
+    renderReadout(px,py);
   });
   canvas.addEventListener("pointerleave",()=>tip.classList.remove("on"));
   canvas.addEventListener("pointerdown",e=>{
-    const r=canvas.getBoundingClientRect(),px=e.clientX-r.left;
+    const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
     if(px<pad.l||px>W-pad.r)return;
-    drag={start:px,cur:null};canvas.setPointerCapture(e.pointerId);tip.classList.remove("on");
+    // Heatmaps rubber-band a full rectangle, so the drag needs a y anchor
+    // too; line/scatter plots only ever read drag.start/drag.cur (x).
+    drag={start:px,cur:null,py0:py,py:null};canvas.setPointerCapture(e.pointerId);tip.classList.remove("on");
   });
-  canvas.addEventListener("pointerup",()=>{
+  canvas.addEventListener("pointerup",e=>{
+    let zoomed=false;
     if(drag&&drag.cur!==null&&Math.abs(drag.cur-drag.start)>10){
       const a=ux(Math.min(drag.start,drag.cur)),b=ux(Math.max(drag.start,drag.cur));
-      if(heat){dom={...dom,x0:a,x1:b};}
-      else{
+      let next=null;
+      if(heat){
+        let y0=dom.y0,y1=dom.y1;
+        if(drag.py!==null){
+          const yA=uy(Math.min(drag.py0,drag.py)),yB=uy(Math.max(drag.py0,drag.py));
+          y0=Math.min(yA,yB);y1=Math.max(yA,yB);
+        }
+        next={...dom,x0:a,x1:b,y0,y1};
+      }else{
         const ys=[];
         for(const s of panel.traces) for(let i=0;i<s.x.length;i++)
-          if(s.x[i]>=a&&s.x[i]<=b) ys.push(s.y[i]);
+          if(s.x[i]>=a&&s.x[i]<=b&&finite(s.y[i])) ys.push(s.y[i]);
         if(ys.length>1){const y0=Math.min(...ys),y1=Math.max(...ys),p=(y1-y0)*0.08||0.5;
-          dom={x0:a,x1:b,y0:y0-p,y1:y1+p};}
+          next={x0:a,x1:b,y0:y0-p,y1:y1+p};}
       }
+      if(next){dom=next;zoomed=true;}
+    }else if(drag){
+      // No drag happened -- on a coarse pointer this is the only way a tap
+      // can ever produce the value readout, since there is no hover to fall
+      // back on. Reuses the exact same pointermove readout path.
+      const r=canvas.getBoundingClientRect();
+      renderReadout(e.clientX-r.left,e.clientY-r.top);
     }
     drag=null;draw();
+    if(zoomed&&meta.onDomainChange)meta.onDomainChange();
   });
-  canvas.addEventListener("dblclick",()=>{dom={...base};draw();});
+  canvas.addEventListener("dblclick",resetDom);
+
+  // Keyboard path: arrow keys pan a stepped x-index cursor through the same
+  // readout the pointer uses, +/- (or Up/Down) zoom around it, 0 or Escape
+  // resets -- the same domain reset as dblclick.
+  function xValues(){return heat?panel.x:(panel.traces[0]?panel.traces[0].x:[]);}
+  function nearestIndex(xs,v){
+    let b=0,d=Infinity;
+    for(let i=0;i<xs.length;i++){const q=Math.abs(xs[i]-v);if(q<d){d=q;b=i;}}
+    return b;
+  }
+  function zoomAt(factor){
+    const center=kx===null?(dom.x0+dom.x1)/2:kx;
+    const half=(dom.x1-dom.x0)*factor/2;
+    const a=Math.max(base.x0,center-half),b=Math.min(base.x1,center+half);
+    if(b-a<1e-9) return;
+    if(heat){
+      // No keyboard cursor exists on the y axis, so zoom it the same factor
+      // around its own current midpoint -- keeps keyboard zoom a true 2-D
+      // zoom, consistent with the drag-rectangle behaviour above.
+      const ycenter=(dom.y0+dom.y1)/2,yhalf=(dom.y1-dom.y0)*factor/2;
+      const c=Math.max(base.y0,ycenter-yhalf),d=Math.min(base.y1,ycenter+yhalf);
+      dom={...dom,x0:a,x1:b,y0:c,y1:d};
+    }
+    else{
+      const ys=[];
+      for(const s of panel.traces) for(let i=0;i<s.x.length;i++)
+        if(s.x[i]>=a&&s.x[i]<=b) ys.push(s.y[i]);
+      if(ys.length>1){const y0=Math.min(...ys),y1=Math.max(...ys),p=(y1-y0)*0.08||0.5;
+        dom={x0:a,x1:b,y0:y0-p,y1:y1+p};}
+      else dom={...dom,x0:a,x1:b};
+    }
+    draw();
+    if(meta.onDomainChange)meta.onDomainChange();
+  }
+  canvas.addEventListener("keydown",e=>{
+    const xs=xValues();
+    if(e.key==="ArrowLeft"||e.key==="ArrowRight"){
+      if(!xs.length) return;
+      e.preventDefault();
+      if(kx===null) kx=xs[Math.floor(xs.length/2)];
+      let i=nearestIndex(xs,kx);
+      i=Math.max(0,Math.min(xs.length-1,i+(e.key==="ArrowRight"?1:-1)));
+      kx=xs[i];
+      renderReadout(sx(kx),(pad.t+H-pad.b)/2);
+    }else if(e.key==="+"||e.key==="="||e.key==="ArrowUp"){
+      e.preventDefault();zoomAt(0.6);
+    }else if(e.key==="-"||e.key==="_"||e.key==="ArrowDown"){
+      e.preventDefault();zoomAt(1/0.6);
+    }else if(e.key==="0"||e.key==="Escape"){
+      e.preventDefault();resetDom();tip.classList.remove("on");
+    }
+  });
 
   base=extent();dom={...base};
-  new ResizeObserver(resize).observe(canvas);resize();
-  return {redraw:draw,resize};
+  const ro=new ResizeObserver(resize);ro.observe(canvas);resize();
+  // destroy() lets the toggle-off path in mountInteractive fully retire this
+  // instance: without disconnecting the observer here, an unmounted canvas
+  // stays watched forever and MOUNTED would otherwise only ever grow.
+  return {redraw:draw,resize,destroy:()=>{ro.disconnect();},
+    // URL-state hooks (see the IIFE near the end of the file): read-only
+    // access to the current/published domain, and a way in for a domain
+    // that came from a shared link rather than a live drag or keypress.
+    getDomain:()=>({...dom}),
+    getBase:()=>({...base}),
+    setDomain:d=>{dom={...base,...d};draw();if(meta.onDomainChange)meta.onDomainChange();},
+    isModified:()=>!!dom&&!!base&&(dom.x0!==base.x0||dom.x1!==base.x1||dom.y0!==base.y0||dom.y1!==base.y1),
+    reset:resetDom};
 }
 
 /* ---------------- figures: static by default, interaction on demand ---------------- */
@@ -890,36 +1297,66 @@ async function mountInteractive(fig){
   const btn=fig.querySelector(".act-interact");
   if(fig.dataset.state==="live"){                     // toggle back to the image
     fig.dataset.state="static";
+    // Retire every Plot mounted for this figure: drop it from the shared
+    // MOUNTED registry (repaint()/resize hooks iterate it) and disconnect its
+    // ResizeObserver, or a toggle-off/toggle-on cycle leaks one dead entry
+    // and one live observer per repeat.
+    (fig._plots||[]).forEach(p=>{
+      p.destroy();
+      const i=MOUNTED.indexOf(p);
+      if(i>=0) MOUNTED.splice(i,1);
+    });
+    fig._plots=[];
     body.querySelectorAll(".plot-wrap,.hint").forEach(n=>n.remove());
     body.querySelector("img").style.display="";
     btn.textContent="interact";
     return;
   }
+  const oldErr=fig.querySelector(".fetch-err");
+  if(oldErr) oldErr.remove();
   btn.textContent="loading";btn.disabled=true;
   try{
-    const spec=await (await fetch(src)).json();
+    const res=await fetch(src);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const spec=await res.json();
     body.querySelector("img").style.display="none";
+    // The figcaption is the figure's only alt text; the canvas replacing the
+    // <img> must carry the same description forward, not drop it.
+    const fc=fig.querySelector("figcaption");
+    let capText=fc?fc.textContent.trim():"";
+    capText=capText.replace(/^Figure\s*\d+\.\s*/i,"");
+    fig._plots=[];
     spec.panels.forEach(panel=>{
       const w=document.createElement("div");w.className="plot-wrap";
       const c=document.createElement("canvas");c.className="plot";
+      c.setAttribute("role","img");
+      c.setAttribute("tabindex","0");
+      c.setAttribute("aria-label",panel.title?capText+" — "+panel.title:capText);
       w.appendChild(c);body.appendChild(w);
       if(spec.panels.length>1&&panel.title){
         const h=document.createElement("p");h.className="plot-title";
         h.textContent=panel.title;w.insertBefore(h,c);
       }
-      MOUNTED.push(Plot(c,panel,{
+      const p=Plot(c,panel,{
         kind:spec.kind,
         marks:spec.marks||[],
         xlabel:(spec.axes&&spec.axes.x&&spec.axes.x.label)||"",
-        ylabel:(spec.axes&&spec.axes.y&&spec.axes.y.label)||""}));
+        ylabel:(spec.axes&&spec.axes.y&&spec.axes.y.label)||"",
+        onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}});
+      MOUNTED.push(p);fig._plots.push(p);
     });
     const d=spec.decimation,n=document.createElement("p");n.className="hint";
-    n.textContent="drag to zoom · double-click to reset · hover to read values"
+    n.textContent="tap to read values · drag to zoom · reset view button to restore · focus the plot and use arrow keys to pan, +/- to zoom, 0 or Esc to reset"
       +(d&&d.method!=="none"?" · resampled to "+d.to.toLocaleString()+" of "+d.from.toLocaleString()+" grid points; the static image is at full resolution":"");
     body.appendChild(n);
     fig.dataset.state="live";btn.textContent="image";
   }catch(err){
-    btn.textContent="unavailable";
+    console.warn("figure data fetch failed:",src,err);
+    btn.textContent="retry";
+    const msg=document.createElement("span");
+    msg.className="fetch-err";
+    msg.textContent="couldn't load the figure data — tap retry";
+    fig.querySelector(".fig-head").appendChild(msg);
   }finally{btn.disabled=false;}
 }
 
@@ -928,12 +1365,156 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
   if(btn) btn.addEventListener("click",()=>mountInteractive(fig));
 });
 
+/* ---------------- figure code snippets ---------------- */
+document.querySelectorAll("figure").forEach(fig=>{
+  const codeBtn=fig.querySelector(".act-code");
+  const details=fig.querySelector("details.fig-code");
+  if(codeBtn&&details) codeBtn.addEventListener("click",()=>{
+    details.open=!details.open;
+    codeBtn.textContent=details.open?"hide":"code";
+  });
+  const copyBtn=fig.querySelector(".fig-code-copy");
+  if(copyBtn) copyBtn.addEventListener("click",()=>{
+    const code=fig.querySelector(".fig-snippet");
+    const text=code?code.textContent:"";
+    const flash=()=>{
+      copyBtn.classList.add("copied");
+      clearTimeout(copyBtn._copiedTimer);
+      copyBtn._copiedTimer=setTimeout(()=>copyBtn.classList.remove("copied"),1400);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(flash,()=>{});
+    }else{
+      const ta=document.createElement("textarea");
+      ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+      document.body.appendChild(ta);ta.select();
+      try{document.execCommand("copy");flash();}catch(e){/* clipboard unavailable */}
+      ta.remove();
+    }
+  });
+});
+
+/* ---------------- interactive-figure state in the URL ----------------
+   One search param, "fig", carries every figure that has drifted from its
+   published domain: entries are "figid:panel:x0:x1:y0:y1" joined by commas
+   (numbers at short precision; panel is the index within a multi-panel
+   figure's own spec.panels, so a bare per-figure key never has to guess
+   which chart moved). A figid can itself contain a colon (pandoc labels
+   read "fig:name"), so decoding always takes the last five colon-fields as
+   panel+domain and rejoins whatever is left as the id -- never the other
+   way around.
+
+   This never touches location.hash: the scroll-spy above (search for
+   "history.replaceState" near the bottom of this file) rewrites only the
+   hash from location.pathname+location.search, and everything here rewrites
+   only location.search from location.pathname+location.hash. Each side
+   reads the other's current value before replacing its own half, so a
+   scroll and a zoom in the same moment cannot clobber each other. */
+(function(){
+  const PARAM="fig";
+
+  function packNum(v){
+    if(!isFinite(v)) return "0";
+    return Number(v.toPrecision(5)).toString();
+  }
+  function parseParam(){
+    const out=new Map();               // figid -> Map(panelIndex -> domain)
+    const raw=new URLSearchParams(location.search).get(PARAM);
+    if(!raw) return out;
+    raw.split(",").forEach(tok=>{
+      const parts=tok.split(":");
+      if(parts.length<6) return;       // figid(>=1) + panel + 4 numbers
+      const nums=parts.slice(-4).map(Number);
+      const panel=parseInt(parts[parts.length-5],10);
+      const figid=parts.slice(0,-5).join(":");
+      if(!figid||Number.isNaN(panel)||nums.some(Number.isNaN)) return;
+      if(!out.has(figid)) out.set(figid,new Map());
+      out.get(figid).set(panel,{x0:nums[0],x1:nums[1],y0:nums[2],y1:nums[3]});
+    });
+    return out;
+  }
+  function serialize(){
+    const entries=[];
+    document.querySelectorAll("figure[data-src]").forEach(fig=>{
+      (fig._plots||[]).forEach((p,i)=>{
+        if(!p.isModified()) return;
+        const d=p.getDomain();
+        entries.push([fig.id,i,packNum(d.x0),packNum(d.x1),packNum(d.y0),packNum(d.y1)].join(":"));
+      });
+    });
+    return entries.join(",");
+  }
+  function writeURL(){
+    const usp=new URLSearchParams(location.search);
+    const s=serialize();
+    if(s) usp.set(PARAM,s); else usp.delete(PARAM);
+    const qs=usp.toString();
+    history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+location.hash);
+  }
+  function figModified(fig){return (fig._plots||[]).some(p=>p.isModified());}
+  function syncBadge(fig){
+    const b=fig.querySelector(".fig-badge");
+    if(b) b.hidden=!figModified(fig);
+  }
+
+  document.querySelectorAll("figure[data-src]").forEach(fig=>{
+    const badge=fig.querySelector(".fig-badge");
+    if(badge) badge.addEventListener("click",()=>{
+      (fig._plots||[]).forEach(p=>p.reset());
+      syncBadge(fig);writeURL();
+    });
+    const copy=fig.querySelector(".act-copylink");
+    if(copy) copy.addEventListener("click",()=>{
+      const url=location.origin+location.pathname+location.search+location.hash;
+      const flash=()=>{
+        copy.classList.add("copied");
+        clearTimeout(copy._copiedTimer);
+        copy._copiedTimer=setTimeout(()=>copy.classList.remove("copied"),1400);
+      };
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(flash,()=>{});
+      }else{
+        const ta=document.createElement("textarea");
+        ta.value=url;ta.style.position="fixed";ta.style.opacity="0";
+        document.body.appendChild(ta);ta.select();
+        try{document.execCommand("copy");flash();}catch(e){/* clipboard unavailable */}
+        ta.remove();
+      }
+    });
+  });
+
+  // Exposed so mountInteractive's per-panel onDomainChange callback (wired at
+  // Plot construction, above) can reach this module without a circular
+  // top-level import -- there is no module system here, just script order.
+  window.figState={notify:fig=>{syncBadge(fig);writeURL();}};
+
+  // Restore from a shared link: mount whichever figures the URL names, the
+  // same path the "interact" button uses, then apply the stored domain. A
+  // figure that fails to fetch (mountInteractive already reports that error
+  // itself) must not stop the rest of the URL from being honoured.
+  parseParam().forEach((panels,figid)=>{
+    const fig=document.getElementById(figid);
+    if(!fig||!fig.dataset||!fig.dataset.src) return;
+    const mounted=fig.dataset.state==="live"?Promise.resolve():mountInteractive(fig);
+    mounted.then(()=>{
+      if(fig.dataset.state!=="live"||!fig._plots) return;   // fetch failed
+      panels.forEach((d,idx)=>{
+        const p=fig._plots[idx];
+        if(p) p.setDomain(d);
+      });
+      syncBadge(fig);
+    });
+  });
+})();
+
 /* ---------------- lightbox + figure nav ---------------- */
 (function(){
   const lb=document.querySelector(".lb");if(!lb)return;
   const img=lb.querySelector("img"),cap=lb.querySelector(".lb-cap");
+  const announce=lb.querySelector(".lb-announce");
+  const goto=lb.querySelector(".lb-goto");
   const figs=[...document.querySelectorAll("figure")].filter(f=>f.querySelector(".fig-body img, img"));
-  let idx=-1;
+  let idx=-1,opener=null;
   const prev=document.createElement("button");
   prev.type="button";prev.className="lb-nav lb-prev";
   prev.setAttribute("aria-label","Previous figure");prev.textContent="\u2190";
@@ -943,6 +1524,10 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
   const pos=document.createElement("p");
   pos.className="lb-pos";pos.setAttribute("aria-label","Position in the figure sequence");
   lb.appendChild(prev);lb.appendChild(next);lb.appendChild(pos);
+
+  function focusable(){
+    return [lb.querySelector(".lb-close"),prev,next,goto].filter(el=>el&&!el.disabled&&!el.hidden);
+  }
 
   function show(i){
     if(!figs.length) return;
@@ -960,32 +1545,340 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
     let body=c?c.textContent.trim():"";
     body=body.replace(/^Figure\s*\d+\.\s*/i,"");
     if(body.length>220) body=body.slice(0,217)+"\u2026";
-    cap.textContent=body?head+". "+body:head;
+    const capText=body?head+". "+body:head;
+    cap.textContent=capText;
     pos.textContent=(idx+1)+" / "+figs.length;
+    if(announce) announce.textContent=head+", position "+(idx+1)+" of "+figs.length+". "+body;
+    lb.setAttribute("aria-label",head);
+    if(goto){goto.href="#"+(f.id||"");goto.dataset.figTarget=f.id||"";}
     lb.classList.add("on");
+    // Arrow-key/next-button navigation is the common path once the lightbox
+    // is open, so warm the browser cache for both neighbours -- the reader
+    // never waits on a full-res decode while stepping through the sequence.
+    if(figs.length>1){
+      const neighbourSrc=j=>{
+        const t=figs[((j%figs.length)+figs.length)%figs.length].querySelector("img");
+        return t&&(t.dataset.full||t.src);
+      };
+      [idx-1,idx+1].forEach(j=>{
+        const s=neighbourSrc(j);
+        if(s) new Image().src=s;
+      });
+    }
   }
   const open=t=>{
+    opener=document.activeElement;
     const f=t.closest("figure");
     const i=f?figs.indexOf(f):-1;
     show(i>=0?i:0);
     lb.querySelector(".lb-close").focus();
   };
-  const close=()=>lb.classList.remove("on");
+  const close=()=>{
+    lb.classList.remove("on");
+    if(opener&&typeof opener.focus==="function") opener.focus();
+    opener=null;
+  };
   document.addEventListener("click",e=>{
     const t=e.target;
     if(t.closest&&t.closest(".lb-nav")) return;
     if(t.tagName==="IMG"&&t.closest("figure")&&!t.closest(".xref-pop")){open(t);return;}
     if(t.classList.contains("act-zoom")){
       const i=t.closest("figure").querySelector("img");if(i)open(i);return;}
+    if(t.closest&&t.closest(".lb-goto")) return;   // handled below, closes to a different place than opener
     if(t.closest(".lb")) close();
   });
   prev.addEventListener("click",e=>{e.stopPropagation();show(idx-1);});
   next.addEventListener("click",e=>{e.stopPropagation();show(idx+1);});
+  // A reader who arrived via the gallery or an xref preview, not the article,
+  // has no "back to the trigger" to return to -- send them to the figure's own
+  // place in the text instead of wherever close() would otherwise land them.
+  if(goto) goto.addEventListener("click",e=>{
+    e.preventDefault();e.stopPropagation();
+    const id=goto.dataset.figTarget;
+    const target=id&&document.getElementById(id);
+    opener=null;close();
+    if(!target) return;
+    let d=target.closest("details");
+    while(d){d.open=true;d=d.parentElement&&d.parentElement.closest("details");}
+    if(!target.hasAttribute("tabindex")) target.setAttribute("tabindex","-1");
+    target.scrollIntoView({block:"start",behavior:reduced?"auto":"smooth"});
+    target.focus({preventScroll:true});
+  });
+  const trapTab=makeFocusTrap(focusable);
   addEventListener("keydown",e=>{
     if(!lb.classList.contains("on")) return;
-    if(e.key==="Escape") close();
-    else if(e.key==="ArrowLeft") show(idx-1);
-    else if(e.key==="ArrowRight") show(idx+1);
+    if(e.key==="Escape"){close();return;}
+    if(e.key==="ArrowLeft"){show(idx-1);return;}
+    if(e.key==="ArrowRight"){show(idx+1);return;}
+    trapTab(e);
+  });
+})();
+
+/* ---------------- in-page search ---------------- */
+(function(){
+  const overlay=document.querySelector(".search-overlay");
+  const btn=document.querySelector(".c-search");
+  if(!overlay||!btn) return;
+  const input=overlay.querySelector(".search-input");
+  const list=overlay.querySelector(".search-results");
+  const dataEl=document.getElementById("search-index");
+  let INDEX=[];
+  try{INDEX=dataEl?JSON.parse(dataEl.textContent):[];}catch(e){INDEX=[];}
+
+  let opener=null,items=[],sel=-1;
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  }
+  function escapeRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");}
+
+  // One snippet window around the earliest matching term, then every term
+  // highlighted inside it -- not just the one the window was centred on.
+  function snippet(text,terms){
+    const low=text.toLowerCase();
+    let pos=-1;
+    for(const t of terms){const p=low.indexOf(t);if(p>=0&&(pos<0||p<pos))pos=p;}
+    if(pos<0) pos=0;
+    const start=Math.max(0,pos-40),end=Math.min(text.length,pos+140);
+    let out=text.slice(start,end);
+    if(start>0) out="…"+out;
+    if(end<text.length) out+="…";
+    let html=escapeHtml(out);
+    for(const t of terms){
+      if(!t) continue;
+      html=html.replace(new RegExp("("+escapeRe(t)+")","ig"),"<mark>$1</mark>");
+    }
+    return html;
+  }
+
+  function runSearch(q){
+    const terms=q.toLowerCase().split(/\s+/).filter(Boolean);
+    if(!terms.length) return [];
+    const hits=[];
+    for(const unit of INDEX){
+      const hay=(unit.text+" "+(unit.section||"")).toLowerCase();
+      if(!terms.every(t=>hay.includes(t))) continue;
+      hits.push({unit,terms,heading:unit.tag==="h2"||unit.tag==="h3"||unit.tag==="h4"});
+    }
+    // headings first, otherwise keep the document's own order
+    hits.sort((a,b)=>(b.heading?1:0)-(a.heading?1:0));
+    return hits.slice(0,30);
+  }
+
+  function highlight(i){
+    const buttons=list.querySelectorAll("button");
+    buttons.forEach((b,k)=>b.classList.toggle("sel",k===i));
+    if(buttons[i]) buttons[i].scrollIntoView({block:"nearest"});
+    sel=i;
+  }
+
+  function render(q){
+    items=runSearch(q);sel=-1;
+    list.replaceChildren();
+    overlay.classList.toggle("empty",q.trim().length>0&&items.length===0);
+    items.forEach((hit,i)=>{
+      const li=document.createElement("li");
+      const b=document.createElement("button");
+      b.type="button";b.dataset.index=String(i);
+      b.innerHTML='<span class="search-hit-sec">'+escapeHtml(hit.unit.section||"")+"</span>"
+        +'<span class="search-hit-snip">'+snippet(hit.unit.text,hit.terms)+"</span>";
+      li.appendChild(b);list.appendChild(li);
+    });
+  }
+
+  // Same jump idiom as the lightbox go-to-figure handler: open every enclosing
+  // <details>, scroll, then move focus onto the target itself.
+  function jump(unit){
+    if(!unit||!unit.id) return;
+    const target=document.getElementById(unit.id);
+    if(!target) return;
+    close();
+    let d=target.closest("details");
+    while(d){d.open=true;d=d.parentElement&&d.parentElement.closest("details");}
+    if(!target.hasAttribute("tabindex")) target.setAttribute("tabindex","-1");
+    target.scrollIntoView({block:"start",behavior:reduced?"auto":"smooth"});
+    target.focus({preventScroll:true});
+  }
+
+  function open(){
+    opener=document.activeElement;
+    overlay.classList.add("on");
+    input.value="";render("");
+    input.focus();
+  }
+  function close(){
+    overlay.classList.remove("on");overlay.classList.remove("empty");
+    if(opener&&typeof opener.focus==="function") opener.focus();
+    opener=null;
+  }
+
+  btn.addEventListener("click",()=>{overlay.classList.contains("on")?close():open();});
+  input.addEventListener("input",()=>render(input.value));
+  list.addEventListener("click",e=>{
+    const b=e.target.closest("button");
+    if(!b) return;
+    const hit=items[parseInt(b.dataset.index,10)];
+    if(hit) jump(hit.unit);
+  });
+
+  const trapTab=makeFocusTrap(()=>[input,...list.querySelectorAll("button")]);
+  overlay.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){e.preventDefault();close();return;}
+    if(e.key==="ArrowDown"){e.preventDefault();if(items.length)highlight(Math.min(items.length-1,sel+1));return;}
+    if(e.key==="ArrowUp"){e.preventDefault();if(items.length)highlight(Math.max(0,sel-1));return;}
+    if(e.key==="Enter"){
+      e.preventDefault();
+      const hit=items[sel>=0?sel:0];
+      if(hit) jump(hit.unit);
+      return;
+    }
+    trapTab(e);
+  });
+
+  // "/" opens search from anywhere on the page, except while typing in a
+  // field -- a reader filling in an input should get a literal "/", not a
+  // stolen keystroke.
+  addEventListener("keydown",e=>{
+    if(e.key!=="/"||overlay.classList.contains("on")) return;
+    const t=e.target,tag=t&&t.tagName;
+    if(tag==="INPUT"||tag==="TEXTAREA"||(t&&t.isContentEditable)) return;
+    e.preventDefault();open();
+  });
+})();
+
+/* ---------------- mobile TOC drawer ---------------- */
+// Reuses the existing .spine/.toc markup (no second list): at the same
+// max-width:66rem breakpoint the sidebar CSS already switches to, the
+// "contents" button now opens it as an overlay drawer instead of doing
+// nothing. A wide-viewport click still just toggles the desktop rail, via the
+// unrelated data-rail handler set up in the reading-controls IIFE above.
+(function(){
+  const spine=document.querySelector(".spine");
+  const btn=document.querySelector(".c-rail");
+  const backdrop=document.querySelector(".toc-backdrop");
+  if(!spine||!btn||!backdrop) return;
+  const mq=matchMedia("(max-width:66rem)");
+  let opener=null;
+
+  function isOpen(){return root.classList.contains("toc-open");}
+  function openDrawer(){
+    if(!mq.matches||isOpen()) return;
+    opener=document.activeElement;
+    root.classList.add("toc-open");
+    spine.setAttribute("role","dialog");
+    spine.setAttribute("aria-modal","true");
+    spine.setAttribute("aria-label","Contents");
+    const first=spine.querySelector("a");
+    if(first) first.focus(); else spine.focus();
+  }
+  function closeDrawer(){
+    if(!isOpen()) return;
+    root.classList.remove("toc-open");
+    spine.removeAttribute("role");
+    spine.removeAttribute("aria-modal");
+    spine.removeAttribute("aria-label");
+    if(opener&&typeof opener.focus==="function") opener.focus();
+    opener=null;
+  }
+
+  btn.addEventListener("click",()=>{
+    if(!mq.matches) return;
+    isOpen()?closeDrawer():openDrawer();
+  });
+  backdrop.addEventListener("click",closeDrawer);
+  spine.addEventListener("click",e=>{
+    if(isOpen()&&e.target.closest("a")) closeDrawer();
+  });
+  const trapTab=makeFocusTrap(()=>[...spine.querySelectorAll("a")]);
+  spine.addEventListener("keydown",e=>{
+    if(!isOpen()) return;
+    if(e.key==="Escape"){e.preventDefault();closeDrawer();return;}
+    trapTab(e);
+  });
+  const onMqChange=e=>{if(!e.matches) closeDrawer();};
+  if(mq.addEventListener) mq.addEventListener("change",onMqChange);
+  else if(mq.addListener) mq.addListener(onMqChange);
+})();
+
+/* ---------------- keyboard shortcuts help dialog ---------------- */
+(function(){
+  // Single source of truth for the "?" help dialog: add a new shortcut here
+  // and it appears in the table below automatically. This list must only ever
+  // name keys something on the page actually listens for.
+  const SHORTCUTS=[
+    ["/","Open search"],
+    ["?","Open this help dialog"],
+    ["Esc","Close whichever dialog is open (search, help, or the lightbox)"],
+    ["← →","In the lightbox: previous / next figure"],
+    ["Tab / Shift+Tab","Move focus within an open dialog"],
+    ["← →","Focused plot: pan the value readout"],
+    ["+ / -","Focused plot: zoom in / out"],
+    ["0","Focused plot: reset zoom"],
+  ];
+  const overlay=document.querySelector(".help-overlay");
+  const btn=document.querySelector(".c-help");
+  if(!overlay||!btn) return;
+  const tbody=overlay.querySelector(".help-table tbody");
+  const closeBtn=overlay.querySelector(".help-close");
+  tbody.replaceChildren(...SHORTCUTS.map(([key,action])=>{
+    const tr=document.createElement("tr");
+    const kd=document.createElement("td");kd.textContent=key;
+    const ad=document.createElement("td");ad.textContent=action;
+    tr.append(kd,ad);return tr;
+  }));
+
+  let opener=null;
+  function open(){
+    opener=document.activeElement;
+    overlay.classList.add("on");
+    closeBtn.focus();
+  }
+  function close(){
+    overlay.classList.remove("on");
+    if(opener&&typeof opener.focus==="function") opener.focus();
+    opener=null;
+  }
+  btn.addEventListener("click",()=>{overlay.classList.contains("on")?close():open();});
+  closeBtn.addEventListener("click",close);
+  overlay.addEventListener("click",e=>{if(e.target===overlay) close();});
+  const trapTab=makeFocusTrap(()=>[closeBtn]);
+  overlay.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){e.preventDefault();close();return;}
+    trapTab(e);
+  });
+  // "?" opens help from anywhere, same guard as "/" for search: not while
+  // typing in a field, and not if another overlay already owns the key.
+  addEventListener("keydown",e=>{
+    if(e.key!=="?"||overlay.classList.contains("on")) return;
+    const t=e.target,tag=t&&t.tagName;
+    if(tag==="INPUT"||tag==="TEXTAREA"||(t&&t.isContentEditable)) return;
+    e.preventDefault();open();
+  });
+})();
+
+/* ---------------- heading copy-link ---------------- */
+// The anchor is a real <a href="#id">: Enter/click both navigate normally
+// (updates location.hash, works with JS disabled) *and* trigger a clipboard
+// copy of the full URL -- deliberately both, not a choice between them.
+(function(){
+  document.querySelectorAll(".head-anchor").forEach(a=>{
+    a.addEventListener("click",()=>{
+      const url=location.origin+location.pathname+location.search+a.getAttribute("href");
+      const flash=()=>{
+        a.classList.add("copied");
+        clearTimeout(a._copiedTimer);
+        a._copiedTimer=setTimeout(()=>a.classList.remove("copied"),1400);
+      };
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(flash,()=>{});
+      }else{
+        const ta=document.createElement("textarea");
+        ta.value=url;ta.style.position="fixed";ta.style.opacity="0";
+        document.body.appendChild(ta);ta.select();
+        try{document.execCommand("copy");flash();}catch(e){/* clipboard unavailable */}
+        ta.remove();
+      }
+    });
   });
 })();
 
@@ -1041,13 +1934,14 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
     pop.replaceChildren();
     const body=document.createElement("div");body.className="xref-body";
     if(info.kind==="cite"){
+      // No jump link here: role="tooltip" promises non-interactive content,
+      // and a keyboard user reaches the same target by pressing Enter on the
+      // trigger itself, so the link would only ever be reachable by a mouse
+      // that could have clicked the trigger directly instead.
       const c=info.el.cloneNode(true);
       c.removeAttribute("id");
       c.querySelectorAll(".cited-in").forEach(n=>n.remove());
       body.appendChild(c);pop.appendChild(body);
-      const jump=document.createElement("a");
-      jump.className="xref-jump";jump.href=info.href;jump.textContent="\u2192 jump";
-      pop.appendChild(jump);
     }else if(info.kind==="eq"){
       const c=info.el.cloneNode(true);
       if(c.removeAttribute) c.removeAttribute("id");
@@ -1135,6 +2029,19 @@ document.querySelectorAll("figure[data-src]").forEach(fig=>{
       armed=null;hide();
     }
   },true);
+
+  // A tap-armed popover has no hover to dismiss it and no keyboard on touch,
+  // so without this a reader is stuck until the next scroll or link tap:
+  // dismiss on any pointerdown/touchstart landing outside both the popover
+  // and the link that opened it.
+  function dismissIfOutside(e){
+    if(!coarse||!armed) return;
+    const t=e.target;
+    if(t===armed||(t.closest&&(t.closest(".xref-pop")||t.closest("a")===armed))) return;
+    armed=null;hide();
+  }
+  document.addEventListener("pointerdown",dismissIfOutside,true);
+  document.addEventListener("touchstart",dismissIfOutside,true);
 
   addEventListener("keydown",e=>{if(e.key==="Escape") hide();});
   addEventListener("scroll",()=>{if(cur) hide();},{passive:true});
@@ -1342,6 +2249,10 @@ function openBranch(a){
   document.querySelectorAll(".toc > li.top").forEach(n=>{if(n!==li)n.classList.remove("open");});
   if(li) li.classList.add("open");
 }
+// Reuses this same observer's notion of "the active section" for the address
+// bar, throttled, instead of standing up a second observer just to watch
+// scroll position for the hash.
+let hashTimer=null;
 const spy=new IntersectionObserver(es=>{
   for(const e of es){
     if(!e.isIntersecting)continue;
@@ -1350,6 +2261,14 @@ const spy=new IntersectionObserver(es=>{
     const on=links.find(a=>a.classList.contains("on"));
     openBranch(on);
     if(on&&on.offsetParent) on.scrollIntoView({block:"nearest"});
+    if(id){
+      clearTimeout(hashTimer);
+      hashTimer=setTimeout(()=>{
+        if(location.hash.slice(1)!==id){
+          history.replaceState(null,"",location.pathname+location.search+"#"+id);
+        }
+      },500);
+    }
   }
 },{rootMargin:"-20% 0px -70%"});
 document.querySelectorAll("article section[id]").forEach(s=>spy.observe(s));

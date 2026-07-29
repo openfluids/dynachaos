@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,30 @@ from dynachaos.pipelines.registry import SECTION_ORDER, SECTION_SPECS
 sys.path.insert(0, str(Path(__file__).parent))
 from gallery_meta import CAPTIONS, SECTION_TITLES
 
+DATA_FULL_RE = re.compile(r'data-full="full/([a-zA-Z0-9_]+)/([a-zA-Z0-9_]+)\.png"')
+FIGURE_RE = re.compile(r"<figure\b.*?</figure>", re.S)
+
+
+def load_fignums(index_html: Path) -> dict[tuple[str, str], int]:
+    """Map each (section, image stem) to the figure number shown on the page.
+
+    ``build_paper.py`` numbers figures in page order, not registry order, and
+    that numbering depends on the manuscript body it processes -- recomputing
+    it here would be a second, driftable source of truth. Reading it back out
+    of the built page's ``data-fignum`` attributes keeps there being exactly
+    one place figure numbers come from.
+    """
+    if not index_html.exists():
+        return {}
+    numbers: dict[tuple[str, str], int] = {}
+    text = index_html.read_text(encoding="utf-8")
+    for block in FIGURE_RE.findall(text):
+        num = re.search(r'data-fignum="(\d+)"', block)
+        img = DATA_FULL_RE.search(block)
+        if num and img:
+            numbers[(img.group(1), img.group(2))] = int(num.group(1))
+    return numbers
+
 
 def main() -> int:
     """Build gallery: thumbnails, HTML, validate all figures exist and have captions."""
@@ -23,6 +48,7 @@ def main() -> int:
     site_dir = project_root / "site"
     site_thumbs_dir = site_dir / "thumbs"
     site_full_dir = site_dir / "full"
+    fignums = load_fignums(site_dir / "index.html")
 
     # Validation: check all registry PNGs exist and have captions
     missing_files = []
@@ -224,6 +250,15 @@ body {
 .card-meta {
   padding: 1rem;
 }
+.card-fignum {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #666;
+  margin: 0 0 0.25rem 0;
+}
+@media (prefers-color-scheme: dark) {
+  .card-fignum { color: #aaa; }
+}
 .card-filename {
   font-family: 'Monaco', 'Courier New', monospace;
   font-size: 0.85rem;
@@ -293,58 +328,76 @@ body {
     )
     html_parts.append("</div>")
 
-    # Sections
+    # Sort every figure into the order the paper page actually shows them in --
+    # the "diagnostic spotlight" figures are cross-cutting and land inside other
+    # sections' text, so a registry-order walk puts them next to the wrong
+    # neighbours. Unnumbered figures (present in the registry but not embedded
+    # as a figure in the manuscript) sort last, in registry order.
+    UNNUMBERED = 1 << 30
+    entries: list[tuple[int, str, str]] = []
     for section_id in SECTION_ORDER:
         spec = SECTION_SPECS[section_id]
-        title = SECTION_TITLES[section_id]
-        pngs = [f for f in spec.output_files if f.endswith(".png")]
+        for png_name in spec.output_files:
+            if not png_name.endswith(".png"):
+                continue
+            fignum = fignums.get((section_id, png_name[:-4]))
+            entries.append((fignum if fignum is not None else UNNUMBERED, section_id, png_name))
+    entries.sort(key=lambda e: e[0])
 
-        if not pngs:
-            continue
+    # Sections
+    open_section = None
+    for fignum, section_id, png_name in entries:
+        if section_id != open_section:
+            if open_section is not None:
+                html_parts.append("</div>")
+                html_parts.append("</div>")
+            html_parts.append('<div class="section">')
+            html_parts.append(f"<h2>{SECTION_TITLES[section_id]}</h2>")
+            html_parts.append('<div class="grid">')
+            open_section = section_id
 
-        html_parts.append('<div class="section">')
-        html_parts.append(f"<h2>{title}</h2>")
-        html_parts.append('<div class="grid">')
+        caption_key = f"{section_id}/{png_name}"
+        caption = CAPTIONS.get(caption_key, "")
+        webp_name = png_name.replace(".png", ".webp")
+        fig_label = f"Figure {fignum}" if fignum != UNNUMBERED else ""
 
-        for png_name in pngs:
-            caption_key = f"{section_id}/{png_name}"
-            caption = CAPTIONS.get(caption_key, "")
-            webp_name = png_name.replace(".png", ".webp")
+        # Get thumbnail dimensions for layout shift prevention
+        webp_path = site_thumbs_dir / section_id / webp_name
+        thumb_width = None
+        thumb_height = None
+        if webp_path.exists():
+            try:
+                thumb_img = Image.open(webp_path)
+                thumb_width, thumb_height = thumb_img.size
+            except Exception:
+                pass
 
-            # Get thumbnail dimensions for layout shift prevention
-            webp_path = site_thumbs_dir / section_id / webp_name
-            thumb_width = None
-            thumb_height = None
-            if webp_path.exists():
-                try:
-                    thumb_img = Image.open(webp_path)
-                    thumb_width, thumb_height = thumb_img.size
-                except Exception:
-                    pass
+        data_full = f"full/{section_id}/{png_name}"
+        html_parts.append(f'<div class="card" data-full="{data_full}">')
+        if thumb_width and thumb_height:
+            img_tag = (
+                f'<img class="card-image" '
+                f'src="thumbs/{section_id}/{webp_name}" '
+                f'loading="lazy" width="{thumb_width}" '
+                f'height="{thumb_height}" alt="{png_name}">'
+            )
+            html_parts.append(img_tag)
+        else:
+            img_tag = (
+                f'<img class="card-image" '
+                f'src="thumbs/{section_id}/{webp_name}" '
+                f'loading="lazy" alt="{png_name}">'
+            )
+            html_parts.append(img_tag)
+        html_parts.append('<div class="card-meta">')
+        if fig_label:
+            html_parts.append(f'<div class="card-fignum">{fig_label}</div>')
+        html_parts.append(f'<div class="card-filename">{png_name}</div>')
+        html_parts.append(f'<p class="card-caption">{caption}</p>')
+        html_parts.append("</div>")
+        html_parts.append("</div>")
 
-            data_full = f"full/{section_id}/{png_name}"
-            html_parts.append(f'<div class="card" data-full="{data_full}">')
-            if thumb_width and thumb_height:
-                img_tag = (
-                    f'<img class="card-image" '
-                    f'src="thumbs/{section_id}/{webp_name}" '
-                    f'loading="lazy" width="{thumb_width}" '
-                    f'height="{thumb_height}" alt="{png_name}">'
-                )
-                html_parts.append(img_tag)
-            else:
-                img_tag = (
-                    f'<img class="card-image" '
-                    f'src="thumbs/{section_id}/{webp_name}" '
-                    f'loading="lazy" alt="{png_name}">'
-                )
-                html_parts.append(img_tag)
-            html_parts.append('<div class="card-meta">')
-            html_parts.append(f'<div class="card-filename">{png_name}</div>')
-            html_parts.append(f'<p class="card-caption">{caption}</p>')
-            html_parts.append("</div>")
-            html_parts.append("</div>")
-
+    if open_section is not None:
         html_parts.append("</div>")
         html_parts.append("</div>")
 
