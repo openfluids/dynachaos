@@ -367,6 +367,31 @@ def number_equations(body: str) -> tuple[str, dict[str, str], int]:
     return "".join(out), numbers, count
 
 
+def anchor_unnumbered_equations(body: str) -> tuple[str, int]:
+    """Give the display equations nobody numbered a stable anchor.
+
+    Run this after ``apply_eq_tags`` and ``number_equations``, so the only
+    block maths left bare are the ones the manuscript never labelled. Those get
+    an id -- so a reader can link to one and the page can preview it -- but
+    deliberately no visible number: numbering them would shift every subsequent
+    equation number and the web version would stop agreeing with the source.
+
+    The ids are part of the page's public surface once a reader has shared a
+    link, so they are positional and stable rather than content-derived.
+    """
+    out, pos, count = [], 0, 0
+    for eq in BLOCK_MATH_RE.finditer(body):
+        # Anything already wrapped carries its number and its own anchor.
+        if body.rfind('<div class="eqn">', 0, eq.start()) > body.rfind("</div>", 0, eq.start()):
+            continue
+        count += 1
+        out.append(body[pos : eq.start()])
+        out.append(f'<div class="eqn eqn-bare" id="eq-u{count}">{eq.group(0)}</div>')
+        pos = eq.end()
+    out.append(body[pos:])
+    return "".join(out), count
+
+
 def number_tables(body: str) -> tuple[str, dict[str, str]]:
     """Number the tables in reading order so table references resolve."""
     numbers: dict[str, str] = {}
@@ -380,6 +405,51 @@ def number_tables(body: str) -> tuple[str, dict[str, str]]:
 
     HYPERTARGET_RE.sub(lambda m: tag(m) if m.group(2).startswith("tab:") else m.group(0), body)
     return body, numbers
+
+
+FIGREF_RE = re.compile(
+    r'(<a href="#(fig:[^"]+)"[^>]*data-reference-type="ref"[^>]*>)([^<]*)</a>'
+)
+
+
+def renumber_figure_refs(body: str) -> tuple[str, int, int]:
+    """Rewrite every figure reference to the number its figure actually shows.
+
+    Pandoc resolved these against the *manuscript's* figure order at import
+    time, but this page numbers figures in *page* order and deliberately moves
+    the programme-arc figure to the end -- which slid every other figure by one.
+    The result was 35 references that named a figure and linked to its
+    neighbour.
+
+    Equations and tables already avoid this because ``resolve_refs`` rewrites
+    them from the numbers this build assigned. Figures were simply never added
+    to that map, so nothing compared the two. Deriving the text from
+    ``data-fignum`` here means the caption and the sentence cannot disagree
+    again, whatever order the page puts figures in.
+    """
+    # The id and data-fignum attributes appear in either order on the tag, so
+    # read them per figure rather than assuming one regex ordering.
+    shown: dict[str, str] = {}
+    for tag in re.findall(r"<figure[^>]*>", body):
+        num = re.search(r'data-fignum="(\d+)"', tag)
+        fid = re.search(r'id="(fig:[^"]+)"', tag)
+        if num and fid:
+            shown[fid.group(1)] = num.group(1)
+
+    changed = missing = 0
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal changed, missing
+        open_tag, target, text = match.group(1), match.group(2), match.group(3)
+        number = shown.get(target)
+        if number is None:
+            missing += 1
+            return match.group(0)
+        if text.strip() != number:
+            changed += 1
+        return f"{open_tag}{number}</a>"
+
+    return FIGREF_RE.sub(repl, body), changed, missing
 
 
 def resolve_refs(body: str, numbers: dict[str, str]) -> tuple[str, int]:
@@ -626,8 +696,10 @@ def transform(
     body = HEAD_RE.sub(demote, body)
     body, n_tagged = apply_eq_tags(body, eq_tags or [])
     body, eq_numbers, n_eq = number_equations(body)
+    body, n_bare = anchor_unnumbered_equations(body)
     body, tab_numbers = number_tables(body)
     body, n_fixed = resolve_refs(body, {**eq_numbers, **tab_numbers})
+    body, n_figref, n_figref_missing = renumber_figure_refs(body)
     # The raw-LaTeX annotation duplicates every equation as plain text when a
     # browser does not render MathML; drop it rather than rely on a UA stylesheet.
     n_ann = len(ANNOTATION_RE.findall(body))
@@ -640,7 +712,13 @@ def transform(
     if stats["dropped"]:
         print(f"  DROPPED (pandoc could not convert): {', '.join(stats['dropped'])}")
     print(f"  sections numbered: {sum(1 for *_, n in nav if n)} of {len(nav)}")
-    print(f"  equations numbered: {n_eq}; tagged: {n_tagged}; references resolved: {n_fixed}")
+    print(
+        f"  equations numbered: {n_eq}; tagged: {n_tagged}; "
+        f"anchored unnumbered: {n_bare}; references resolved: {n_fixed}"
+    )
+    print(f"  figure references renumbered to match captions: {n_figref}")
+    if n_figref_missing:
+        print(f"  WARNING: {n_figref_missing} figure references point at no figure on the page")
     print(f"  latex annotations stripped: {n_ann}")
     print(f"  back matter folded: {folded}")
     return body, nav
