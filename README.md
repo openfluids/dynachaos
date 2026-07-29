@@ -1,4 +1,4 @@
-![dynachaos banner](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/readme-banner-v2.jpg)
+![dynachaos banner](https://raw.githubusercontent.com/openfluids/dynachaos/main/assets/readme-banner-v3.jpg)
 
 [![CI](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openfluids/dynachaos/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/dynachaos.svg)](https://pypi.org/project/dynachaos/)
