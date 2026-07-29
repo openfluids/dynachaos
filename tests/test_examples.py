@@ -119,4 +119,4 @@ def test_examples_readme_documents_recipe_commands_and_legacy_status():
     assert "metadata.json" in external_doc
     assert "reliability" in external_doc
     assert "rqa_streaming" in long_doc
-    assert "dense-recurrence memory envelope" in long_doc
+    assert "dense-recurrence memory cap" in long_doc
