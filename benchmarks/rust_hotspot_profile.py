@@ -202,7 +202,6 @@ def _write_markdown(path: Path, results: dict[str, Any]) -> None:
         "## Hardware and software",
         "",
         f"- CPU: {results['machine']['cpu_model']}",
-        f"- RAM: {results['machine']['ram_bytes']} bytes",
         f"- Platform: {results['machine']['platform']}",
         f"- Python: {results['machine']['python']}; NumPy: {results['machine']['numpy']}",
         "",
@@ -260,7 +259,8 @@ def main(argv: list[str] | None = None) -> int:
     results = {
         "schema_version": 1,
         "generated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "command": f"{sys.executable} {Path(__file__).as_posix()} {cfg_path.as_posix()}",
+        # Relative to the repository root; this artifact is committed publicly.
+        "command": f"python benchmarks/{Path(__file__).name} {cfg_path.name}",
         "machine": _machine() | {"platform_uname": platform.platform()},
         "rows": rows,
     }

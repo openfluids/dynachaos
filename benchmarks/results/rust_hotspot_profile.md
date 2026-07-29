@@ -1,12 +1,11 @@
 # Rust hotspot profile
 
 Generated: 2026-06-11T06:07:08Z
-Command: `/home/rfrantz/Projects/kaneko/dynachaos/.venv/bin/python3 /home/rfrantz/Projects/kaneko/dynachaos/benchmarks/rust_hotspot_profile.py benchmarks/rust_hotspot_profile.jsonc`
+Command: `python benchmarks/rust_hotspot_profile.py rust_hotspot_profile.jsonc`
 
 ## Hardware and software
 
 - CPU: AMD Ryzen 9 9900X 12-Core Processor
-- RAM: 24582836224 bytes
 - Platform: Linux-7.0.0-22-generic-x86_64-with-glibc2.43
 - Python: 3.13.13; NumPy: 2.4.2
 

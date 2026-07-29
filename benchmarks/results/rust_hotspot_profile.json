@@ -1,11 +1,10 @@
 {
   "schema_version": 1,
   "generated_at_utc": "2026-06-11T06:07:08Z",
-  "command": "/home/rfrantz/Projects/kaneko/dynachaos/.venv/bin/python3 /home/rfrantz/Projects/kaneko/dynachaos/benchmarks/rust_hotspot_profile.py benchmarks/rust_hotspot_profile.jsonc",
+  "command": "python benchmarks/rust_hotspot_profile.py rust_hotspot_profile.jsonc",
   "machine": {
     "platform": "Linux-7.0.0-22-generic-x86_64-with-glibc2.43",
     "cpu_model": "AMD Ryzen 9 9900X 12-Core Processor",
-    "ram_bytes": 24582836224,
     "python": "3.13.13",
     "numpy": "2.4.2",
     "platform_uname": "Linux-7.0.0-22-generic-x86_64-with-glibc2.43"

@@ -12,7 +12,7 @@ The config-driven workflow expects one finite 1D signal:
 - Use SI units or nondimensional variables consistently. dynachaos does not infer units from arrays.
 - Downsample only when the sampling rate is higher than the time scales your diagnostic needs. Keep the downsampling factor outside the array filename or in your run log; the workflow records that the file was used, not the full upstream preprocessing chain.
 
-For self-contained checks and examples, the workflow can also generate a logistic-map signal from the config. Use generated signals for smoke tests, not as a substitute for the real input provenance of a study.
+For self-contained checks and examples, the workflow can also generate a logistic-map signal from the config. Use generated signals for quick checks, not as a substitute for the real input provenance of a study.
 
 ## 2. Choose diagnostics
 
@@ -50,7 +50,7 @@ Run it from the package checkout or from an environment where `dynachaos` is ins
 uv run dynachaos analyze path/to/config.jsonc
 ```
 
-This command is a local/full-run template rather than a repository smoke test: it requires your own `path/to/config.jsonc` and any input files named by that config. For tested commands, use the README quickstart or the recipe gallery.
+This command is a local/full-run template rather than a runnable repository example: it requires your own `path/to/config.jsonc` and any input files named by that config. For tested commands, use the README quickstart or the recipe gallery.
 
 ## 4. Read the outputs
 
@@ -70,7 +70,7 @@ Plain-language examples:
 
 ## 5. Long-signal and RQA scaling guidance
 
-For long signals, avoid dense recurrence matrices unless you have calculated the memory envelope. Dense recurrence/RQA first builds an `N x N` distance matrix with an analytical `8*N^2` byte cost, before Python and temporary-array overhead. The checked scale-envelope artifact places the 4 GiB distance-matrix threshold near `N = 23170`; see [RQA scaling design note](rqa-scaling-design.md).
+For long signals, avoid dense recurrence matrices unless you have calculated the memory cost. Dense recurrence/RQA first builds an `N x N` distance matrix with an analytical `8*N^2` byte cost, before Python and temporary-array overhead. Under the default cap the checked benchmark artifact places that threshold near `N = 23170`; see [RQA scaling design note](rqa-scaling-design.md).
 
 Preferred long-signal pattern:
 

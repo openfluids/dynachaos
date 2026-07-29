@@ -225,17 +225,12 @@ def _machine() -> dict[str, Any]:
             if line.startswith("model name"):
                 cpu = line.split(":", 1)[1].strip()
                 break
-    mem = None
-    meminfo = Path("/proc/meminfo")
-    if meminfo.exists():
-        for line in meminfo.read_text(encoding="utf-8").splitlines():
-            if line.startswith("MemTotal:"):
-                mem = int(line.split()[1]) * 1024
-                break
+    # Host total memory is deliberately not recorded: it says nothing about the
+    # measurements below (every case reports its own peak RSS) and this report is
+    # committed to a public repository.
     return {
         "platform": platform.platform(),
         "cpu_model": cpu,
-        "ram_bytes": mem,
         "python": sys.version.split()[0],
         "numpy": np.__version__,
     }
@@ -364,17 +359,17 @@ def _write_markdown(path: Path, results: dict[str, Any]) -> None:
         f"Command: `{results['command']}`", "",
         "## Hardware and software", "",
         f"- CPU: {results['machine']['cpu_model']}",
-        f"- RAM: {results['machine']['ram_bytes']} bytes", f"- Platform: {results['machine']['platform']}",
+        f"- Platform: {results['machine']['platform']}",
         f"- Python: {results['machine']['python']}; NumPy: {results['machine']['numpy']}",
         f"- Full-mode command: set `mode` to `full` in the JSONC config, then run `{results['command']}` on the target machine; this report header records the resulting hardware context.", "",
         "## Caveats", "",
-        "- CI mode uses small sizes so it is a smoke-test artifact, not a publication-scale timing claim.",
+        "- CI mode uses small sizes to check that the benchmark runs and that the backends agree. It is not a publication-scale timing claim.",
         "- Correlation-dimension parity is finite-data parity on identical synthetic inputs and radius grids.",
         f"- Python fallback GP cases are capped at N={results['benchmark_limits']['python_fallback_cap_N']} in this mode because the all-pairs fallback runtime grows rapidly; skipped full-mode rows say this explicitly.",
-        f"- Dense recurrence estimates report the requested analytical 8*N^2 byte distance-matrix envelope; safety skips use a {RQA_TEMPORARIES_MULTIPLIER}x temporary-array multiplier for pdist, positive-distance, and boolean recurrence intermediates, while real peak RSS also includes interpreter overhead.",
+        f"- Dense recurrence estimates report the analytical 8*N^2 byte cost of the distance matrix; safety skips use a {RQA_TEMPORARIES_MULTIPLIER}x temporary-array multiplier for pdist, positive-distance, and boolean recurrence intermediates, while real peak RSS also includes interpreter overhead.",
         "- The CML-flat signal is a coupled-logistic lattice row sequence flattened to mimic larger-DOF simulation output while keeping a scalar diagnostic input.", "",
         "## Headline", "", speed_line,
-        f"Dense recurrence/RQA configured impracticality threshold: N≈{thr} at 4 GiB predicted 8*N^2 bytes.", "",
+        f"Dense recurrence/RQA configured impracticality threshold: N≈{thr} at the configured bound of {results['benchmark_limits']['dense_rqa_stop_predicted_bytes']} predicted 8*N^2 bytes.", "",
         "## Grassberger--Procaccia", "",
         "| signal | N | backend | p50 wall s | peak RSS MB | max delta logC | max delta slope |", "|---|---:|---|---:|---:|---:|---:|",
     ]
@@ -407,7 +402,9 @@ def main(argv: list[str] | None = None) -> int:
         "schema_version": 1,
         "mode": cfg["mode"],
         "generated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "command": f"{sys.executable} {Path(__file__).as_posix()} {cfg_path.as_posix()}",
+        # Recorded relative to the repository root: an absolute interpreter path
+        # would pin this public artifact to one developer's filesystem.
+        "command": f"python benchmarks/{Path(__file__).name} {cfg_path.name}",
         "config_path": str(cfg_path),
         "machine": _machine(),
         "signals": {

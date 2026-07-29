@@ -1,28 +1,27 @@
 # Scale-envelope benchmark (CI mode artifacts)
 
 Generated: 2026-06-10T19:31:38Z
-Command: `/home/rfrantz/Projects/kaneko/dynachaos/.venv/bin/python3 /home/rfrantz/Projects/kaneko/dynachaos/benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`
+Command: `python benchmarks/scale_envelope.py scale_envelope.jsonc`
 
 ## Hardware and software
 
 - CPU: AMD Ryzen 9 9900X 12-Core Processor
-- RAM: 24582836224 bytes
 - Platform: Linux-7.0.0-22-generic-x86_64-with-glibc2.43
 - Python: 3.13.13; NumPy: 2.4.2
-- Full-mode command: set `mode` to `full` in the JSONC config, then run `/home/rfrantz/Projects/kaneko/dynachaos/.venv/bin/python3 /home/rfrantz/Projects/kaneko/dynachaos/benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc` on the target machine; this report header records the resulting hardware context.
+- Full-mode command: set `mode` to `full` in the JSONC config, then run `python benchmarks/scale_envelope.py scale_envelope.jsonc` on the target machine; this report header records the resulting hardware context.
 
 ## Caveats
 
-- CI mode uses small sizes so it is a smoke-test artifact, not a publication-scale timing claim.
+- CI mode uses small sizes to check that the benchmark runs and that the backends agree. It is not a publication-scale timing claim.
 - Correlation-dimension parity is finite-data parity on identical synthetic inputs and radius grids.
 - Python fallback GP cases are capped at N=1000 in this mode because the all-pairs fallback runtime grows rapidly; skipped full-mode rows say this explicitly.
-- Dense recurrence estimates report the requested analytical 8*N^2 byte distance-matrix envelope; safety skips use a 3x temporary-array multiplier for pdist, positive-distance, and boolean recurrence intermediates, while real peak RSS also includes interpreter overhead.
+- Dense recurrence estimates report the analytical 8*N^2 byte cost of the distance matrix; safety skips use a 3x temporary-array multiplier for pdist, positive-distance, and boolean recurrence intermediates, while real peak RSS also includes interpreter overhead.
 - The CML-flat signal is a coupled-logistic lattice row sequence flattened to mimic larger-DOF simulation output while keeping a scalar diagnostic input.
 
 ## Headline
 
 Largest common GP case: logistic N=1000; Rust 0.000861385 s vs Python 0.0370001 s (42.95x).
-Dense recurrence/RQA configured impracticality threshold: N≈23170 at 4 GiB predicted 8*N^2 bytes.
+Dense recurrence/RQA configured impracticality threshold: N≈23170 at the configured bound of 4294967296 predicted 8*N^2 bytes.
 
 ## Grassberger--Procaccia
 

@@ -3,10 +3,10 @@
 ## Problem and scale evidence
 
 Dense `recurrence_matrix(X)` constructs an `N x N` distance matrix before the
-boolean recurrence matrix. The checked-in scale envelope reports an analytical
-`8*N^2` byte distance-matrix envelope and uses a 3x temporary multiplier for
+boolean recurrence matrix. The checked-in benchmark reports an analytical
+`8*N^2` byte distance-matrix cost and uses a 3x temporary multiplier for
 pdist, positive-distance, and recurrence intermediates. That gives a configured
-4 GiB impracticality threshold near `N=23170`, before Python/interpreter
+an impracticality threshold near `N=23170` under the default cap, before Python/interpreter
 overhead. CI-mode measurements already show dense recurrence/RQA peak RSS rising
 from 107.5 MB at `N=100` to 110.6 MB at `N=350`.
 
@@ -14,7 +14,7 @@ from 107.5 MB at `N=100` to 110.6 MB at `N=350`.
 
 | option | memory | metric parity | decision |
 |---|---:|---|---|
-| Dense-only with documented limits | `O(N^2)` distances plus `O(N^2)` bools | current reference | reject: documents the 4 GiB cliff but does not improve long signals |
+| Dense-only with documented limits | `O(N^2)` distances plus `O(N^2)` bools | current reference | reject: documents the cliff but does not improve long signals |
 | Sparse recurrence storage | `O(nnz)` after building/searching neighbors | exact if all line scans preserve ordering | defer: needs a neighbor-search API and sparse run scanners |
 | Streaming diagonal+vertical scans | `O(N*d)` trajectory plus one `O(N)` mask | exact for scalar RQA metrics | choose for prototype |
 | Staged API | can expose dense, streaming, then sparse | exact when each mode states limits | use: additive streaming function now, sparse later |

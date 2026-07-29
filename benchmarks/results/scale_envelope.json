@@ -2,12 +2,11 @@
   "schema_version": 1,
   "mode": "ci",
   "generated_at_utc": "2026-06-10T19:31:38Z",
-  "command": "/home/rfrantz/Projects/kaneko/dynachaos/.venv/bin/python3 /home/rfrantz/Projects/kaneko/dynachaos/benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc",
+  "command": "python benchmarks/scale_envelope.py scale_envelope.jsonc",
   "config_path": "benchmarks/scale_envelope.jsonc",
   "machine": {
     "platform": "Linux-7.0.0-22-generic-x86_64-with-glibc2.43",
     "cpu_model": "AMD Ryzen 9 9900X 12-Core Processor",
-    "ram_bytes": 24582836224,
     "python": "3.13.13",
     "numpy": "2.4.2"
   },

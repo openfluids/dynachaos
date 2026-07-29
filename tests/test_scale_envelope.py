@@ -73,8 +73,11 @@ def test_scale_envelope_ci_end_to_end(tmp_path):
     assert data["mode"] == "ci"
     for key in ["machine", "signals", "gp", "rqa"]:
         assert key in data
-    for key in ["cpu_model", "ram_bytes", "python", "numpy"]:
+    for key in ["cpu_model", "python", "numpy"]:
         assert key in data["machine"]
+    # Host total memory is not recorded: this report is committed publicly and
+    # each case already reports its own peak RSS.
+    assert "ram_bytes" not in data["machine"]
 
     gp_rows = data["gp"]
     assert gp_rows

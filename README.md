@@ -56,8 +56,8 @@ The command writes
 `examples/recipes/external_signal/outputs/external_signal_recipe/metadata.json`,
 and
 `examples/recipes/external_signal/outputs/external_signal_recipe/summary.md`.
-It is intentionally small so it can run as a smoke test; use the recipe gallery
-for the long-signal streaming example.
+It is intentionally small so it runs in seconds; use the recipe gallery for the
+long-signal streaming example.
 
 ## User documentation spine
 
@@ -66,8 +66,8 @@ for the long-signal streaming example.
   and finite-data caveats.
 - [Example gallery](https://github.com/openfluids/dynachaos/blob/main/examples/README.md): tested recipe commands for external
   signals and long-signal streaming RQA.
-- [RQA scaling design note](https://github.com/openfluids/dynachaos/blob/main/docs/rqa-scaling-design.md): dense recurrence memory
-  envelope and streaming RQA design.
+- [RQA scaling design note](https://github.com/openfluids/dynachaos/blob/main/docs/rqa-scaling-design.md): how much memory dense
+  recurrence needs, and the streaming RQA design.
 - [Rust acceleration roadmap](https://github.com/openfluids/dynachaos/blob/main/docs/rust-acceleration-roadmap.md): measured
   acceleration claims and future kernel priorities.
 - [Claims checklist](https://github.com/openfluids/dynachaos/blob/main/docs/claims-checklist.md): wording boundaries for public
@@ -82,7 +82,7 @@ Config schema summary:
 - `input`: either `{ "path": "signal.npy" }` / `{ "path": "signal.npz", "npz_key": "x" }` for a 1D finite scalar/reduced signal, or `{ "generated": { "name": "logistic", "n": 1000, "seed": 0 } }` for self-contained runs.
 - `output.dir`: stable output directory, resolved relative to the config file.
 - `diagnostics`: list of `{ "name": ... }` entries. Supported workflow names are `permutation_entropy`, `correlation_dimension`, `rqa_streaming`, and `rqa_dense`.
-- `scale_limits`: optional dense-RQA guard; `dense_rqa_max_bytes` defaults to 4 GiB using the `8*N^2` distance-matrix envelope, and `allow_dense_rqa_beyond_envelope: true` is required to override it.
+- `scale_limits`: optional dense-RQA guard. Dense RQA builds an `N x N` distance matrix costing `8*N^2` bytes; `dense_rqa_max_bytes` caps that, and `allow_dense_rqa_beyond_envelope: true` is required to exceed the cap.
 
 Output layout is stable and referenceable by path: `results.json`
 (machine-readable diagnostic values), `metadata.json` (N, shape, wall time in
@@ -238,15 +238,15 @@ for all thirty-seven, in section order, with captions.
 
 ## Benchmarks
 
-The reproducible scale-envelope benchmark for Rust Grassberger-Procaccia parity
-and dense recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
+The reproducible benchmark for Rust Grassberger-Procaccia parity and dense
+recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
 The local benchmark command is
 `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`;
 inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. The
 checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at
-N=1000 for the largest common logistic case, and a dense-RQA predicted
-distance-matrix envelope of 8*N^2 bytes (impracticality threshold N≈23170 at
-4 GiB). The measured Rust acceleration roadmap and local hotspot profiler are
+N=1000 for the largest common logistic case, and a predicted dense-RQA
+distance-matrix cost of 8*N^2 bytes, which becomes impractical near N≈23170
+under the default cap. The measured Rust acceleration roadmap and local hotspot profiler are
 documented in `docs/rust-acceleration-roadmap.md` and
 `benchmarks/rust_hotspot_profile.py`.
 

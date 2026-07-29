@@ -43,7 +43,7 @@ dynachaos analyze long_signal_streaming_recipe.jsonc
 ```
 
 This recipe demonstrates the long-signal strategy used to stay inside the dense
-recurrence memory envelope: reduce/downsample large simulation output to a scalar
+recurrence memory cost: reduce/downsample large simulation output to a scalar
 observable, then run `rqa_streaming` instead of `rqa_dense`. The CI fixture is
 small, while the recipe README documents how to replace it with a local large
 run. Outputs are written under `outputs/long_signal_streaming_recipe/`.

@@ -29,7 +29,7 @@ it has the same file layout as a local long run after preprocessing.
    recurrence matrix.
 4. Keep `scale_limits.dense_rqa_max_bytes` in the config. If you deliberately
    switch to `rqa_dense`, the workflow will stop before exceeding the configured
-   dense-recurrence memory envelope unless you explicitly opt out.
+   dense-recurrence memory cap unless you explicitly opt out.
 
 ## Output artifacts
 
