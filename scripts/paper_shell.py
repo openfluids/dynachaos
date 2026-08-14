@@ -155,10 +155,10 @@ h1{font-size:clamp(2.1rem,0.9rem+4.6vw,4.6rem);line-height:1.0;letter-spacing:-0
   margin:0.38em 0 0;max-width:17ch;text-wrap:balance;}
 h2{font-size:clamp(1.35rem,1.1rem+0.9vw,1.75rem);line-height:1.2;letter-spacing:-0.014em;font-weight:700;margin:0 0 0.6em;text-wrap:balance;}
 h3{font-size:1.06rem;font-weight:700;margin:2em 0 0.35em;text-wrap:balance;}
-p{margin:0 0 0.95em;}
+p{margin:0 0 0.95em;text-wrap:pretty;}
 article ul,article ol{margin:0 0 1em;padding-left:1.35em;}
 article li{margin-bottom:0.4em;}
-article li > p{margin:0 0 0.4em;}
+article li > p{margin:0 0 0.4em;text-wrap:pretty;}
 article li > p:last-child{margin-bottom:0;}
 article li > ul,article li > ol{margin-top:0.4em;}
 /* pandoc leaves these wrappers behind for LaTeX environments it half-converts */
@@ -172,12 +172,12 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 
 /* ------------------------------ hero ------------------------------ */
 .hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;}
-#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;}
+#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;cursor:crosshair;}
 .hero::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 92%,transparent) 38%,color-mix(in oklab,var(--ground) 22%,transparent) 68%,transparent 100%);}
 .hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
-  margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);}
-.hero-inner > *{max-width:min(52rem,90%);}
+  margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);pointer-events:none;}
+.hero-inner > *{max-width:min(52rem,90%);pointer-events:auto;}
 .hero-rise{animation:hero-rise .6s cubic-bezier(.22,.68,.28,1) both;}
 @keyframes hero-rise{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
 @media (prefers-reduced-motion:reduce){.hero-rise{animation:none;opacity:1;transform:none;}}
@@ -188,10 +188,17 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .stats li{margin:0;}
 .stats b{display:block;font-size:clamp(1.6rem,1.1rem+1.5vw,2.6rem);line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
 .stats span{font-family:var(--mono);font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-low);}
-.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:0.3rem clamp(1rem,2.5vw,2.4rem);
+.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem clamp(1rem,2.5vw,2.4rem);
   padding:0.9rem var(--gutter) 1.5rem;max-width:min(112rem,96vw);margin:0 auto;width:100%;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.04em;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
 .legend b{font-weight:400;color:var(--ink);}
 .swatch{display:inline-block;width:0.62rem;height:0.62rem;margin-right:0.4rem;vertical-align:-1px;border-radius:2px;}
+.hero-hud{display:inline-flex;align-items:center;gap:0.35rem;padding:0.18rem 0.5rem;border-radius:3px;background:color-mix(in oklab,var(--sunken) 75%,transparent);border:1px solid var(--rule-soft);transition:all .2s ease;}
+.hero-hud.active{border-color:color-mix(in oklab,var(--chaotic) 45%,transparent);background:var(--raised);}
+.hud-val{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);}
+.hud-tag{padding:0.08rem 0.35rem;border-radius:2px;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;}
+.hud-tag.chaotic{background:color-mix(in oklab,var(--chaotic) 18%,transparent);color:var(--chaotic);}
+.hud-tag.locked{background:color-mix(in oklab,var(--locked-hero) 18%,transparent);color:var(--locked-hero);}
+.hud-tag.torus{background:color-mix(in oklab,var(--torus) 18%,transparent);color:var(--torus);}
 
 /* ------------------------------ controls ------------------------------ */
 .controls{
@@ -788,6 +795,58 @@ function hero(){
       else { live=false; if(raf)cancelAnimationFrame(raf); }
     }
   },{threshold:0.01}).observe(cv);
+
+  const hud=document.getElementById("hero-hud");
+
+  function computeMetrics(px){
+    const r=2.85+(4.0-2.85)*(px/W);
+    let x=0.35+0.3*((px*2654435761)%1000)/1000,l=0;
+    for(let i=0;i<380;i++) x=r*x*(1-x);
+    for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
+    l/=160;
+    return {r,l};
+  }
+
+  function updateHUD(px){
+    if(!hud||!W) return;
+    const {r,l}=computeMetrics(px);
+    const tag=l>0.005?{c:"chaotic",t:"chaotic"}:l<-0.005?{c:"locked",t:"mode-locked"}:{c:"torus",t:"critical"};
+    const sign=l>0?"+":"";
+    hud.classList.add("active");
+    hud.innerHTML=`<span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
+  }
+
+  function resetHUD(){
+    if(!hud) return;
+    hud.classList.remove("active");
+    hud.innerHTML=`<span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">hover / tap plate to inspect parameter</span>`;
+  }
+
+  cv.addEventListener("pointermove",e=>{
+    if(!W) return;
+    const rect=cv.getBoundingClientRect();
+    const dpr=Math.min(devicePixelRatio||1,2);
+    const px=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
+    updateHUD(px);
+    ctx.globalAlpha=0.25;ctx.fillStyle=css("--ground");ctx.fillRect(Math.max(0,px-1),0,3,H);ctx.globalAlpha=1;
+    column(px,420,0.85);
+  },{passive:true});
+
+  cv.addEventListener("pointerdown",e=>{
+    if(!W) return;
+    const rect=cv.getBoundingClientRect();
+    const dpr=Math.min(devicePixelRatio||1,2);
+    const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
+    updateHUD(center);
+    for(let off=-6;off<=6;off++){
+      const px=Math.max(0,Math.min(W-1,center+off));
+      column(px,600,0.75);
+    }
+  },{passive:true});
+
+  cv.addEventListener("pointerleave",()=>{
+    resetHUD();
+  },{passive:true});
 
   // slow parallax: the plate drifts against the type as the reader leaves
   if(!reduced){

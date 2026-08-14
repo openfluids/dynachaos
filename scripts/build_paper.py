@@ -1137,7 +1137,7 @@ def hero(meta: dict[str, str], body: str) -> str:
 <span><span class="swatch" style="background:var(--locked)"></span><b>&lambda; &lt; 0</b> &nbsp;mode-locked</span>
 <span><span class="swatch" style="background:var(--torus)"></span><b>&lambda; &asymp; 0</b> &nbsp;quasiperiodic</span>
 <span><span class="swatch" style="background:var(--chaotic)"></span><b>&lambda; &gt; 0</b> &nbsp;chaotic</span>
-<span style="color:var(--ink-low)">above &mdash; logistic attractor, computed live in your browser</span>
+<span class="hero-hud" id="hero-hud"><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">hover / tap plate to inspect parameter</span></span>
 </div>
 </header>"""
 
