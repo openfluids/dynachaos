@@ -199,6 +199,8 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hud-tag.chaotic{background:color-mix(in oklab,var(--chaotic) 18%,transparent);color:var(--chaotic);}
 .hud-tag.locked{background:color-mix(in oklab,var(--locked-hero) 18%,transparent);color:var(--locked-hero);}
 .hud-tag.torus{background:color-mix(in oklab,var(--torus) 18%,transparent);color:var(--torus);}
+.hud-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--chaotic);box-shadow:0 0 6px var(--chaotic);animation:hud-blink 1.8s ease-in-out infinite;flex-shrink:0;}
+@keyframes hud-blink{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1.2);box-shadow:0 0 9px var(--chaotic);}}
 
 /* ------------------------------ controls ------------------------------ */
 .controls{
@@ -747,6 +749,38 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
+  const SPARKS_COUNT=140;
+  let sparks=[];
+
+  function makeSpark(targetPx){
+    const px=targetPx!==undefined?targetPx:Math.floor(Math.random()*W);
+    const r=2.85+(4.0-2.85)*(px/W);
+    let x=0.35+0.3*((px*2654435761+(tick*19))%1000)/1000;
+    for(let i=0;i<100;i++) x=r*x*(1-x);
+    let l=0;
+    for(let i=0;i<50;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
+    l/=50;
+    const maxLife=35+Math.floor(Math.random()*75);
+    return {
+      px,r,x,l,
+      life:maxLife,
+      maxLife,
+      speed:1+Math.floor(Math.random()*2),
+      size:Math.random()<0.3?2.2:1.35,
+      color:l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus")
+    };
+  }
+
+  function initSparks(){
+    sparks=[];
+    if(!W) return;
+    for(let i=0;i<SPARKS_COUNT;i++){
+      const s=makeSpark();
+      s.life=Math.floor(Math.random()*s.maxLife);
+      sparks.push(s);
+    }
+  }
+
   function sweep(target){
     const end=Math.min(W,target||col+18);
     for(;col<end;col++){
@@ -754,17 +788,54 @@ function hero(){
       column(col,280,0.46);
     }
     if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
-    else if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
+    else if(!reduced&&!reducedData){initSparks();live=true;raf=requestAnimationFrame(shimmer);}
   }
 
   function shimmer(){
     tick++;
-    // hold the density steady so the plate never saturates to a solid block
-    if(tick%3===0){
-      ctx.globalAlpha=0.016;ctx.fillStyle=css("--ground");
-      ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;
+    // Faint atmospheric wash to create soft fading orbital trails
+    if(tick%2===0){
+      ctx.globalAlpha=0.02;
+      ctx.fillStyle=css("--ground");
+      ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha=1;
     }
-    for(let k=0;k<10;k++) column(Math.floor(Math.random()*W),70,0.16);
+
+    // 1. Advance living dynamical orbit streams
+    for(let i=0;i<sparks.length;i++){
+      const s=sparks[i];
+      for(let step=0;step<s.speed;step++){
+        s.x=s.r*s.x*(1-s.x);
+      }
+      const y=(1-s.x)*H;
+      const progress=s.life/s.maxLife;
+      const alpha=Math.sin(progress*Math.PI)*0.85;
+
+      ctx.fillStyle=s.color;
+      ctx.globalAlpha=alpha;
+      ctx.fillRect(s.px,y,s.size,s.size);
+
+      s.life--;
+      if(s.life<=0){
+        sparks[i]=makeSpark();
+      }
+    }
+    ctx.globalAlpha=1;
+
+    // 2. Harmonic branch twinkling across resonance windows
+    if(tick%3===0){
+      const resonance=[3.0, 3.2, 3.449, 3.544, 3.5699, 3.63, 3.738, 3.8284, 3.845, 3.905, 3.96];
+      const targetR=resonance[Math.floor((tick/3)%resonance.length)];
+      const targetPx=Math.round(((targetR-2.85)/(4.0-2.85))*W);
+      if(targetPx>=0&&targetPx<W){
+        const twinkleAlpha=0.35+0.35*Math.sin(tick*0.14);
+        column(targetPx,80,twinkleAlpha);
+      }
+    }
+
+    // 3. Ambient attractor reinforcement
+    column(Math.floor(Math.random()*W),40,0.18);
+
     if(live) raf=requestAnimationFrame(shimmer);
   }
 
@@ -785,6 +856,7 @@ function hero(){
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
     col=0;live=false;
     if(raf)cancelAnimationFrame(raf);
+    initSparks();
     sweep(reduced?W:0);
   }
 
@@ -813,13 +885,13 @@ function hero(){
     const tag=l>0.005?{c:"chaotic",t:"chaotic"}:l<-0.005?{c:"locked",t:"mode-locked"}:{c:"torus",t:"critical"};
     const sign=l>0?"+":"";
     hud.classList.add("active");
-    hud.innerHTML=`<span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
+    hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
   }
 
   function resetHUD(){
     if(!hud) return;
     hud.classList.remove("active");
-    hud.innerHTML=`<span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">hover / tap plate to inspect parameter</span>`;
+    hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">live simulation &middot; hover / tap to inspect</span>`;
   }
 
   cv.addEventListener("pointermove",e=>{
@@ -838,10 +910,17 @@ function hero(){
     const dpr=Math.min(devicePixelRatio||1,2);
     const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
     updateHUD(center);
-    for(let off=-6;off<=6;off++){
+    // Inject extra energetic sparks around clicked position
+    for(let off=-5;off<=5;off++){
       const px=Math.max(0,Math.min(W-1,center+off));
-      column(px,600,0.75);
+      column(px,550,0.8);
+      const s=makeSpark(px);
+      s.life=s.maxLife;
+      s.speed=2;
+      s.size=2.4;
+      sparks.push(s);
     }
+    if(sparks.length>SPARKS_COUNT+30) sparks.splice(0,11);
   },{passive:true});
 
   cv.addEventListener("pointerleave",()=>{
