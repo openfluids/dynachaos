@@ -178,6 +178,9 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
   margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);}
 .hero-inner > *{max-width:min(52rem,90%);}
+.hero-rise{animation:hero-rise .6s cubic-bezier(.22,.68,.28,1) both;}
+@keyframes hero-rise{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.hero-rise{animation:none;opacity:1;transform:none;}}
 .byline{margin:1.6em 0 0;font-size:1rem;color:var(--ink);}
 .byline .affil{display:block;color:var(--ink-low);font-size:0.86rem;margin-top:0.25em;max-width:44ch;}
 .lede{font-size:clamp(1.06rem,0.9rem+0.62vw,1.4rem);line-height:1.55;color:var(--ink-mid);max-width:48ch;margin-top:1.5em;}
@@ -738,10 +741,10 @@ function hero(){
   }
 
   function sweep(target){
-    const end=Math.min(W,target||col+6);
+    const end=Math.min(W,target||col+18);
     for(;col<end;col++){
       ctx.globalAlpha=0.10;ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.6,H);ctx.globalAlpha=1;
-      column(col,200,0.46);
+      column(col,280,0.46);
     }
     if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
     else if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
@@ -800,8 +803,7 @@ function hero(){
     rrq=true;
     requestAnimationFrame(()=>{rrq=false;reset(true);});
   });
-  if("requestIdleCallback" in window) requestIdleCallback(()=>reset());
-  else requestAnimationFrame(()=>reset());
+  requestAnimationFrame(()=>reset());
   return ()=>reset(false);
 }
 
@@ -2329,6 +2331,11 @@ if("requestIdleCallback" in window){
 }
 links.forEach(a=>a.addEventListener("click",()=>openBranch(a)));
 openBranch(links[0]);
+
+document.querySelectorAll(".hero-inner > *").forEach((n,i)=>{
+  n.classList.add("hero-rise");
+  n.style.animationDelay=(0.06*i+0.05).toFixed(2)+"s";
+});
 
 const rebuildHero=hero();
 function repaint(){rebuildHero();MOUNTED.forEach(p=>p.redraw());}
