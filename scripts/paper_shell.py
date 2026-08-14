@@ -749,10 +749,12 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  const SPARKS_COUNT=140;
-  let sparks=[];
+  const SPARKS_COUNT=140, BURST_COUNT=20;
+  const sparks=Array.from({length:SPARKS_COUNT+BURST_COUNT},()=>({
+    px:0,r:0,x:0,l:0,life:0,maxLife:1,speed:1,size:1.35,color:""
+  }));
 
-  function makeSpark(targetPx){
+  function populateSpark(s,targetPx,isBurst){
     const px=targetPx!==undefined?targetPx:Math.floor(Math.random()*W);
     const r=2.85+(4.0-2.85)*(px/W);
     let x=0.35+0.3*((px*2654435761+(tick*19))%1000)/1000;
@@ -760,24 +762,23 @@ function hero(){
     let l=0;
     for(let i=0;i<50;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
     l/=50;
-    const maxLife=35+Math.floor(Math.random()*75);
-    return {
-      px,r,x,l,
-      life:maxLife,
-      maxLife,
-      speed:1+Math.floor(Math.random()*2),
-      size:Math.random()<0.3?2.2:1.35,
-      color:l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus")
-    };
+    const maxLife=isBurst?(45+Math.floor(Math.random()*45)):(35+Math.floor(Math.random()*75));
+    s.px=px;s.r=r;s.x=x;s.l=l;
+    s.maxLife=maxLife;
+    s.life=maxLife;
+    s.speed=isBurst?2:(1+Math.floor(Math.random()*2));
+    s.size=isBurst?2.4:(Math.random()<0.3?2.2:1.35);
+    s.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
   }
 
   function initSparks(){
-    sparks=[];
     if(!W) return;
     for(let i=0;i<SPARKS_COUNT;i++){
-      const s=makeSpark();
-      s.life=Math.floor(Math.random()*s.maxLife);
-      sparks.push(s);
+      populateSpark(sparks[i]);
+      sparks[i].life=Math.floor(Math.random()*sparks[i].maxLife);
+    }
+    for(let i=SPARKS_COUNT;i<sparks.length;i++){
+      sparks[i].life=0;sparks[i].maxLife=1;
     }
   }
 
@@ -801,9 +802,11 @@ function hero(){
       ctx.globalAlpha=1;
     }
 
-    // 1. Advance living dynamical orbit streams
+    // 1. Advance living dynamical orbit streams (zero memory allocation)
     for(let i=0;i<sparks.length;i++){
       const s=sparks[i];
+      if(s.life<=0) continue;
+
       for(let step=0;step<s.speed;step++){
         s.x=s.r*s.x*(1-s.x);
       }
@@ -816,8 +819,8 @@ function hero(){
       ctx.fillRect(s.px,y,s.size,s.size);
 
       s.life--;
-      if(s.life<=0){
-        sparks[i]=makeSpark();
+      if(s.life<=0&&i<SPARKS_COUNT){
+        populateSpark(s);
       }
     }
     ctx.globalAlpha=1;
@@ -910,17 +913,13 @@ function hero(){
     const dpr=Math.min(devicePixelRatio||1,2);
     const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
     updateHUD(center);
-    // Inject extra energetic sparks around clicked position
-    for(let off=-5;off<=5;off++){
+    // Populate burst pool slots in place (zero object allocation)
+    for(let k=0;k<BURST_COUNT;k++){
+      const off=(k-(BURST_COUNT>>1));
       const px=Math.max(0,Math.min(W-1,center+off));
-      column(px,550,0.8);
-      const s=makeSpark(px);
-      s.life=s.maxLife;
-      s.speed=2;
-      s.size=2.4;
-      sparks.push(s);
+      if(k%2===0) column(px,480,0.75);
+      populateSpark(sparks[SPARKS_COUNT+k],px,true);
     }
-    if(sparks.length>SPARKS_COUNT+30) sparks.splice(0,11);
   },{passive:true});
 
   cv.addEventListener("pointerleave",()=>{
