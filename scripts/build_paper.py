@@ -25,6 +25,7 @@ import html
 import json
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -816,15 +817,41 @@ def figure_block(
     )
 
 
-def thumb_dims() -> dict[str, tuple[int, int]]:
+def get_image_size(path: Path) -> tuple[int, int] | None:
     try:
-        from PIL import Image
-    except ModuleNotFoundError:
-        return {}
+        data = path.read_bytes()
+        if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+            return struct.unpack(">II", data[16:24])
+        if data.startswith(b"RIFF") and len(data) >= 30 and data[8:12] == b"WEBP":
+            tag = data[12:16]
+            if tag == b"VP8 ":
+                w = (data[26] | (data[27] << 8)) & 0x3FFF
+                h = (data[28] | (data[29] << 8)) & 0x3FFF
+                return (w, h)
+            elif tag == b"VP8L" and len(data) >= 25:
+                b0, b1, b2, b3 = data[21:25]
+                w = 1 + (((b1 & 0x3F) << 8) | b0)
+                h = 1 + (((b3 & 0xF) << 10) | (b2 << 2) | ((b1 & 0xC0) >> 6))
+                return (w, h)
+            elif tag == b"VP8X" and len(data) >= 30:
+                w = 1 + int.from_bytes(data[24:27], "little")
+                h = 1 + int.from_bytes(data[27:30], "little")
+                return (w, h)
+    except Exception:
+        pass
+    return None
+
+
+def thumb_dims() -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
-    for path in (SITE / "thumbs").rglob("*.webp"):
-        with Image.open(path) as im:
-            out[(path.parent.name, path.stem)] = im.size
+    for base in (SITE / "thumbs", SITE / "full"):
+        if not base.exists():
+            continue
+        for path in base.rglob("*"):
+            if path.is_file() and path.suffix in (".webp", ".png"):
+                sz = get_image_size(path)
+                if sz and (path.parent.name, path.stem) not in out:
+                    out[(path.parent.name, path.stem)] = sz
     return out
 
 
@@ -957,6 +984,10 @@ def transform(
     # browser does not render MathML; drop it rather than rely on a UA stylesheet.
     n_ann = len(ANNOTATION_RE.findall(body))
     body = ANNOTATION_RE.sub("", body)
+    body = body.replace(' xmlns="http://www.w3.org/1998/Math/MathML"', "")
+    body = body.replace('<math display="inline">', "<math>")
+    body = re.sub(r"<semantics>\s*", "", body)
+    body = re.sub(r"\s*</semantics>", "", body)
     body, folded = fold_back_matter(body)
     print(
         f"  figures: {stats['interactive']} interactive, {stats['static']} static "
@@ -1162,16 +1193,61 @@ d.setAttribute("data-figsize",g("dc-fig")||"short");
 }catch(e){}})();</script>"""
 
 
-def assemble(body: str, nav: str, meta: dict[str, str], index_json: str) -> str:
-    return f"""<!doctype html>
+def minify_css(css: str) -> str:
+    css = re.sub(r"/\*[\s\S]*?\*/", "", css)
+    css = re.sub(r"\s*([\{\}\:\;\,\>\+\~])\s*", r"\1", css)
+    css = re.sub(r";\}", "}", css)
+    css = re.sub(r"\s+", " ", css)
+    return css.strip()
+
+
+def minify_js(js_code: str) -> str:
+    if shutil.which("bun"):
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as fin:
+            fin.write(js_code)
+            fin.flush()
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as fout:
+                res = subprocess.run(
+                    ["bun", "build", fin.name, "--minify", "--outfile", fout.name],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    return Path(fout.name).read_text(encoding="utf-8").strip()
+    lines = []
+    for line in js_code.splitlines():
+        line = line.strip()
+        if not line or line.startswith("//"):
+            continue
+        lines.append(line)
+    text = "\n".join(lines)
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    return text.strip()
+
+
+def minify_html(html_str: str) -> str:
+    tokens = re.split(r"(<pre\b[^>]*>.*?</pre>|<code\b[^>]*>.*?</code>)", html_str, flags=re.S)
+    for i in range(0, len(tokens), 2):
+        tokens[i] = re.sub(r">\s+<", "><", tokens[i])
+        tokens[i] = re.sub(r"\s+", " ", tokens[i])
+    return "".join(tokens).strip()
+
+
+def assemble(body: str, nav: str, meta: dict[str, str], index_json: str = "") -> str:
+    min_css = minify_css(CSS)
+    raw_html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(meta["title"])}</title>
 <meta name="description" content="{html.escape(meta["lede"][:180])}">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>">
+<link rel="preload" href="fonts/pagella-bold.woff2" as="font" type="font/woff2" crossorigin fetchpriority="high">
+<link rel="preload" href="fonts/pagella-regular.woff2" as="font" type="font/woff2" crossorigin>
 {PREF_SCRIPT}
-<style>{CSS}</style>
+<style>{min_css}</style>
+<script src="app.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>
@@ -1179,9 +1255,11 @@ def assemble(body: str, nav: str, meta: dict[str, str], index_json: str) -> str:
 {hero(meta, body)}
 <div class="shell">
 {nav}
-<article id="main-content">
+<main id="main-content">
+<article>
 {body}
 </article>
+</main>
 </div>
 <footer class="foot">
 <p>Every figure is recomputed from scratch by the same public commands, on any machine:</p>
@@ -1193,7 +1271,7 @@ dynachaos run all</code></pre>
 </footer>
 <div class="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
 <button class="lb-close" type="button">close</button>
-<img alt="">
+<img alt="" width="900" height="600">
 <p class="lb-cap"></p>
 <p class="lb-actions"><a class="lb-goto" href="#" data-fig-target="">go to figure in text</a></p>
 <p class="lb-announce sr-only" aria-live="polite"></p>
@@ -1201,11 +1279,50 @@ dynachaos run all</code></pre>
 {SEARCH_OVERLAY}
 {HELP_OVERLAY}
 {TOC_BACKDROP}
-<script type="application/json" id="search-index">{index_json}</script>
-<script>{JS}</script>
+<script type="application/json" id="search-index"></script>
 </body>
-</html>
-"""
+</html>"""
+    return minify_html(raw_html)
+
+
+def copy_and_subset_fonts(body: str, src_dir: Path, dst_dir: Path) -> int:
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    chars = sorted(set(body))
+    unicodes_str = ",".join(f"U+{ord(c):04X}" for c in chars if ord(c) < 0x2500) or "U+0020-007E"
+
+    count = 0
+    for face in src_dir.glob("*.woff2"):
+        dst = dst_dir / face.name
+        if face.stem == "pagella-bold":
+            face_unicodes = "U+0020-007E,U+00A0-00FF,U+2010-2027"
+        elif face.stem in ("pagella-regular", "pagella-italic", "pagella-bolditalic"):
+            face_unicodes = f"{unicodes_str},U+0020-007E,U+00A0-00FF,U+2010-2027"
+        else:
+            face_unicodes = None
+
+        if face_unicodes:
+            try:
+                from fontTools.subset import main as subset_main
+
+                with tempfile.NamedTemporaryFile(suffix=".woff2", delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
+                args = [
+                    str(face),
+                    f"--unicodes={face_unicodes}",
+                    "--flavor=woff2",
+                    "--layout-features=*",
+                    f"--output-file={tmp_path}",
+                ]
+                subset_main(args)
+                if tmp_path.exists() and tmp_path.stat().st_size > 0:
+                    shutil.copy2(tmp_path, dst)
+                    count += 1
+                    continue
+            except Exception:
+                pass
+        shutil.copy2(face, dst)
+        count += 1
+    return count
 
 
 def main() -> None:
@@ -1235,9 +1352,6 @@ def main() -> None:
 
     SITE.mkdir(parents=True, exist_ok=True)
     fonts_dst = SITE / "fonts"
-    fonts_dst.mkdir(parents=True, exist_ok=True)
-    for face in FONTS_SRC.glob("*.woff2"):
-        shutil.copy2(face, fonts_dst / face.name)
 
     if not META.exists():
         raise SystemExit(f"{META.relative_to(REPO)} is missing. Import it once with --manuscript.")
@@ -1255,8 +1369,14 @@ def main() -> None:
     if dropped:
         print(f"  removed {dropped} duplicate id attributes")
 
+    copy_and_subset_fonts(body, FONTS_SRC, fonts_dst)
+
     index_units = build_search_index(body)
     index_json, index_truncated = search_index_json(index_units)
+    (SITE / "search-index.json").write_text(index_json, encoding="utf-8")
+
+    min_js = minify_js(JS)
+    (SITE / "app.js").write_text(min_js, encoding="utf-8")
 
     page = assemble(body, build_nav(nav), meta, index_json)
     out = SITE / "index.html"

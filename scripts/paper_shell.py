@@ -20,19 +20,42 @@ Two decisions worth stating, because they drive the rest:
 from __future__ import annotations
 
 FONT_FACES = (
-    ("TeX Gyre Pagella", "pagella-regular.woff2", "normal", "400"),
-    ("TeX Gyre Pagella", "pagella-italic.woff2", "italic", "400"),
-    ("TeX Gyre Pagella", "pagella-bold.woff2", "normal", "700"),
-    ("TeX Gyre Pagella", "pagella-bolditalic.woff2", "italic", "700"),
-    ("TeX Gyre Pagella Math", "pagella-math.woff2", "normal", "400"),
+    (
+        "TeX Gyre Pagella",
+        "pagella-regular.woff2",
+        "normal",
+        "400",
+        "U+0000-024F,U+1E00-1EFF,U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+FEFF,U+FFFD",
+    ),
+    (
+        "TeX Gyre Pagella",
+        "pagella-italic.woff2",
+        "italic",
+        "400",
+        "U+0000-024F,U+1E00-1EFF,U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+FEFF,U+FFFD",
+    ),
+    (
+        "TeX Gyre Pagella",
+        "pagella-bold.woff2",
+        "normal",
+        "700",
+        "U+0000-024F,U+1E00-1EFF,U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+FEFF,U+FFFD",
+    ),
+    (
+        "TeX Gyre Pagella",
+        "pagella-bolditalic.woff2",
+        "italic",
+        "700",
+        "U+0000-024F,U+1E00-1EFF,U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+FEFF,U+FFFD",
+    ),
 )
 
 
 def _font_css() -> str:
     return "\n".join(
         f"@font-face{{font-family:'{family}';src:url('fonts/{file}') format('woff2');"
-        f"font-style:{style};font-weight:{weight};font-display:swap;}}"
-        for family, file, style, weight in FONT_FACES
+        f"font-style:{style};font-weight:{weight};font-display:optional;unicode-range:{ur};}}"
+        for family, file, style, weight, ur in FONT_FACES
     )
 
 
@@ -148,16 +171,13 @@ code,.num{font-family:var(--mono);font-size:0.85em;font-variant-numeric:tabular-
 pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padding:0.8rem 0.95rem;overflow-x:auto;font-size:0.78rem;line-height:1.55;}
 
 /* ------------------------------ hero ------------------------------ */
-.hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);}
+.hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;}
 #bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;}
 .hero::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 92%,transparent) 38%,color-mix(in oklab,var(--ground) 22%,transparent) 68%,transparent 100%);}
 .hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
   margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);}
 .hero-inner > *{max-width:min(52rem,90%);}
-.hero-rise{opacity:0;transform:translateY(18px);animation:rise .85s cubic-bezier(.22,.68,.28,1) forwards;}
-@keyframes rise{to{opacity:1;transform:none;}}
-@media (prefers-reduced-motion:reduce){.hero-rise{opacity:1;transform:none;animation:none;}}
 .byline{margin:1.6em 0 0;font-size:1rem;color:var(--ink);}
 .byline .affil{display:block;color:var(--ink-low);font-size:0.86rem;margin-top:0.25em;max-width:44ch;}
 .lede{font-size:clamp(1.06rem,0.9rem+0.62vw,1.4rem);line-height:1.55;color:var(--ink-mid);max-width:48ch;margin-top:1.5em;}
@@ -261,8 +281,10 @@ details.backmatter > summary h2::after{
 details.backmatter[open] > summary h2::after{content:"hide";}
 details.backmatter > summary:hover h2::after{color:var(--chaotic);border-color:var(--chaotic);}
 
+main{display:block;min-width:0;}
 article{max-width:var(--measure);margin:0 auto;}
-article section{scroll-margin-top:3.5rem;}
+article > section{scroll-margin-top:3.5rem;content-visibility:auto;contain-intrinsic-size:auto 600px;}
+article > section:first-child{content-visibility:visible;}
 article > section > h2,
 article > section > details > summary > h2{border-top:1px solid var(--rule);padding-top:1.4rem;margin-top:2.8rem;}
 article > section:first-child > h2{margin-top:0;border-top:none;padding-top:0;}
@@ -648,13 +670,18 @@ function makeFocusTrap(getFocusables){
   const bar=document.querySelector(".progress");
   const art=document.querySelector("article");
   if(!bar||!art) return;
+  let ticking=false;
   const upd=()=>{
+    ticking=false;
     const top=art.offsetTop, h=art.offsetHeight-innerHeight;
     const p=h>0?Math.min(1,Math.max(0,(scrollY-top)/h)):0;
     bar.style.width=(p*100).toFixed(2)+"%";
   };
-  addEventListener("scroll",upd,{passive:true});
-  addEventListener("resize",upd);upd();
+  const req=()=>{if(!ticking){ticking=true;requestAnimationFrame(upd);}};
+  addEventListener("scroll",req,{passive:true});
+  addEventListener("resize",req,{passive:true});
+  if("requestIdleCallback" in window){requestIdleCallback(upd);}
+  else setTimeout(upd,150);
 })();
 
 /* ---------------- reading position: persist + restore scroll ---------------- */
@@ -711,10 +738,10 @@ function hero(){
   }
 
   function sweep(target){
-    const end=Math.min(W,target||col+22);
+    const end=Math.min(W,target||col+6);
     for(;col<end;col++){
       ctx.globalAlpha=0.10;ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.6,H);ctx.globalAlpha=1;
-      column(col,330,0.46);
+      column(col,200,0.46);
     }
     if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
     else if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
@@ -773,7 +800,8 @@ function hero(){
     rrq=true;
     requestAnimationFrame(()=>{rrq=false;reset(true);});
   });
-  reset();
+  if("requestIdleCallback" in window) requestIdleCallback(()=>reset());
+  else requestAnimationFrame(()=>reset());
   return ()=>reset(false);
 }
 
@@ -1622,9 +1650,24 @@ document.querySelectorAll("figure").forEach(fig=>{
   if(!overlay||!btn) return;
   const input=overlay.querySelector(".search-input");
   const list=overlay.querySelector(".search-results");
-  const dataEl=document.getElementById("search-index");
-  let INDEX=[];
-  try{INDEX=dataEl?JSON.parse(dataEl.textContent):[];}catch(e){INDEX=[];}
+  let INDEX=null,indexLoading=null;
+
+  function loadIndex(){
+    if(INDEX) return Promise.resolve(INDEX);
+    if(indexLoading) return indexLoading;
+    const dataEl=document.getElementById("search-index");
+    if(dataEl&&dataEl.textContent.trim()){
+      try{INDEX=JSON.parse(dataEl.textContent);return Promise.resolve(INDEX);}catch(e){INDEX=[];}
+    }
+    indexLoading=fetch("search-index.json")
+      .then(r=>r.json())
+      .then(data=>{INDEX=data;return INDEX;})
+      .catch(()=>{INDEX=[];return INDEX;});
+    return indexLoading;
+  }
+  btn.addEventListener("pointerenter",()=>loadIndex(),{once:true});
+  btn.addEventListener("focus",()=>loadIndex(),{once:true});
+  setTimeout(()=>{if("requestIdleCallback" in window)requestIdleCallback(loadIndex);},4000);
 
   let opener=null,items=[],sel=-1;
 
@@ -1674,6 +1717,10 @@ document.querySelectorAll("figure").forEach(fig=>{
   }
 
   function render(q){
+    if(!INDEX){
+      loadIndex().then(()=>render(q));
+      return;
+    }
     items=runSearch(q);sel=-1;
     list.replaceChildren();
     overlay.classList.toggle("empty",q.trim().length>0&&items.length===0);
@@ -1704,7 +1751,7 @@ document.querySelectorAll("figure").forEach(fig=>{
   function open(){
     opener=document.activeElement;
     overlay.classList.add("on");
-    input.value="";render("");
+    input.value="";loadIndex().then(()=>render(""));
     input.focus();
   }
   function close(){
@@ -1713,6 +1760,7 @@ document.querySelectorAll("figure").forEach(fig=>{
     opener=null;
   }
 
+  btn.addEventListener("pointerenter",()=>loadIndex(),{once:true});
   btn.addEventListener("click",()=>{overlay.classList.contains("on")?close():open();});
   input.addEventListener("input",()=>render(input.value));
   list.addEventListener("click",e=>{
@@ -2127,64 +2175,66 @@ document.querySelectorAll("figure").forEach(fig=>{
 
 /* ---------------- cited-in back-links ---------------- */
 (function(){
-  // Walk out of unnumbered subsections to the nearest numbered section so a
-  // citation in "Notation" still lists under §1 rather than vanishing.
-  function numberedSection(from){
-    let sec=from&&from.closest("section");
-    while(sec){
-      if(sec.id){
-        let h=null;
-        for(const c of sec.children){
-          if(c.matches("h2, h3")){h=c;break;}
-          if(c.matches("details")){
-            const s=c.querySelector(":scope > summary > h2");
-            if(s){h=s;break;}
+  function buildBacklinks(){
+    function numberedSection(from){
+      let sec=from&&from.closest("section");
+      while(sec){
+        if(sec.id){
+          let h=null;
+          for(const c of sec.children){
+            if(c.matches("h2, h3")){h=c;break;}
+            if(c.matches("details")){
+              const s=c.querySelector(":scope > summary > h2");
+              if(s){h=s;break;}
+            }
           }
+          const sn=h&&h.querySelector(".secno");
+          const label=sn&&sn.textContent.trim();
+          if(label) return {id:sec.id,label};
         }
-        const sn=h&&h.querySelector(".secno");
-        const label=sn&&sn.textContent.trim();
-        if(label) return {id:sec.id,label};
+        sec=sec.parentElement&&sec.parentElement.closest("section");
       }
-      sec=sec.parentElement&&sec.parentElement.closest("section");
+      return null;
     }
-    return null;
-  }
-  const map=new Map();
-  document.querySelectorAll('a[role="doc-biblioref"]').forEach(a=>{
-    const href=a.getAttribute("href")||"";
-    if(href[0]!=="#") return;
-    const key=href.slice(1);
-    const where=numberedSection(a);
-    if(!where) return;
-    if(!map.has(key)) map.set(key,[]);
-    const list=map.get(key);
-    if(!list.some(x=>x.id===where.id)) list.push(where);
-  });
-  const rank=s=>s.split(".").map(n=>parseInt(n,10)||0);
-  const cmp=(a,b)=>{
-    const A=rank(a.label),B=rank(b.label);
-    for(let i=0;i<Math.max(A.length,B.length);i++){
-      const d=(A[i]||0)-(B[i]||0);if(d) return d;
-    }
-    return 0;
-  };
-  for(const [key,cites] of map){
-    const el=document.getElementById(key);
-    if(!el) continue;
-    cites.sort(cmp);
-    const cap=cites.slice(0,6),rest=cites.length-cap.length;
-    const line=document.createElement("div");
-    line.className="cited-in";
-    line.appendChild(document.createTextNode("Cited in "));
-    cap.forEach((c,i)=>{
-      if(i) line.appendChild(document.createTextNode(", "));
-      const a=document.createElement("a");
-      a.href="#"+c.id;a.textContent="\u00A7"+c.label;
-      line.appendChild(a);
+    const map=new Map();
+    document.querySelectorAll('a[role="doc-biblioref"]').forEach(a=>{
+      const href=a.getAttribute("href")||"";
+      if(href[0]!=="#") return;
+      const key=href.slice(1);
+      const where=numberedSection(a);
+      if(!where) return;
+      if(!map.has(key)) map.set(key,[]);
+      const list=map.get(key);
+      if(!list.some(x=>x.id===where.id)) list.push(where);
     });
-    if(rest) line.appendChild(document.createTextNode(" + "+rest+" more"));
-    el.appendChild(line);
+    const rank=s=>s.split(".").map(n=>parseInt(n,10)||0);
+    const cmp=(a,b)=>{
+      const A=rank(a.label),B=rank(b.label);
+      for(let i=0;i<Math.max(A.length,B.length);i++){
+        const d=(A[i]||0)-(B[i]||0);if(d) return d;
+      }
+      return 0;
+    };
+    for(const [key,cites] of map){
+      const el=document.getElementById(key);
+      if(!el) continue;
+      cites.sort(cmp);
+      const cap=cites.slice(0,6),rest=cites.length-cap.length;
+      const line=document.createElement("div");
+      line.className="cited-in";
+      line.appendChild(document.createTextNode("Cited in "));
+      cap.forEach((c,i)=>{
+        if(i) line.appendChild(document.createTextNode(", "));
+        const a=document.createElement("a");
+        a.href="#"+c.id;a.textContent="\u00A7"+c.label;
+        line.appendChild(a);
+      });
+      if(rest) line.appendChild(document.createTextNode(" + "+rest+" more"));
+      el.appendChild(line);
+    }
   }
+  if("requestIdleCallback" in window){requestIdleCallback(buildBacklinks);}
+  else setTimeout(buildBacklinks,200);
 })();
 
 /* ---------------- print: open closed details ---------------- */
@@ -2272,16 +2322,34 @@ const spy=new IntersectionObserver(es=>{
     }
   }
 },{rootMargin:"-20% 0px -70%"});
-document.querySelectorAll("article section[id]").forEach(s=>spy.observe(s));
+if("requestIdleCallback" in window){
+  requestIdleCallback(()=>{document.querySelectorAll("article section[id]").forEach(s=>spy.observe(s));});
+} else {
+  setTimeout(()=>{document.querySelectorAll("article section[id]").forEach(s=>spy.observe(s));},100);
+}
 links.forEach(a=>a.addEventListener("click",()=>openBranch(a)));
 openBranch(links[0]);
 
-document.querySelectorAll(".hero-inner > *").forEach((n,i)=>{
-  n.classList.add("hero-rise");
-  n.style.animationDelay=(0.06*i+0.05).toFixed(2)+"s";
-});
 const rebuildHero=hero();
 function repaint(){rebuildHero();MOUNTED.forEach(p=>p.redraw());}
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",repaint);
 new MutationObserver(repaint).observe(root,{attributes:true,attributeFilter:["data-theme"]});
+
+/* ---------------- lazy-load math webfont ---------------- */
+(function(){
+  if(!("fonts" in document)||typeof FontFace==="undefined") return;
+  const mf=new FontFace("TeX Gyre Pagella Math","url('fonts/pagella-math.woff2') format('woff2')",{style:"normal",weight:"400",display:"swap"});
+  let loaded=false;
+  const loadMath=()=>{if(loaded)return;loaded=true;mf.load().then(f=>document.fonts.add(f)).catch(()=>{});};
+  const firstMath=document.querySelector("math");
+  if(firstMath&&"IntersectionObserver" in window){
+    const io=new IntersectionObserver(es=>{
+      for(const e of es){if(e.isIntersecting){loadMath();io.disconnect();break;}}
+    },{rootMargin:"600px"});
+    io.observe(firstMath);
+  } else {
+    if("requestIdleCallback" in window) requestIdleCallback(loadMath);
+    else setTimeout(loadMath,1500);
+  }
+})();
 """
