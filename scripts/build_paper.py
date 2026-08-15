@@ -1127,6 +1127,7 @@ def hero(meta: dict[str, str], body: str) -> str:
     )
     return f"""<header class="hero">
 <canvas id="bifurcation" aria-hidden="true"></canvas>
+<div class="hero-shock" id="hero-shock" hidden aria-hidden="true"></div>
 <div class="hero-inner">
 <p class="eyebrow">Interactive study &middot; built on dynachaos</p>
 <h1>{html.escape(meta["title"])}</h1>

@@ -171,25 +171,27 @@ code,.num{font-family:var(--mono);font-size:0.85em;font-variant-numeric:tabular-
 pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padding:0.8rem 0.95rem;overflow-x:auto;font-size:0.78rem;line-height:1.55;}
 
 /* ------------------------------ hero ------------------------------ */
-.hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;}
-#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;cursor:crosshair;}
-.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+.hero{position:relative;height:100svh;min-height:100svh;display:grid;grid-template-rows:minmax(0,1fr) auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;isolation:isolate;}
+#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;z-index:0;will-change:transform;cursor:crosshair;}
+.hero-shock{position:absolute;top:-8%;bottom:-8%;left:0;width:3px;height:116%;z-index:1;pointer-events:none;
+  background:var(--chaotic);
+  box-shadow:0 0 10px 4px color-mix(in oklab,var(--chaotic) 75%,transparent),0 0 36px 16px color-mix(in oklab,var(--chaotic) 40%,transparent);
+  will-change:transform;}
+.hero-shock[hidden]{display:none;}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
   background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 74%,transparent) 34%,color-mix(in oklab,var(--ground) 10%,transparent) 68%,transparent 100%);}
-.hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
+.hero-inner{position:relative;z-index:2;align-self:center;min-height:0;overflow:auto;width:100%;max-width:min(112rem,96vw);
   margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);pointer-events:none;}
 .hero-inner > *{max-width:min(52rem,90%);pointer-events:auto;}
-.hero-rise{animation:hero-rise .6s cubic-bezier(.22,.68,.28,1) both;}
-@keyframes hero-rise{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
-@media (prefers-reduced-motion:reduce){.hero-rise{animation:none;opacity:1;transform:none;}}
-.byline{margin:1.6em 0 0;font-size:1rem;color:var(--ink);}
-.byline .affil{display:block;color:var(--ink-low);font-size:0.86rem;margin-top:0.25em;max-width:44ch;}
-.lede{font-size:clamp(1.06rem,0.9rem+0.62vw,1.4rem);line-height:1.55;color:var(--ink-mid);max-width:48ch;margin-top:1.5em;}
-.stats{display:flex;flex-wrap:wrap;gap:2.25rem;margin-top:2.4rem;padding:0;list-style:none;}
-.stats li{margin:0;}
-.stats b{display:block;font-size:clamp(1.6rem,1.1rem+1.5vw,2.6rem);line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
-.stats span{font-family:var(--mono);font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-low);}
 .legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.6rem clamp(1rem,2.5vw,2rem);
   padding:0.9rem var(--gutter) 1.5rem;max-width:min(112rem,96vw);margin:0 auto;width:100%;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.04em;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
+@media (max-height:42rem){
+  .hero-inner{padding:1.1rem var(--gutter) 0.5rem;}
+  .byline{margin:0.8em 0 0;}
+  .lede{margin-top:0.8em;}
+  .stats{margin-top:1rem;gap:1.25rem;}
+  .legend{padding:0.55rem var(--gutter) 0.75rem;}
+}
 .legend-tags{display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem clamp(0.8rem,1.8vw,1.6rem);}
 .legend b{font-weight:400;color:var(--ink);}
 .swatch{display:inline-block;width:0.62rem;height:0.62rem;margin-right:0.4rem;vertical-align:-1px;border-radius:2px;}
@@ -202,7 +204,7 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hud-tag.torus{background:color-mix(in oklab,var(--torus) 18%,transparent);color:var(--torus);}
 .hud-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--chaotic);box-shadow:0 0 6px var(--chaotic);animation:hud-blink 1.8s ease-in-out infinite;flex-shrink:0;}
 @keyframes hud-blink{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1.2);box-shadow:0 0 9px var(--chaotic);}}
-.hero-actions{display:flex;align-items:center;gap:0.35rem;}
+.hero-actions{position:relative;z-index:3;display:flex;align-items:center;gap:0.35rem;}
 .hero-btn{appearance:none;background:color-mix(in oklab,var(--sunken) 70%,transparent);border:1px solid var(--rule-soft);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:0.64rem;letter-spacing:0.05em;padding:0.22rem 0.55rem;cursor:pointer;transition:all .15s ease;white-space:nowrap;}
 .hero-btn:hover{background:var(--raised);border-color:color-mix(in oklab,var(--chaotic) 40%,transparent);color:var(--chaotic);transform:translateY(-1px);}
 .hero-btn:active{transform:translateY(0);}
@@ -589,8 +591,8 @@ html.js .reveal.in{opacity:1;transform:none;}
 
 @media print{
   :root{--ground:#fff;--raised:#fff;--ink:#000;--ink-mid:#333;--ink-low:#666;--rule:#bbb;--rule-soft:#ddd;}
-  .hero{min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
-  #bifurcation,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
+  .hero{height:auto;min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
+  #bifurcation,.hero-shock,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
   .xref-pop,.return-pill,.lb-nav,.lb-pos,.search-overlay{display:none !important;}
   .shell{display:block;max-width:none;padding:0;}
   article{max-width:none;}
@@ -741,18 +743,24 @@ function makeFocusTrap(getFocusables){
    After the initial sweep the map keeps iterating: random columns gain a few
    more points every frame while a faint wash of the ground colour holds the
    density at equilibrium. The shimmer is the computation continuing, not an
-   effect layered on top of it. */
+   effect layered on top of it. A click starts a shockwave even when reduced
+   motion is on. Leaving the plate pauses only the idle shimmer. */
 function hero(){
   const cv=document.getElementById("bifurcation");
   if(!cv) return ()=>{};
   const ctx=cv.getContext("2d",{alpha:false});
-  let raf=null,col=0,W=0,H=0,live=false,tick=0;
+  const beam=document.getElementById("hero-shock");
+  let raf=null,col=0,W=0,H=0,tick=0;
   let speedMult=1.0,cobwebEnabled=false;
   let shockwaves=[];
+  let sweeping=false,shimmerOn=false;
 
-  function column(px,iters,alpha){
+  let seedOffset=0;
+
+  function column(px,iters,alpha,sOffset){
     const r=2.85+(4.0-2.85)*(px/W);
-    let x=0.35+0.3*((px*2654435761)%1000)/1000,l=0;
+    const s=(sOffset!==undefined?sOffset:seedOffset);
+    let x=0.35+0.3*((px*2654435761+s*17)%1000)/1000,l=0;
     for(let i=0;i<380;i++) x=r*x*(1-x);
     for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
     l/=160;
@@ -762,59 +770,51 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  function sweep(target){
-    const step=Math.round(24*speedMult);
-    const end=Math.min(W,target||col+step);
+  function needFrame(){
+    return sweeping||shockwaves.length>0||shimmerOn;
+  }
+  function schedule(){
+    if(!raf&&needFrame()) raf=requestAnimationFrame(frame);
+  }
+  function frame(){
+    raf=null;
+    tick++;
+    if(sweeping) stepSweep();
+    if(shockwaves.length) stepWaves();
+    if(shimmerOn) stepShimmer();
+    placeBeam();
+    if(needFrame()) raf=requestAnimationFrame(frame);
+  }
+
+  function stepSweep(){
+    const step=Math.max(8,Math.round(24*speedMult));
+    const end=Math.min(W,col+step);
     for(;col<end;col++){
-      ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.2,H);
+      ctx.fillStyle=css("--ground");ctx.fillRect(col,0,1.2,H);
       column(col,280,0.46);
     }
-    if(col<W){
-      raf=requestAnimationFrame(()=>sweep(0));
-    } else {
-      live=true;
-      if(!reduced&&!reducedData) raf=requestAnimationFrame(shimmer);
+    if(col>=W){
+      sweeping=false;
+      if(!reduced&&!reducedData) shimmerOn=true;
     }
   }
 
-  function fireShockwave(originPx){
-    if(!W) return;
-    shockwaves.push({px:originPx!==undefined?originPx:0,vx:Math.round(28*speedMult)});
-    if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
-  }
-
-  function shimmer(){
-    tick++;
-    // Subtle atmospheric fade wash holding equilibrium density
-    if(tick%5===0){
-      ctx.globalAlpha=0.006;
-      ctx.fillStyle=css("--ground");
-      ctx.fillRect(0,0,W,H);
-      ctx.globalAlpha=1;
-    }
-
-    // 1. Advance and render energetic shockwave pulses with luminous beam
+  function stepWaves(){
     for(let s=shockwaves.length-1;s>=0;s--){
       const sw=shockwaves[s];
       const prevPx=Math.max(0,Math.round(sw.px-sw.vx));
       const startPx=Math.max(0,Math.round(sw.px));
-      const endPx=Math.min(W,Math.round(sw.px+sw.vx));
-
-      // Clean and restore the previous wave column to erase the glow beam
+      const endPx=Math.min(W,Math.round(sw.px+Math.max(sw.vx,12)));
       for(let p=prevPx;p<startPx;p++){
         ctx.fillStyle=css("--ground");
         ctx.fillRect(p,0,1.2,H);
         column(p,280,0.46);
       }
-
-      // Draw refreshed attractor points along the active wave slice
       for(let p=startPx;p<endPx;p++){
         ctx.fillStyle=css("--ground");
         ctx.fillRect(p,0,1.2,H);
-        column(p,380,0.85);
+        column(p,420,0.92);
       }
-
-      // Draw the bright luminous shockwave wavefront beam at the leading edge
       if(endPx<W){
         ctx.fillStyle=css("--chaotic");
         ctx.globalAlpha=0.85;
@@ -823,20 +823,31 @@ function hero(){
         ctx.fillRect(Math.max(0,endPx-16),0,32,H);
         ctx.globalAlpha=1;
       }
-
       sw.px+=sw.vx;
-      if(sw.px>=W+32){
-        // Final clean of trailing edge
-        for(let p=Math.max(0,Math.round(sw.px-sw.vx));p<W;p++){
-          ctx.fillStyle=css("--ground");
-          ctx.fillRect(p,0,1.2,H);
-          column(p,280,0.46);
-        }
-        shockwaves.splice(s,1);
-      }
+      if(sw.px>=W+48) shockwaves.splice(s,1);
     }
+  }
 
-    // 2. Harmonic branch resonance shimmering on key Feigenbaum windows
+  function placeBeam(){
+    if(!beam) return;
+    if(!shockwaves.length||!W){
+      beam.hidden=true;
+      return;
+    }
+    const sw=shockwaves[shockwaves.length-1];
+    const x=(sw.px/W)*cv.clientWidth;
+    const par=reduced?0:Math.min(scrollY,innerHeight)*0.16;
+    beam.hidden=false;
+    beam.style.transform="translate3d("+x.toFixed(1)+"px,"+par.toFixed(1)+"px,0)";
+  }
+
+  function stepShimmer(){
+    if(tick%5===0){
+      ctx.globalAlpha=0.006;
+      ctx.fillStyle=css("--ground");
+      ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha=1;
+    }
     if(tick%2===0){
       const resonance=[3.0, 3.2, 3.449, 3.544, 3.5699, 3.63, 3.738, 3.8284, 3.845, 3.905, 3.96];
       const targetR=resonance[Math.floor((tick/2)%resonance.length)];
@@ -846,8 +857,13 @@ function hero(){
         column(targetPx,120,twinkleAlpha);
       }
     }
+  }
 
-    if(live) raf=requestAnimationFrame(shimmer);
+  function fireShockwave(originPx){
+    if(!W) return;
+    const vx=Math.max(8,Math.round(W/90*speedMult));
+    shockwaves.push({px:originPx!==undefined?originPx:0,vx:vx});
+    schedule();
   }
 
   function reset(carry){
@@ -862,16 +878,21 @@ function hero(){
     W=nw;H=nh;cv.width=W;cv.height=H;
     ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
-    col=0;live=false;shockwaves=[];
-    if(raf)cancelAnimationFrame(raf);
-    sweep(reduced?W:0);
+    col=0;sweeping=true;shimmerOn=false;shockwaves=[];
+    seedOffset=Math.floor(Math.random()*10000);
+    if(beam) beam.hidden=true;
+    if(raf){cancelAnimationFrame(raf);raf=null;}
+    schedule();
   }
 
-  // pause when off-screen; an attractor nobody can see should not burn a core
+  // Off-screen pause stops idle shimmer only. A running blast keeps its frames.
   new IntersectionObserver(es=>{
     for(const e of es){
-      if(e.isIntersecting){ if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
-      else { live=false; if(raf)cancelAnimationFrame(raf); }
+      if(e.isIntersecting){
+        if(col>=W&&!reduced&&!reducedData){shimmerOn=true;schedule();}
+      } else {
+        shimmerOn=false;
+      }
     }
   },{threshold:0.01}).observe(cv);
 
@@ -1011,15 +1032,12 @@ function hero(){
     resetHUD();
   },{passive:true});
 
-  cv.addEventListener("pointerleave",()=>{
-    resetHUD();
-  },{passive:true});
-
   // slow parallax: the plate drifts against the type as the reader leaves
   if(!reduced){
     addEventListener("scroll",()=>{
       const y=Math.min(scrollY,innerHeight);
       cv.style.transform="translate3d(0,"+(y*0.16).toFixed(1)+"px,0)";
+      placeBeam();
     },{passive:true});
   }
 

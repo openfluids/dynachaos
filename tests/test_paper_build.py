@@ -207,3 +207,71 @@ def test_a_missing_reproduction_index_fails_the_build():
     module = _load()
     with pytest.raises(SystemExit):
         module.fold_back_matter("<p>no table here</p>")
+
+
+def _hero_body() -> str:
+    return (
+        "<table><caption>Mechanistic atlas of Kaneko-style systems.</caption>"
+        "<tbody><tr><td>circle</td></tr></tbody></table>"
+        "Diagnostic spotlight"
+    )
+
+
+def _hero_html(module) -> str:
+    return module.hero(
+        {"title": "T", "authors": "A", "affil": "F", "lede": "L"},
+        _hero_body(),
+    )
+
+
+def test_hero_markup_has_a_shock_beam_and_the_four_controls():
+    """Check the hero has a beam plate and the four control buttons."""
+    html = _hero_html(_load())
+
+    assert 'id="hero-shock"' in html
+    for bid in (
+        "btn-hero-burst",
+        "btn-hero-cobweb",
+        "btn-hero-reset",
+        "btn-hero-speed",
+    ):
+        assert f'id="{bid}"' in html
+
+
+def test_hero_css_stacks_the_beam_above_the_fade_plate():
+    """Check the beam sits above the fade and the buttons sit above the canvas."""
+    css = re.sub(r"\s+", "", _load().CSS)
+
+    assert "isolation:isolate" in css
+    assert "#bifurcation{" in css and "z-index:0" in css.split("#bifurcation{", 1)[1][:180]
+    beam = css.split(".hero-shock{", 1)[1][:280]
+    assert "z-index:1" in beam
+    assert "pointer-events:none" in beam
+    assert ".legend{" in css and "z-index:2" in css.split(".legend{", 1)[1][:120]
+
+
+def test_hero_shockwave_start_is_not_gated_on_reduced_motion():
+    """Check a click starts the blast even when reduced motion is on."""
+    js = _load().JS
+    match = re.search(r"function fireShockwave\([^)]*\)\{(.*?)\n  \}", js, re.S)
+    assert match, "fireShockwave is missing"
+    body = match.group(1)
+    assert "reduced" not in body
+    assert "reducedData" not in body
+
+
+def test_hero_redraw_does_not_skip_progressive_paint():
+    """Check Re-Draw does not paint the whole plate in the same frame."""
+    js = _load().JS
+    match = re.search(r"function reset\(carry\)\{(.*?)\n  \}", js, re.S)
+    assert match, "reset is missing"
+    body = re.sub(r"\s+", "", match.group(1))
+    assert "reduced?W:0" not in body
+
+
+def test_hero_offscreen_pause_does_not_cancel_the_frame_loop():
+    """Check leaving the plate stops idle shimmer only, not a running blast."""
+    js = _load().JS
+    match = re.search(r"new IntersectionObserver\((.*?)\)\.observe", js, re.S)
+    assert match, "IntersectionObserver is missing"
+    assert "cancelAnimationFrame" not in match.group(1)
