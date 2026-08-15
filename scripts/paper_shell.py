@@ -775,14 +775,14 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  // ---------------- Stochastic Mote Swarm ----------------
-  const N=200, K=8;
+  // ---------------- Ultra-Slow Tranquil Starlight Swarm ----------------
+  const N=70;
   const px=new Float32Array(N), py=new Float32Array(N);
   const vx=new Float32Array(N), vy=new Float32Array(N);
   const mr=new Float32Array(N), mx=new Float32Array(N);
+  const targetX=new Float32Array(N), targetY=new Float32Array(N);
   const heat=new Float32Array(N), phase=new Float32Array(N), freq=new Float32Array(N);
-  const orbit=new Float32Array(N*K);
-  const head=new Uint8Array(N);
+  const stepTimer=new Uint16Array(N);
 
   function periodHint(rv){
     if(rv<3.0) return 1;
@@ -801,100 +801,82 @@ function hero(){
 
   function seedPool(){
     for(let i=0;i<N;i++){
-      const rv=R0+Math.pow(Math.random(),0.65)*DR;
+      const rv=R0+Math.pow(Math.random(),0.6)*DR;
       mr[i]=rv;
       let xi=0.15+0.7*Math.random();
-      for(let k=0;k<60;k++) xi=rv*xi*(1-xi);
+      for(let k=0;k<120;k++) xi=rv*xi*(1-xi);
       mx[i]=xi;
-      px[i]=Math.random()*W;
-      py[i]=Math.random()*H;
-      vx[i]=(Math.random()-0.5)*1.0;
-      vy[i]=(Math.random()-0.5)*1.0;
-      heat[i]=0.70+0.30*Math.random();
+      targetX[i]=((rv-R0)/DR)*W;
+      targetY[i]=(1-xi)*H;
+      px[i]=targetX[i]+(Math.random()-0.5)*50;
+      py[i]=targetY[i]+(Math.random()-0.5)*50;
+      vx[i]=0;
+      vy[i]=0;
+      heat[i]=0.3*Math.random();
       phase[i]=Math.random()*Math.PI*2;
-      freq[i]=0.012+0.024*Math.random();
-      head[i]=0;
-      for(let k=0;k<K;k++) orbit[i*K+k]=xi;
+      freq[i]=0.005+0.012*Math.random(); // 8-15 second deep breathing cycle
+      stepTimer[i]=Math.floor(Math.random()*180);
     }
   }
 
   let front=null;
   function startFront(){
-    front={r:R0,vr:0.0035*speedMult,sig:0.10,amp:0.65,life:1};
+    front={r:R0,vr:0.0012*speedMult,sig:0.12,amp:0.5,life:1};
   }
 
   function stepFront(){
     if(!front) return;
     front.r+=front.vr;
-    front.life*=0.997;
-    if(front.r>R1+0.12||front.life<0.04){front=null;return;}
+    front.life*=0.9985;
+    if(front.r>R1+0.15||front.life<0.03){front=null;return;}
     const s2=2*front.sig*front.sig;
     const amp=front.amp*front.life;
     for(let i=0;i<N;i++){
       const g=Math.exp(-((mr[i]-front.r)*(mr[i]-front.r))/s2);
       const lift=amp*g;
-      if(lift>0.04) heat[i]=Math.max(heat[i],lift);
-      if(g>0.35&&Math.random()<0.03){
-        mx[i]=0.05+0.90*Math.random();
-        vy[i]+=(Math.random()-0.5)*1.2;
-      }
+      if(lift>0.03) heat[i]=Math.max(heat[i],lift);
     }
   }
 
   function burst(cx,cy){
-    const R=Math.min(W,H)*0.22, R2=R*R;
+    const R=Math.min(W,H)*0.2, R2=R*R;
     for(let i=0;i<N;i++){
       const dx=px[i]-cx, dy=py[i]-cy;
       const d2=dx*dx+dy*dy;
       if(d2>R2) continue;
       const w=1-d2/R2;
-      heat[i]=Math.min(1,0.45+0.4*w);
-      mx[i]=0.05+0.9*Math.random();
+      heat[i]=Math.min(0.8,heat[i]+0.35*w);
       const ang=Math.random()*Math.PI*2;
-      const kick=(1.2+2.2*w)*(0.6+0.4*Math.random());
-      vx[i]+=Math.cos(ang)*kick;
-      vy[i]+=Math.sin(ang)*kick;
+      vx[i]+=Math.cos(ang)*0.8*w;
+      vy[i]+=Math.sin(ang)*0.8*w;
     }
   }
 
   function stepMotes(){
-    const COOL=0.988;
-    const crawl=0.00015*speedMult;
+    const COOL=0.992;
     for(let i=0;i<N;i++){
       let th=heat[i]*COOL;
-      const rv=mr[i], p=periodHint(rv);
+      const rv=mr[i];
 
-      const nIter=1+(((1-th)*1)|0);
-      let xi=mx[i];
-      for(let n=0;n<nIter;n++){
+      stepTimer[i]++;
+      if(stepTimer[i]>180+Math.floor(Math.random()*120)){
+        stepTimer[i]=0;
+        let xi=mx[i];
         xi=rv*xi*(1-xi);
         if(!(xi>0&&xi<1)) xi=0.15+0.7*Math.random();
-        orbit[i*K+head[i]]=xi;
-        head[i]=(head[i]+1)%K;
+        mx[i]=xi;
+        targetY[i]=(1-xi)*H;
       }
-      mx[i]=xi;
 
-      const tx=((rv-R0)/DR)*W;
-      const ty=(1-xi)*H;
-
-      const kappa=0.035+0.16*(1-th);
-      const damp=0.88+0.08*(1-th);
-      const sig=0.03+0.65*th;
-      vx[i]=vx[i]*damp+(tx-px[i])*kappa+(Math.random()-0.5)*sig;
-      vy[i]=vy[i]*damp+(ty-py[i])*kappa+(Math.random()-0.5)*sig;
+      const kappa=0.02+0.08*(1-th);
+      const damp=0.92;
+      const sig=0.015+0.25*th;
+      vx[i]=vx[i]*damp+(targetX[i]-px[i])*kappa+(Math.random()-0.5)*sig;
+      vy[i]=vy[i]*damp+(targetY[i]-py[i])*kappa+(Math.random()-0.5)*sig;
       px[i]+=vx[i]*speedMult;
       py[i]+=vy[i]*speedMult;
 
-      if(th<0.20){
-        mr[i]=Math.max(R0,Math.min(R1,rv+(Math.random()-0.5)*crawl));
-      }
-
-      const ly=lamAt(mr[i]);
-      phase[i]+=freq[i]+0.015*th;
-      const spark=0.001+0.006*Math.max(0,Math.min(1,ly/0.55));
-      if(Math.random()<spark){
-        th=Math.min(1,th+0.06);
-      }
+      phase[i]+=freq[i];
       heat[i]=th;
     }
   }
@@ -902,7 +884,7 @@ function hero(){
   function drawMotes(){
     if(!mctx||!W||!H) return;
     mctx.globalCompositeOperation="destination-out";
-    mctx.globalAlpha=0.07;
+    mctx.globalAlpha=0.05;
     mctx.fillStyle="#000";
     mctx.fillRect(0,0,W,H);
 
@@ -911,30 +893,20 @@ function hero(){
 
     for(let i=0;i<N;i++){
       const th=heat[i];
-      const twinkle=Math.pow(0.5+0.5*Math.sin(phase[i]),4);
+      const twinkle=Math.pow(0.5+0.5*Math.sin(phase[i]),3);
       const ly=lamAt(mr[i]);
       const fill=ly>0.005?colC:ly<-0.005?colL:colT;
-      const p=periodHint(mr[i]);
-      const nGhost=th>0.3?5:Math.max(1,p||3);
-      const rx=((mr[i]-R0)/DR)*W;
 
       mctx.fillStyle=fill;
-      for(let k=0;k<nGhost;k++){
-        const xk=orbit[i*K+((head[i]-1-k+K*8)%K)];
-        const fade=1-k/nGhost;
-        mctx.globalAlpha=(0.05+0.15*fade)*(1-0.35*th);
-        mctx.fillRect(rx-0.5,(1-xk)*H,1.15,1.15);
-      }
-
-      const a=0.15+0.70*twinkle*(0.6+0.4*(1-0.3*th));
-      const s=0.7+1.8*twinkle+0.9*th;
+      const a=0.12+0.65*twinkle*(0.7+0.3*(1-th));
+      const s=1.0+1.8*twinkle;
       mctx.globalAlpha=a;
       mctx.fillRect(px[i]-s/2,py[i]-s/2,s,s);
 
-      if(twinkle>0.85){
-        mctx.globalAlpha=a*0.45;
-        mctx.fillRect(px[i]-2.5,py[i]-0.35,5.0,0.7);
-        mctx.fillRect(px[i]-0.35,py[i]-2.5,0.7,5.0);
+      if(twinkle>0.88){
+        mctx.globalAlpha=a*0.4;
+        mctx.fillRect(px[i]-2.5,py[i]-0.3,5.0,0.6);
+        mctx.fillRect(px[i]-0.3,py[i]-2.5,0.6,5.0);
       }
     }
     mctx.globalAlpha=1;
@@ -957,7 +929,7 @@ function hero(){
   }
 
   function stepSweep(){
-    const step=Math.max(8,Math.round(24*speedMult));
+    const step=Math.max(2,Math.round(5*speedMult));
     const end=Math.min(W,col+step);
     for(;col<end;col++){
       ctx.fillStyle=css("--ground");ctx.fillRect(col,0,1.2,H);
