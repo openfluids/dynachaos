@@ -174,7 +174,7 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;}
 #bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;cursor:crosshair;}
 .hero::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 92%,transparent) 38%,color-mix(in oklab,var(--ground) 22%,transparent) 68%,transparent 100%);}
+  background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 74%,transparent) 34%,color-mix(in oklab,var(--ground) 10%,transparent) 68%,transparent 100%);}
 .hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
   margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);pointer-events:none;}
 .hero-inner > *{max-width:min(52rem,90%);pointer-events:auto;}
@@ -188,8 +188,9 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .stats li{margin:0;}
 .stats b{display:block;font-size:clamp(1.6rem,1.1rem+1.5vw,2.6rem);line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
 .stats span{font-family:var(--mono);font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-low);}
-.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem clamp(1rem,2.5vw,2.4rem);
+.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.6rem clamp(1rem,2.5vw,2rem);
   padding:0.9rem var(--gutter) 1.5rem;max-width:min(112rem,96vw);margin:0 auto;width:100%;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.04em;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
+.legend-tags{display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem clamp(0.8rem,1.8vw,1.6rem);}
 .legend b{font-weight:400;color:var(--ink);}
 .swatch{display:inline-block;width:0.62rem;height:0.62rem;margin-right:0.4rem;vertical-align:-1px;border-radius:2px;}
 .hero-hud{display:inline-flex;align-items:center;gap:0.35rem;padding:0.18rem 0.5rem;border-radius:3px;background:color-mix(in oklab,var(--sunken) 75%,transparent);border:1px solid var(--rule-soft);transition:all .2s ease;}
@@ -201,6 +202,15 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hud-tag.torus{background:color-mix(in oklab,var(--torus) 18%,transparent);color:var(--torus);}
 .hud-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--chaotic);box-shadow:0 0 6px var(--chaotic);animation:hud-blink 1.8s ease-in-out infinite;flex-shrink:0;}
 @keyframes hud-blink{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1.2);box-shadow:0 0 9px var(--chaotic);}}
+.hero-actions{display:flex;align-items:center;gap:0.35rem;}
+.hero-btn{appearance:none;background:color-mix(in oklab,var(--sunken) 70%,transparent);border:1px solid var(--rule-soft);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:0.64rem;letter-spacing:0.05em;padding:0.22rem 0.55rem;cursor:pointer;transition:all .15s ease;white-space:nowrap;}
+.hero-btn:hover{background:var(--raised);border-color:color-mix(in oklab,var(--chaotic) 40%,transparent);color:var(--chaotic);transform:translateY(-1px);}
+.hero-btn:active{transform:translateY(0);}
+.hero-cobweb{position:absolute;bottom:calc(100% + 12px);right:var(--gutter);z-index:30;padding:0.6rem 0.75rem 0.5rem;border-radius:8px;background:color-mix(in oklab,var(--ground) 92%,transparent);backdrop-filter:blur(14px);border:1px solid var(--rule);box-shadow:0 12px 32px rgba(0,0,0,0.18);opacity:0;visibility:hidden;pointer-events:none;transform:translateY(6px) scale(0.96);transition:opacity .2s ease,transform .2s ease,visibility .2s;}
+.hero-cobweb.active{opacity:1;visibility:visible;transform:none;}
+.cobweb-head{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;font-family:var(--mono);font-size:0.65rem;font-weight:600;color:var(--ink);margin-bottom:0.4rem;}
+#cobweb-canvas{display:block;border-radius:4px;background:var(--sunken);border:1px solid var(--rule-soft);}
+.cobweb-eq{font-family:var(--mono);font-size:0.58rem;color:var(--ink-low);text-align:center;margin-top:0.35rem;}
 
 /* ------------------------------ controls ------------------------------ */
 .controls{
@@ -749,15 +759,17 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  const TRACERS_COUNT=180, BURST_COUNT=30;
+  const TRACERS_COUNT=200, BURST_COUNT=40;
+  let speedMult=1.0;
   const tracers=Array.from({length:TRACERS_COUNT+BURST_COUNT},()=>({
-    px:0,vx:1,x:0.5,r:3.0,l:0,life:0,maxLife:1,iters:1,size:1.35,color:""
+    px:0,vx:1,x:0.5,r:3.0,l:0,life:0,maxLife:1,iters:1,size:3.6,color:"",
+    hx:[0,0,0,0],hy:[0,0,0,0],hlen:0
   }));
 
   function computeTracerMetrics(r,x){
     let l=0,cx=x;
-    for(let i=0;i<40;i++){cx=r*cx*(1-cx);l+=Math.log(Math.abs(r*(1-2*cx))+1e-12);}
-    l/=40;
+    for(let i=0;i<35;i++){cx=r*cx*(1-cx);l+=Math.log(Math.abs(r*(1-2*cx))+1e-12);}
+    l/=35;
     return l;
   }
 
@@ -768,56 +780,47 @@ function hero(){
     let x=0.35+0.3*((Math.floor(clampedPx)*2654435761+(tick*17))%1000)/1000;
     for(let i=0;i<60;i++) x=r*x*(1-x);
     const l=computeTracerMetrics(r,x);
-    const vx=isBurst?(2.6+Math.random()*2.4):(0.65+Math.random()*1.45);
-    const maxLife=isBurst?(50+Math.floor(Math.random()*40)):Math.round(W/vx+40);
+    const vx=isBurst?(2.8+Math.random()*2.2):(0.75+Math.random()*1.35);
+    const maxLife=isBurst?(55+Math.floor(Math.random()*35)):Math.round(W/vx+50);
     t.px=px;
     t.vx=vx;
     t.x=x;
     t.r=r;
     t.l=l;
-    t.iters=isBurst?2:(Math.random()<0.25?2:1);
-    t.size=isBurst?2.4:(Math.random()<0.35?2.2:1.35);
+    t.iters=isBurst?2:(Math.random()<0.3?2:1);
+    t.size=isBurst?4.2:(Math.random()<0.35?3.8:2.8);
     t.maxLife=maxLife;
     t.life=maxLife;
+    t.hlen=0;
     t.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
   }
 
-  function initTracers(){
+  function initTracers(spreadInitial){
     if(!W) return;
     for(let i=0;i<TRACERS_COUNT;i++){
-      populateTracer(tracers[i],undefined,false,true);
+      populateTracer(tracers[i],undefined,false,spreadInitial);
     }
     for(let i=TRACERS_COUNT;i<tracers.length;i++){
       tracers[i].life=0;tracers[i].maxLife=1;
     }
   }
 
-  function sweep(target){
-    const end=Math.min(W,target||col+18);
-    for(;col<end;col++){
-      ctx.globalAlpha=0.08;ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.6,H);ctx.globalAlpha=1;
-      column(col,280,0.36);
-    }
-    if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
-    else if(!reduced&&!reducedData){initTracers();live=true;raf=requestAnimationFrame(shimmer);}
-  }
-
   function shimmer(){
     tick++;
     // Subtle atmospheric fade wash allowing rich phase space density accumulation
-    if(tick%2===0){
-      ctx.globalAlpha=0.012;
+    if(tick%3===0){
+      ctx.globalAlpha=0.010;
       ctx.fillStyle=css("--ground");
       ctx.fillRect(0,0,W,H);
       ctx.globalAlpha=1;
     }
 
-    // 1. Advance living trajectory tracers from left to right across parameter space
+    // 1. Advance living trajectory comet tracers from left to right
     for(let i=0;i<tracers.length;i++){
       const t=tracers[i];
       if(t.life<=0) continue;
 
-      t.px+=t.vx;
+      t.px+=t.vx*speedMult;
       if(t.px>=W){
         if(i<TRACERS_COUNT){
           populateTracer(t,-Math.random()*16,false,false);
@@ -828,7 +831,6 @@ function hero(){
       }
 
       t.r=2.85+(4.0-2.85)*(Math.max(0,Math.min(W-1,t.px))/W);
-      // Update Lyapunov color as parameter evolves along the path
       if(tick%6===0){
         t.l=computeTracerMetrics(t.r,t.x);
         t.color=t.l>0.005?css("--chaotic"):t.l<-0.005?css("--locked-hero"):css("--torus");
@@ -838,19 +840,39 @@ function hero(){
       for(let step=0;step<t.iters;step++){
         t.x=t.r*t.x*(1-t.x);
         const y=(1-t.x)*H;
-        // Filament density deposit
+        // Filament density deposit (builds up the phase space tree over time)
         ctx.fillStyle=t.color;
-        ctx.globalAlpha=0.28;
-        ctx.fillRect(t.px,y,1.15,1.15);
+        ctx.globalAlpha=0.38;
+        ctx.fillRect(t.px,y,1.25,1.25);
+      }
+
+      const curY=(1-t.x)*H;
+
+      // Update comet history (circular shift)
+      if(t.hlen<4){
+        t.hx[t.hlen]=t.px;t.hy[t.hlen]=curY;t.hlen++;
+      } else {
+        t.hx[0]=t.hx[1];t.hy[0]=t.hy[1];
+        t.hx[1]=t.hx[2];t.hy[1]=t.hy[2];
+        t.hx[2]=t.hx[3];t.hy[2]=t.hy[3];
+        t.hx[3]=t.px;t.hy[3]=curY;
+      }
+
+      // Draw trailing comet segments
+      for(let k=0;k<t.hlen-1;k++){
+        const tailAlpha=0.15+0.25*(k/3);
+        ctx.fillStyle=t.color;
+        ctx.globalAlpha=tailAlpha;
+        const tailSize=1.5+k*0.5;
+        ctx.fillRect(t.hx[k]-tailSize/2,t.hy[k]-tailSize/2,tailSize,tailSize);
       }
 
       // Render glowing tracer head
-      const y=(1-t.x)*H;
       const progress=t.life/t.maxLife;
-      const headAlpha=Math.min(1,Math.sin(progress*Math.PI)*1.4)*0.85;
+      const headAlpha=Math.min(1,Math.sin(progress*Math.PI)*1.6)*0.95;
       ctx.fillStyle=t.color;
       ctx.globalAlpha=headAlpha;
-      ctx.fillRect(t.px,y,t.size,t.size);
+      ctx.fillRect(t.px-t.size/2,curY-t.size/2,t.size,t.size);
 
       t.life--;
       if(t.life<=0&&i<TRACERS_COUNT){
@@ -865,17 +887,15 @@ function hero(){
       const targetR=resonance[Math.floor((tick/3)%resonance.length)];
       const targetPx=Math.round(((targetR-2.85)/(4.0-2.85))*W);
       if(targetPx>=0&&targetPx<W){
-        const twinkleAlpha=0.25+0.25*Math.sin(tick*0.14);
-        column(targetPx,60,twinkleAlpha);
+        const twinkleAlpha=0.30+0.30*Math.sin(tick*0.14);
+        column(targetPx,70,twinkleAlpha);
       }
     }
 
     if(live) raf=requestAnimationFrame(shimmer);
   }
 
-  // Resizing used to clear to the ground colour and redraw, which flashed.
-  // Stretch the previous frame into the new size first so the plate deforms
-  // continuously, then refine it column by column underneath.
+  // Resizing / initial reset starts with a clean slate and progressive stream
   function reset(carry){
     const dpr=Math.min(devicePixelRatio||1,2);
     const nw=Math.round(cv.clientWidth*dpr),nh=Math.round(cv.clientHeight*dpr);
@@ -890,19 +910,67 @@ function hero(){
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
     col=0;live=false;
     if(raf)cancelAnimationFrame(raf);
-    initTracers();
-    sweep(reduced?W:0);
+    initTracers(carry?true:false);
+    if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
   }
 
   // pause when off-screen; an attractor nobody can see should not burn a core
   new IntersectionObserver(es=>{
     for(const e of es){
-      if(e.isIntersecting){ if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
+      if(e.isIntersecting){ if(!live&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
       else { live=false; if(raf)cancelAnimationFrame(raf); }
     }
   },{threshold:0.01}).observe(cv);
 
   const hud=document.getElementById("hero-hud");
+  const cobwebBox=document.getElementById("hero-cobweb");
+  const cobwebCv=document.getElementById("cobweb-canvas");
+  const cobwebR=document.getElementById("cobweb-r");
+  const cobwebRegime=document.getElementById("cobweb-regime");
+  const cobwebCtx=cobwebCv?cobwebCv.getContext("2d"):null;
+
+  function drawCobweb(r,l){
+    if(!cobwebCtx) return;
+    const cw=130,ch=130;
+    cobwebCtx.fillStyle=css("--sunken");cobwebCtx.fillRect(0,0,cw,ch);
+
+    // Diagonal line y = x
+    cobwebCtx.strokeStyle=css("--rule");cobwebCtx.lineWidth=1;
+    cobwebCtx.beginPath();cobwebCtx.moveTo(6,ch-6);cobwebCtx.lineTo(cw-6,6);cobwebCtx.stroke();
+
+    // Parabolic curve y = r * x * (1 - x)
+    const curveColor=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
+    cobwebCtx.strokeStyle=curveColor;cobwebCtx.lineWidth=1.6;
+    cobwebCtx.beginPath();
+    for(let i=0;i<=cw-12;i++){
+      const px=i/(cw-12);
+      const py=r*px*(1-px);
+      const canvasX=6+i;
+      const canvasY=ch-6-Math.min(1.1,py)*(ch-12);
+      if(i===0) cobwebCtx.moveTo(canvasX,canvasY);
+      else cobwebCtx.lineTo(canvasX,canvasY);
+    }
+    cobwebCtx.stroke();
+
+    // Cobweb trajectory bounce
+    let x=0.2;
+    cobwebCtx.strokeStyle=curveColor;cobwebCtx.lineWidth=1.1;cobwebCtx.globalAlpha=0.85;
+    cobwebCtx.beginPath();
+    let curX=6+x*(cw-12),curY=ch-6;
+    cobwebCtx.moveTo(curX,curY);
+    for(let step=0;step<24;step++){
+      const nextYVal=r*x*(1-x);
+      const nextY=ch-6-Math.min(1.1,nextYVal)*(ch-12);
+      cobwebCtx.lineTo(curX,nextY); // Vertical to curve
+      const nextX=6+nextYVal*(cw-12);
+      cobwebCtx.lineTo(nextX,nextY); // Horizontal to diagonal
+      x=nextYVal;
+      curX=nextX;curY=nextY;
+      if(x<0||x>1) break;
+    }
+    cobwebCtx.stroke();
+    cobwebCtx.globalAlpha=1;
+  }
 
   function computeMetrics(px){
     const r=2.85+(4.0-2.85)*(px/W);
@@ -920,12 +988,47 @@ function hero(){
     const sign=l>0?"+":"";
     hud.classList.add("active");
     hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
+
+    if(cobwebBox&&cobwebR&&cobwebRegime){
+      cobwebR.textContent=`r = ${r.toFixed(4)}`;
+      cobwebRegime.className=`hud-tag ${tag.c}`;
+      cobwebRegime.textContent=tag.t;
+      cobwebBox.classList.add("active");
+      drawCobweb(r,l);
+    }
   }
 
   function resetHUD(){
     if(!hud) return;
     hud.classList.remove("active");
     hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">live simulation &middot; hover / tap to inspect</span>`;
+    if(cobwebBox) cobwebBox.classList.remove("active");
+  }
+
+  // Simulation controls listeners
+  const btnReset=document.getElementById("btn-hero-reset");
+  const btnBurst=document.getElementById("btn-hero-burst");
+  const btnSpeed=document.getElementById("btn-hero-speed");
+
+  if(btnReset){
+    btnReset.addEventListener("click",()=>{
+      ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
+      initTracers(false);
+    });
+  }
+  if(btnBurst){
+    btnBurst.addEventListener("click",()=>{
+      for(let k=0;k<BURST_COUNT;k++){
+        const px=Math.floor(Math.random()*(W*0.3));
+        populateTracer(tracers[TRACERS_COUNT+k],px,true,false);
+      }
+    });
+  }
+  if(btnSpeed){
+    btnSpeed.addEventListener("click",()=>{
+      speedMult=speedMult===1.0?2.0:speedMult===2.0?0.5:1.0;
+      btnSpeed.innerHTML=`⏩ ${speedMult}&times;`;
+    });
   }
 
   cv.addEventListener("pointermove",e=>{
@@ -951,6 +1054,10 @@ function hero(){
       if(k%2===0) column(px,420,0.65);
       populateTracer(tracers[TRACERS_COUNT+k],px,true,false);
     }
+  },{passive:true});
+
+  cv.addEventListener("pointerleave",()=>{
+    resetHUD();
   },{passive:true});
 
   cv.addEventListener("pointerleave",()=>{
