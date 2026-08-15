@@ -155,10 +155,10 @@ h1{font-size:clamp(2.1rem,0.9rem+4.6vw,4.6rem);line-height:1.0;letter-spacing:-0
   margin:0.38em 0 0;max-width:17ch;text-wrap:balance;}
 h2{font-size:clamp(1.35rem,1.1rem+0.9vw,1.75rem);line-height:1.2;letter-spacing:-0.014em;font-weight:700;margin:0 0 0.6em;text-wrap:balance;}
 h3{font-size:1.06rem;font-weight:700;margin:2em 0 0.35em;text-wrap:balance;}
-p{margin:0 0 0.95em;text-wrap:pretty;}
+p{margin:0 0 0.95em;}
 article ul,article ol{margin:0 0 1em;padding-left:1.35em;}
 article li{margin-bottom:0.4em;}
-article li > p{margin:0 0 0.4em;text-wrap:pretty;}
+article li > p{margin:0 0 0.4em;}
 article li > p:last-child{margin-bottom:0;}
 article li > ul,article li > ol{margin-top:0.4em;}
 /* pandoc leaves these wrappers behind for LaTeX environments it half-converts */
@@ -171,50 +171,29 @@ code,.num{font-family:var(--mono);font-size:0.85em;font-variant-numeric:tabular-
 pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padding:0.8rem 0.95rem;overflow-x:auto;font-size:0.78rem;line-height:1.55;}
 
 /* ------------------------------ hero ------------------------------ */
-.hero{position:relative;height:100svh;min-height:100svh;display:grid;grid-template-rows:minmax(0,1fr) auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;isolation:isolate;}
-#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;z-index:0;will-change:transform;cursor:crosshair;}
-#hero-motes{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;z-index:1;pointer-events:none;will-change:transform;}
-.hero-shock{position:absolute;top:-8%;bottom:-8%;left:0;width:3px;height:116%;z-index:1;pointer-events:none;
-  background:var(--chaotic);
-  box-shadow:0 0 10px 4px color-mix(in oklab,var(--chaotic) 75%,transparent),0 0 36px 16px color-mix(in oklab,var(--chaotic) 40%,transparent);
-  will-change:transform;}
-.hero-shock[hidden]{display:none;}
-.hero::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 74%,transparent) 34%,color-mix(in oklab,var(--ground) 10%,transparent) 68%,transparent 100%);}
-.hero-inner{position:relative;z-index:2;align-self:center;min-height:0;overflow:auto;width:100%;max-width:min(112rem,96vw);
-  margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);pointer-events:none;}
-.hero-inner > *{max-width:min(52rem,90%);pointer-events:auto;}
-.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.6rem clamp(1rem,2.5vw,2rem);
+.hero{position:relative;min-height:100svh;display:grid;grid-template-rows:1fr auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;}
+#bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;will-change:transform;}
+/* the beacon plate paints over the attractor, both under the readability fade */
+#hero-motes{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;pointer-events:none;will-change:transform;}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,var(--ground) 0%,color-mix(in oklab,var(--ground) 92%,transparent) 38%,color-mix(in oklab,var(--ground) 22%,transparent) 68%,transparent 100%);}
+.hero-inner{position:relative;z-index:2;align-self:center;width:100%;max-width:min(112rem,96vw);
+  margin:0 auto;padding:clamp(2rem,8vh,6rem) var(--gutter);}
+.hero-inner > *{max-width:min(52rem,90%);}
+.hero-rise{animation:hero-rise .6s cubic-bezier(.22,.68,.28,1) both;}
+@keyframes hero-rise{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.hero-rise{animation:none;opacity:1;transform:none;}}
+.byline{margin:1.6em 0 0;font-size:1rem;color:var(--ink);}
+.byline .affil{display:block;color:var(--ink-low);font-size:0.86rem;margin-top:0.25em;max-width:44ch;}
+.lede{font-size:clamp(1.06rem,0.9rem+0.62vw,1.4rem);line-height:1.55;color:var(--ink-mid);max-width:48ch;margin-top:1.5em;}
+.stats{display:flex;flex-wrap:wrap;gap:2.25rem;margin-top:2.4rem;padding:0;list-style:none;}
+.stats li{margin:0;}
+.stats b{display:block;font-size:clamp(1.6rem,1.1rem+1.5vw,2.6rem);line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
+.stats span{font-family:var(--mono);font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-low);}
+.legend{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:0.3rem clamp(1rem,2.5vw,2.4rem);
   padding:0.9rem var(--gutter) 1.5rem;max-width:min(112rem,96vw);margin:0 auto;width:100%;font-family:var(--mono);font-size:0.66rem;letter-spacing:0.04em;color:var(--ink-mid);border-top:1px solid var(--rule-soft);}
-@media (max-height:42rem){
-  .hero-inner{padding:1.1rem var(--gutter) 0.5rem;}
-  .byline{margin:0.8em 0 0;}
-  .lede{margin-top:0.8em;}
-  .stats{margin-top:1rem;gap:1.25rem;}
-  .legend{padding:0.55rem var(--gutter) 0.75rem;}
-}
-.legend-tags{display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem clamp(0.8rem,1.8vw,1.6rem);}
 .legend b{font-weight:400;color:var(--ink);}
 .swatch{display:inline-block;width:0.62rem;height:0.62rem;margin-right:0.4rem;vertical-align:-1px;border-radius:2px;}
-.hero-hud{display:inline-flex;align-items:center;gap:0.35rem;padding:0.18rem 0.5rem;border-radius:3px;background:color-mix(in oklab,var(--sunken) 75%,transparent);border:1px solid var(--rule-soft);transition:all .2s ease;}
-.hero-hud.active{border-color:color-mix(in oklab,var(--chaotic) 45%,transparent);background:var(--raised);}
-.hud-val{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);}
-.hud-tag{padding:0.08rem 0.35rem;border-radius:2px;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;}
-.hud-tag.chaotic{background:color-mix(in oklab,var(--chaotic) 18%,transparent);color:var(--chaotic);}
-.hud-tag.locked{background:color-mix(in oklab,var(--locked-hero) 18%,transparent);color:var(--locked-hero);}
-.hud-tag.torus{background:color-mix(in oklab,var(--torus) 18%,transparent);color:var(--torus);}
-.hud-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--chaotic);box-shadow:0 0 6px var(--chaotic);animation:hud-blink 1.8s ease-in-out infinite;flex-shrink:0;}
-@keyframes hud-blink{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1.2);box-shadow:0 0 9px var(--chaotic);}}
-.hero-actions{position:relative;z-index:3;display:flex;align-items:center;gap:0.35rem;}
-.hero-btn{appearance:none;background:color-mix(in oklab,var(--sunken) 70%,transparent);border:1px solid var(--rule-soft);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:0.64rem;letter-spacing:0.05em;padding:0.22rem 0.55rem;cursor:pointer;transition:all .15s ease;white-space:nowrap;}
-.hero-btn:hover{background:var(--raised);border-color:color-mix(in oklab,var(--chaotic) 40%,transparent);color:var(--chaotic);transform:translateY(-1px);}
-.hero-btn:active{transform:translateY(0);}
-.hero-btn[aria-pressed="true"]{background:color-mix(in oklab,var(--torus) 20%,transparent);border-color:var(--torus);color:var(--ink);font-weight:600;}
-.hero-cobweb{position:absolute;bottom:calc(100% + 12px);right:var(--gutter);z-index:30;padding:0.6rem 0.75rem 0.5rem;border-radius:8px;background:color-mix(in oklab,var(--ground) 92%,transparent);backdrop-filter:blur(14px);border:1px solid var(--rule);box-shadow:0 12px 32px rgba(0,0,0,0.18);opacity:0;visibility:hidden;pointer-events:none;transform:translateY(6px) scale(0.96);transition:opacity .2s ease,transform .2s ease,visibility .2s;}
-.hero-cobweb.active{opacity:1;visibility:visible;transform:none;}
-.cobweb-head{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;font-family:var(--mono);font-size:0.65rem;font-weight:600;color:var(--ink);margin-bottom:0.4rem;}
-#cobweb-canvas{display:block;border-radius:4px;background:var(--sunken);border:1px solid var(--rule-soft);}
-.cobweb-eq{font-family:var(--mono);font-size:0.58rem;color:var(--ink-low);text-align:center;margin-top:0.35rem;}
 
 /* ------------------------------ controls ------------------------------ */
 .controls{
@@ -592,8 +571,8 @@ html.js .reveal.in{opacity:1;transform:none;}
 
 @media print{
   :root{--ground:#fff;--raised:#fff;--ink:#000;--ink-mid:#333;--ink-low:#666;--rule:#bbb;--rule-soft:#ddd;}
-  .hero{height:auto;min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
-  #bifurcation,.hero-shock,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
+  .hero{min-height:auto;border-bottom:2px solid #000;page-break-after:avoid;}
+  #bifurcation,#hero-motes,.hero::after,.legend,.spine,.controls,.progress,.lb,.fig-head .acts,
   .xref-pop,.return-pill,.lb-nav,.lb-pos,.search-overlay{display:none !important;}
   .shell{display:block;max-width:none;padding:0;}
   article{max-width:none;}
@@ -741,30 +720,29 @@ function makeFocusTrap(getFocusables){
 })();
 
 /* ---------------- hero: logistic attractor coloured by sign of lambda ----------------
-   After the initial sweep the map keeps iterating: random columns gain a few
-   more points every frame while a faint wash of the ground colour holds the
+   After the initial sweep the map keeps iterating: the resonance columns gain a
+   few more points every frame while a faint wash of the ground colour holds the
    density at equilibrium. The shimmer is the computation continuing, not an
-   effect layered on top of it. A click starts a shockwave even when reduced
-   motion is on. Leaving the plate pauses only the idle shimmer. */
+   effect layered on top of it. A second canvas carries slow-breathing beacons,
+   each one iterated onto the attractor first so none of them float in the gaps
+   between branches. Both plates stop when the hero scrolls out of view. */
 function hero(){
   const cv=document.getElementById("bifurcation");
   const mcv=document.getElementById("hero-motes");
   if(!cv) return ()=>{};
   const ctx=cv.getContext("2d",{alpha:false});
   const mctx=mcv?mcv.getContext("2d",{alpha:true}):null;
-  const beam=document.getElementById("hero-shock");
+  const still=reduced||reducedData;
   let raf=null,col=0,W=0,H=0,tick=0;
-  let speedMult=1.0,cobwebEnabled=false;
-  let sweeping=false,shimmerOn=false,poolOn=false;
+  let sweeping=false,shimmerOn=false,starsOn=false;
   let seedOffset=0;
 
   const R0=2.85, R1=4.0, DR=R1-R0;
   let lam=new Float32Array(0);
 
-  function column(px,iters,alpha,sOffset){
+  function column(px,iters,alpha){
     const r=R0+DR*(px/W);
-    const s=(sOffset!==undefined?sOffset:seedOffset);
-    let x=0.35+0.3*((px*2654435761+s*17)%1000)/1000,l=0;
+    let x=0.35+0.3*((px*2654435761+seedOffset*17)%1000)/1000,l=0;
     for(let i=0;i<380;i++) x=r*x*(1-x);
     for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
     l/=160;
@@ -775,21 +753,11 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  // ---------------- Strictly-On-Attractor Starlight Beacons ----------------
+  // ---------------- starlight beacons, pinned to the attractor ----------------
   const N=80;
   const starPx=new Float32Array(N), starPy=new Float32Array(N);
   const starR=new Float32Array(N);
   const starPhase=new Float32Array(N), starFreq=new Float32Array(N);
-  const starGlow=new Float32Array(N);
-
-  function periodHint(rv){
-    if(rv<3.0) return 1;
-    if(rv<3.44949) return 2;
-    if(rv<3.54409) return 4;
-    if(rv<3.56441) return 8;
-    if(rv>3.8284&&rv<3.8415) return 3;
-    return 0;
-  }
 
   function lamAt(rv){
     if(!lam.length||!W) return 0;
@@ -797,18 +765,15 @@ function hero(){
     return lam[ix];
   }
 
+  // Spread the beacons over the features worth looking at, then iterate each
+  // one 400 steps so it lands on a point the map really visits.
   function seedStars(){
     for(let i=0;i<N;i++){
       let rv;
-      if(i<10){
-        rv=2.90+Math.random()*0.50; // [2.90, 3.40] Period 1 & 2
-      } else if(i<25){
-        rv=3.45+Math.random()*0.12; // [3.45, 3.57] Period 4, 8 & Cascade
-      } else if(i<40){
-        rv=3.82+Math.random()*0.04; // [3.82, 3.86] Period-3 window
-      } else {
-        rv=3.57+Math.random()*0.42; // [3.57, 3.99] Chaotic bands
-      }
+      if(i<10)      rv=2.90+Math.random()*0.50; // period 1 and 2
+      else if(i<25) rv=3.45+Math.random()*0.12; // period 4, 8, cascade
+      else if(i<40) rv=3.82+Math.random()*0.04; // period-3 window
+      else          rv=3.57+Math.random()*0.42; // chaotic bands
       starR[i]=rv;
 
       let x=0.4+0.2*Math.random();
@@ -819,101 +784,54 @@ function hero(){
       starPx[i]=((rv-R0)/DR)*W;
       starPy[i]=(1-x)*H;
       starPhase[i]=Math.random()*Math.PI*2;
-      starFreq[i]=0.006+0.014*Math.random(); // 8-15s deep breathing cycle
-      starGlow[i]=0;
-    }
-  }
-
-  let front=null;
-  function startFront(){
-    front={r:R0,vr:0.0012*speedMult,sig:0.10,amp:1.0,life:1};
-  }
-
-  function stepFront(){
-    if(!front) return;
-    front.r+=front.vr;
-    front.life*=0.9985;
-    if(front.r>R1+0.15||front.life<0.03){front=null;return;}
-    const s2=2*front.sig*front.sig;
-    const amp=front.amp*front.life;
-    for(let i=0;i<N;i++){
-      const g=Math.exp(-((starR[i]-front.r)*(starR[i]-front.r))/s2);
-      const lift=amp*g;
-      if(lift>0.04) starGlow[i]=Math.max(starGlow[i],lift);
-    }
-  }
-
-  function burst(cx,cy){
-    const R=Math.min(W,H)*0.25, R2=R*R;
-    for(let i=0;i<N;i++){
-      const dx=starPx[i]-cx, dy=starPy[i]-cy;
-      const d2=dx*dx+dy*dy;
-      if(d2>R2) continue;
-      const w=1-d2/R2;
-      starGlow[i]=Math.min(1.0,starGlow[i]+0.6*w);
+      starFreq[i]=0.006+0.014*Math.random(); // one breath every 8 to 15 s
     }
   }
 
   function drawStars(){
     if(!mctx||!W||!H) return;
     mctx.clearRect(0,0,W,H);
-
     const colC=css("--chaotic"), colL=css("--locked-hero"), colT=css("--torus");
-
     for(let i=0;i<N;i++){
-      if(starPx[i]>col) continue; // Never render ahead of sweep line!
-
+      if(starPx[i]>col) continue; // never render ahead of the sweep line
       starPhase[i]+=starFreq[i];
-      starGlow[i]*=0.993;
-
       const twinkle=Math.pow(0.5+0.5*Math.sin(starPhase[i]),3);
       const ly=lamAt(starR[i]);
-      const fill=ly>0.005?colC:ly<-0.005?colL:colT;
-
-      mctx.fillStyle=fill;
-      const baseAlpha=0.20+0.65*twinkle;
-      const totalAlpha=Math.min(1.0,baseAlpha+0.45*starGlow[i]);
-      const size=1.1+1.8*twinkle+1.2*starGlow[i];
-
-      mctx.globalAlpha=totalAlpha;
+      mctx.fillStyle=ly>0.005?colC:ly<-0.005?colL:colT;
+      mctx.globalAlpha=0.20+0.65*twinkle;
+      const size=1.1+1.8*twinkle;
       mctx.fillRect(starPx[i]-size/2,starPy[i]-size/2,size,size);
-
-      if(twinkle>0.82||starGlow[i]>0.4){
-        mctx.globalAlpha=totalAlpha*0.55;
-        const flareLen=3.0+3.0*twinkle+4.0*starGlow[i];
-        mctx.fillRect(starPx[i]-flareLen/2,starPy[i]-0.4,flareLen,0.8);
-        mctx.fillRect(starPx[i]-0.4,starPy[i]-flareLen/2,0.8,flareLen);
+      if(twinkle>0.82){
+        mctx.globalAlpha=(0.20+0.65*twinkle)*0.55;
+        const flare=3.0+3.0*twinkle;
+        mctx.fillRect(starPx[i]-flare/2,starPy[i]-0.4,flare,0.8);
+        mctx.fillRect(starPx[i]-0.4,starPy[i]-flare/2,0.8,flare);
       }
     }
     mctx.globalAlpha=1;
   }
 
-  function needFrame(){
-    return sweeping||shimmerOn||poolOn||!!front;
-  }
-  function schedule(){
-    if(!raf&&needFrame()) raf=requestAnimationFrame(frame);
-  }
+  function needFrame(){ return sweeping||shimmerOn||starsOn; }
+  function schedule(){ if(!raf&&needFrame()) raf=requestAnimationFrame(frame); }
   function frame(){
     raf=null;
     tick++;
     if(sweeping) stepSweep();
-    if(front) stepFront();
-    if(poolOn) drawStars();
+    if(starsOn) drawStars();
     if(shimmerOn) stepShimmer();
     if(needFrame()) raf=requestAnimationFrame(frame);
   }
 
+  // Reduced motion gets the finished plate in one pass instead of a sweep.
   function stepSweep(){
-    const step=Math.max(2,Math.round(5*speedMult));
-    const end=Math.min(W,col+step);
+    const end=still?W:Math.min(W,col+5);
     for(;col<end;col++){
       ctx.fillStyle=css("--ground");ctx.fillRect(col,0,1.2,H);
       column(col,280,0.46);
     }
     if(col>=W){
       sweeping=false;
-      if(!reduced&&!reducedData){ shimmerOn=true; poolOn=true; }
+      if(!still) shimmerOn=true;
     }
   }
 
@@ -925,24 +843,16 @@ function hero(){
       ctx.globalAlpha=1;
     }
     if(tick%2===0){
-      const resonance=[3.0, 3.2, 3.449, 3.544, 3.5699, 3.63, 3.738, 3.8284, 3.845, 3.905, 3.96];
+      const resonance=[3.0,3.2,3.449,3.544,3.5699,3.63,3.738,3.8284,3.845,3.905,3.96];
       const targetR=resonance[Math.floor((tick/2)%resonance.length)];
-      const targetPx=Math.round(((targetR-2.85)/(4.0-2.85))*W);
-      if(targetPx>=0&&targetPx<W){
-        const twinkleAlpha=0.45+0.35*Math.sin(tick*0.18);
-        column(targetPx,120,twinkleAlpha);
-      }
+      const targetPx=Math.round(((targetR-R0)/DR)*W);
+      if(targetPx>=0&&targetPx<W) column(targetPx,120,0.45+0.35*Math.sin(tick*0.18));
     }
   }
 
-  function fireShockwave(originPx){
-    if(!W) return;
-    if(originPx===undefined) startFront();
-    else burst(originPx,H*0.5);
-    poolOn=true;
-    schedule();
-  }
-
+  // Resizing used to clear to the ground colour and redraw, which flashed.
+  // Stretch the previous frame into the new size first so the plate deforms
+  // continuously, then refine it column by column underneath.
   function reset(carry){
     const dpr=Math.min(devicePixelRatio||1,2);
     const nw=Math.round(cv.clientWidth*dpr),nh=Math.round(cv.clientHeight*dpr);
@@ -958,160 +868,23 @@ function hero(){
     ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
     if(mctx) mctx.clearRect(0,0,W,H);
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
-    col=0;sweeping=true;shimmerOn=false;poolOn=true;front=null;
+    col=0;sweeping=true;shimmerOn=false;starsOn=!still;
     seedOffset=Math.floor(Math.random()*10000);
     seedStars();
-    if(beam) beam.hidden=true;
     if(raf){cancelAnimationFrame(raf);raf=null;}
     schedule();
   }
 
-  // Off-screen pause stops idle shimmer only. A running blast keeps its frames.
+  // pause when off-screen; an attractor nobody can see should not burn a core
   new IntersectionObserver(es=>{
     for(const e of es){
       if(e.isIntersecting){
-        if(col>=W&&!reduced&&!reducedData){shimmerOn=true;poolOn=true;schedule();}
+        if(col>=W&&!still){shimmerOn=true;starsOn=true;schedule();}
       } else {
-        shimmerOn=false;poolOn=false;
+        shimmerOn=false;starsOn=false;
       }
     }
   },{threshold:0.01}).observe(cv);
-
-  const hud=document.getElementById("hero-hud");
-  const cobwebBox=document.getElementById("hero-cobweb");
-  const cobwebCv=document.getElementById("cobweb-canvas");
-  const cobwebR=document.getElementById("cobweb-r");
-  const cobwebRegime=document.getElementById("cobweb-regime");
-  const cobwebCtx=cobwebCv?cobwebCv.getContext("2d"):null;
-
-  function drawCobweb(r,l){
-    if(!cobwebCtx) return;
-    const cw=130,ch=130;
-    cobwebCtx.fillStyle=css("--sunken");cobwebCtx.fillRect(0,0,cw,ch);
-
-    // Diagonal line y = x
-    cobwebCtx.strokeStyle=css("--rule");cobwebCtx.lineWidth=1;
-    cobwebCtx.beginPath();cobwebCtx.moveTo(6,ch-6);cobwebCtx.lineTo(cw-6,6);cobwebCtx.stroke();
-
-    // Parabolic curve y = r * x * (1 - x)
-    const curveColor=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
-    cobwebCtx.strokeStyle=curveColor;cobwebCtx.lineWidth=1.6;
-    cobwebCtx.beginPath();
-    for(let i=0;i<=cw-12;i++){
-      const px=i/(cw-12);
-      const py=r*px*(1-px);
-      const canvasX=6+i;
-      const canvasY=ch-6-Math.min(1.1,py)*(ch-12);
-      if(i===0) cobwebCtx.moveTo(canvasX,canvasY);
-      else cobwebCtx.lineTo(canvasX,canvasY);
-    }
-    cobwebCtx.stroke();
-
-    // Cobweb trajectory bounce
-    let x=0.2;
-    cobwebCtx.strokeStyle=curveColor;cobwebCtx.lineWidth=1.1;cobwebCtx.globalAlpha=0.85;
-    cobwebCtx.beginPath();
-    let curX=6+x*(cw-12),curY=ch-6;
-    cobwebCtx.moveTo(curX,curY);
-    for(let step=0;step<24;step++){
-      const nextYVal=r*x*(1-x);
-      const nextY=ch-6-Math.min(1.1,nextYVal)*(ch-12);
-      cobwebCtx.lineTo(curX,nextY); // Vertical to curve
-      const nextX=6+nextYVal*(cw-12);
-      cobwebCtx.lineTo(nextX,nextY); // Horizontal to diagonal
-      x=nextYVal;
-      curX=nextX;curY=nextY;
-      if(x<0||x>1) break;
-    }
-    cobwebCtx.stroke();
-    cobwebCtx.globalAlpha=1;
-  }
-
-  function computeMetrics(px){
-    const r=2.85+(4.0-2.85)*(px/W);
-    let x=0.35+0.3*((px*2654435761)%1000)/1000,l=0;
-    for(let i=0;i<380;i++) x=r*x*(1-x);
-    for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
-    l/=160;
-    return {r,l};
-  }
-
-  function updateHUD(px){
-    if(!hud||!W) return;
-    const {r,l}=computeMetrics(px);
-    const tag=l>0.005?{c:"chaotic",t:"chaotic"}:l<-0.005?{c:"locked",t:"mode-locked"}:{c:"torus",t:"critical"};
-    const sign=l>0?"+":"";
-    hud.classList.add("active");
-    hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
-
-    if(cobwebEnabled&&cobwebBox&&cobwebR&&cobwebRegime){
-      cobwebR.textContent=`r = ${r.toFixed(4)}`;
-      cobwebRegime.className=`hud-tag ${tag.c}`;
-      cobwebRegime.textContent=tag.t;
-      cobwebBox.classList.add("active");
-      drawCobweb(r,l);
-    }
-  }
-
-  function resetHUD(){
-    if(!hud) return;
-    hud.classList.remove("active");
-    hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">live simulation &middot; hover / tap to inspect</span>`;
-    if(cobwebBox) cobwebBox.classList.remove("active");
-  }
-
-  // Simulation controls listeners
-  const btnReset=document.getElementById("btn-hero-reset");
-  const btnBurst=document.getElementById("btn-hero-burst");
-  const btnCobweb=document.getElementById("btn-hero-cobweb");
-  const btnSpeed=document.getElementById("btn-hero-speed");
-
-  if(btnReset){
-    btnReset.addEventListener("click",()=>{
-      reset(false);
-    });
-  }
-  if(btnBurst){
-    btnBurst.addEventListener("click",()=>{
-      fireShockwave();
-    });
-  }
-  if(btnCobweb){
-    btnCobweb.addEventListener("click",()=>{
-      cobwebEnabled=!cobwebEnabled;
-      btnCobweb.setAttribute("aria-pressed",cobwebEnabled?"true":"false");
-      if(!cobwebEnabled&&cobwebBox) cobwebBox.classList.remove("active");
-    });
-  }
-  if(btnSpeed){
-    btnSpeed.addEventListener("click",()=>{
-      speedMult=speedMult===1.0?2.0:speedMult===2.0?0.5:1.0;
-      btnSpeed.innerHTML=`⏩ ${speedMult}&times;`;
-    });
-  }
-
-  cv.addEventListener("pointermove",e=>{
-    if(!W) return;
-    const rect=cv.getBoundingClientRect();
-    const dpr=Math.min(devicePixelRatio||1,2);
-    const px=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
-    updateHUD(px);
-    ctx.globalAlpha=0.25;ctx.fillStyle=css("--ground");ctx.fillRect(Math.max(0,px-1),0,3,H);ctx.globalAlpha=1;
-    column(px,420,0.85);
-  },{passive:true});
-
-  cv.addEventListener("pointerdown",e=>{
-    if(!W) return;
-    const rect=cv.getBoundingClientRect();
-    const dpr=Math.min(devicePixelRatio||1,2);
-    const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
-    updateHUD(center);
-    fireShockwave(center);
-  },{passive:true});
-
-  cv.addEventListener("pointerleave",()=>{
-    resetHUD();
-  },{passive:true});
 
   // slow parallax: the plate drifts against the type as the reader leaves
   if(!reduced){

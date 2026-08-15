@@ -1128,7 +1128,6 @@ def hero(meta: dict[str, str], body: str) -> str:
     return f"""<header class="hero">
 <canvas id="bifurcation" aria-hidden="true"></canvas>
 <canvas id="hero-motes" aria-hidden="true"></canvas>
-<div class="hero-shock" id="hero-shock" hidden aria-hidden="true"></div>
 <div class="hero-inner">
 <p class="eyebrow">Interactive study &middot; built on dynachaos</p>
 <h1>{html.escape(meta["title"])}</h1>
@@ -1137,23 +1136,10 @@ def hero(meta: dict[str, str], body: str) -> str:
 <ul class="stats">{stats}</ul>
 </div>
 <div class="legend">
-<div class="legend-tags">
 <span><span class="swatch" style="background:var(--locked)"></span><b>&lambda; &lt; 0</b> &nbsp;mode-locked</span>
 <span><span class="swatch" style="background:var(--torus)"></span><b>&lambda; &asymp; 0</b> &nbsp;quasiperiodic</span>
 <span><span class="swatch" style="background:var(--chaotic)"></span><b>&lambda; &gt; 0</b> &nbsp;chaotic</span>
-</div>
-<span class="hero-hud" id="hero-hud"><span class="hud-dot" aria-hidden="true"></span><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">live simulation &middot; hover / tap to inspect</span></span>
-<div class="hero-actions">
-<button type="button" class="hero-btn" id="btn-hero-burst" title="Emit energetic shockwave blast">⚡ Shockwave</button>
-<button type="button" class="hero-btn" id="btn-hero-cobweb" aria-pressed="false" title="Toggle Cobweb diagram lens">🕸️ Cobweb</button>
-<button type="button" class="hero-btn" id="btn-hero-reset" title="Restart progressive drawing from left">↺ Re-Draw</button>
-<button type="button" class="hero-btn" id="btn-hero-speed" title="Toggle flow speed">⏩ 1&times;</button>
-</div>
-<div class="hero-cobweb" id="hero-cobweb" aria-hidden="true">
-<div class="cobweb-head"><span id="cobweb-r">r = 3.8284</span><span id="cobweb-regime" class="hud-tag chaotic">chaotic</span></div>
-<canvas id="cobweb-canvas" width="130" height="130"></canvas>
-<div class="cobweb-eq">x<sub>n+1</sub> = r x<sub>n</sub>(1 &minus; x<sub>n</sub>)</div>
-</div>
+<span style="color:var(--ink-low)">above &mdash; logistic attractor, computed live in your browser</span>
 </div>
 </header>"""
 
