@@ -749,95 +749,126 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  const SPARKS_COUNT=140, BURST_COUNT=20;
-  const sparks=Array.from({length:SPARKS_COUNT+BURST_COUNT},()=>({
-    px:0,r:0,x:0,l:0,life:0,maxLife:1,speed:1,size:1.35,color:""
+  const TRACERS_COUNT=180, BURST_COUNT=30;
+  const tracers=Array.from({length:TRACERS_COUNT+BURST_COUNT},()=>({
+    px:0,vx:1,x:0.5,r:3.0,l:0,life:0,maxLife:1,iters:1,size:1.35,color:""
   }));
 
-  function populateSpark(s,targetPx,isBurst){
-    const px=targetPx!==undefined?targetPx:Math.floor(Math.random()*W);
-    const r=2.85+(4.0-2.85)*(px/W);
-    let x=0.35+0.3*((px*2654435761+(tick*19))%1000)/1000;
-    for(let i=0;i<100;i++) x=r*x*(1-x);
-    let l=0;
-    for(let i=0;i<50;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
-    l/=50;
-    const maxLife=isBurst?(45+Math.floor(Math.random()*45)):(35+Math.floor(Math.random()*75));
-    s.px=px;s.r=r;s.x=x;s.l=l;
-    s.maxLife=maxLife;
-    s.life=maxLife;
-    s.speed=isBurst?2:(1+Math.floor(Math.random()*2));
-    s.size=isBurst?2.4:(Math.random()<0.3?2.2:1.35);
-    s.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
+  function computeTracerMetrics(r,x){
+    let l=0,cx=x;
+    for(let i=0;i<40;i++){cx=r*cx*(1-cx);l+=Math.log(Math.abs(r*(1-2*cx))+1e-12);}
+    l/=40;
+    return l;
   }
 
-  function initSparks(){
+  function populateTracer(t,targetPx,isBurst,spreadInitial){
+    const px=targetPx!==undefined?targetPx:(spreadInitial?(Math.random()*W):(-Math.random()*(W*0.06)));
+    const clampedPx=Math.max(0,Math.min(W-1,px));
+    const r=2.85+(4.0-2.85)*(clampedPx/W);
+    let x=0.35+0.3*((Math.floor(clampedPx)*2654435761+(tick*17))%1000)/1000;
+    for(let i=0;i<60;i++) x=r*x*(1-x);
+    const l=computeTracerMetrics(r,x);
+    const vx=isBurst?(2.6+Math.random()*2.4):(0.65+Math.random()*1.45);
+    const maxLife=isBurst?(50+Math.floor(Math.random()*40)):Math.round(W/vx+40);
+    t.px=px;
+    t.vx=vx;
+    t.x=x;
+    t.r=r;
+    t.l=l;
+    t.iters=isBurst?2:(Math.random()<0.25?2:1);
+    t.size=isBurst?2.4:(Math.random()<0.35?2.2:1.35);
+    t.maxLife=maxLife;
+    t.life=maxLife;
+    t.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
+  }
+
+  function initTracers(){
     if(!W) return;
-    for(let i=0;i<SPARKS_COUNT;i++){
-      populateSpark(sparks[i]);
-      sparks[i].life=Math.floor(Math.random()*sparks[i].maxLife);
+    for(let i=0;i<TRACERS_COUNT;i++){
+      populateTracer(tracers[i],undefined,false,true);
     }
-    for(let i=SPARKS_COUNT;i<sparks.length;i++){
-      sparks[i].life=0;sparks[i].maxLife=1;
+    for(let i=TRACERS_COUNT;i<tracers.length;i++){
+      tracers[i].life=0;tracers[i].maxLife=1;
     }
   }
 
   function sweep(target){
     const end=Math.min(W,target||col+18);
     for(;col<end;col++){
-      ctx.globalAlpha=0.10;ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.6,H);ctx.globalAlpha=1;
-      column(col,280,0.46);
+      ctx.globalAlpha=0.08;ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.6,H);ctx.globalAlpha=1;
+      column(col,280,0.36);
     }
     if(col<W){raf=requestAnimationFrame(()=>sweep(0));}
-    else if(!reduced&&!reducedData){initSparks();live=true;raf=requestAnimationFrame(shimmer);}
+    else if(!reduced&&!reducedData){initTracers();live=true;raf=requestAnimationFrame(shimmer);}
   }
 
   function shimmer(){
     tick++;
-    // Faint atmospheric wash to create soft fading orbital trails
+    // Subtle atmospheric fade wash allowing rich phase space density accumulation
     if(tick%2===0){
-      ctx.globalAlpha=0.02;
+      ctx.globalAlpha=0.012;
       ctx.fillStyle=css("--ground");
       ctx.fillRect(0,0,W,H);
       ctx.globalAlpha=1;
     }
 
-    // 1. Advance living dynamical orbit streams (zero memory allocation)
-    for(let i=0;i<sparks.length;i++){
-      const s=sparks[i];
-      if(s.life<=0) continue;
+    // 1. Advance living trajectory tracers from left to right across parameter space
+    for(let i=0;i<tracers.length;i++){
+      const t=tracers[i];
+      if(t.life<=0) continue;
 
-      for(let step=0;step<s.speed;step++){
-        s.x=s.r*s.x*(1-s.x);
+      t.px+=t.vx;
+      if(t.px>=W){
+        if(i<TRACERS_COUNT){
+          populateTracer(t,-Math.random()*16,false,false);
+        } else {
+          t.life=0;
+          continue;
+        }
       }
-      const y=(1-s.x)*H;
-      const progress=s.life/s.maxLife;
-      const alpha=Math.sin(progress*Math.PI)*0.85;
 
-      ctx.fillStyle=s.color;
-      ctx.globalAlpha=alpha;
-      ctx.fillRect(s.px,y,s.size,s.size);
+      t.r=2.85+(4.0-2.85)*(Math.max(0,Math.min(W-1,t.px))/W);
+      // Update Lyapunov color as parameter evolves along the path
+      if(tick%6===0){
+        t.l=computeTracerMetrics(t.r,t.x);
+        t.color=t.l>0.005?css("--chaotic"):t.l<-0.005?css("--locked-hero"):css("--torus");
+      }
 
-      s.life--;
-      if(s.life<=0&&i<SPARKS_COUNT){
-        populateSpark(s);
+      // Step dynamical orbit & deposit progressive phase space density
+      for(let step=0;step<t.iters;step++){
+        t.x=t.r*t.x*(1-t.x);
+        const y=(1-t.x)*H;
+        // Filament density deposit
+        ctx.fillStyle=t.color;
+        ctx.globalAlpha=0.28;
+        ctx.fillRect(t.px,y,1.15,1.15);
+      }
+
+      // Render glowing tracer head
+      const y=(1-t.x)*H;
+      const progress=t.life/t.maxLife;
+      const headAlpha=Math.min(1,Math.sin(progress*Math.PI)*1.4)*0.85;
+      ctx.fillStyle=t.color;
+      ctx.globalAlpha=headAlpha;
+      ctx.fillRect(t.px,y,t.size,t.size);
+
+      t.life--;
+      if(t.life<=0&&i<TRACERS_COUNT){
+        populateTracer(t,undefined,false,false);
       }
     }
     ctx.globalAlpha=1;
 
-    // 2. Harmonic branch twinkling across resonance windows
+    // 2. Harmonic branch resonance shimmering on key windows
     if(tick%3===0){
       const resonance=[3.0, 3.2, 3.449, 3.544, 3.5699, 3.63, 3.738, 3.8284, 3.845, 3.905, 3.96];
       const targetR=resonance[Math.floor((tick/3)%resonance.length)];
       const targetPx=Math.round(((targetR-2.85)/(4.0-2.85))*W);
       if(targetPx>=0&&targetPx<W){
-        const twinkleAlpha=0.35+0.35*Math.sin(tick*0.14);
-        column(targetPx,80,twinkleAlpha);
+        const twinkleAlpha=0.25+0.25*Math.sin(tick*0.14);
+        column(targetPx,60,twinkleAlpha);
       }
     }
-
-    // 3. Ambient attractor reinforcement
-    column(Math.floor(Math.random()*W),40,0.18);
 
     if(live) raf=requestAnimationFrame(shimmer);
   }
@@ -859,7 +890,7 @@ function hero(){
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
     col=0;live=false;
     if(raf)cancelAnimationFrame(raf);
-    initSparks();
+    initTracers();
     sweep(reduced?W:0);
   }
 
@@ -913,12 +944,12 @@ function hero(){
     const dpr=Math.min(devicePixelRatio||1,2);
     const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
     updateHUD(center);
-    // Populate burst pool slots in place (zero object allocation)
+    // Populate burst pool slots with high-velocity shockwave tracers heading right
     for(let k=0;k<BURST_COUNT;k++){
-      const off=(k-(BURST_COUNT>>1));
+      const off=(k-(BURST_COUNT>>1))*0.8;
       const px=Math.max(0,Math.min(W-1,center+off));
-      if(k%2===0) column(px,480,0.75);
-      populateSpark(sparks[SPARKS_COUNT+k],px,true);
+      if(k%2===0) column(px,420,0.65);
+      populateTracer(tracers[TRACERS_COUNT+k],px,true,false);
     }
   },{passive:true});
 
