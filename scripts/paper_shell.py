@@ -747,6 +747,8 @@ function hero(){
   if(!cv) return ()=>{};
   const ctx=cv.getContext("2d",{alpha:false});
   let raf=null,col=0,W=0,H=0,live=false,tick=0;
+  let speedMult=1.0,cobwebEnabled=false;
+  let shockwaves=[];
 
   function column(px,iters,alpha){
     const r=2.85+(4.0-2.85)*(px/W);
@@ -760,152 +762,62 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  const TRACERS_COUNT=160, BURST_COUNT=80;
-  let speedMult=1.0, cobwebEnabled=false;
-  const tracers=Array.from({length:TRACERS_COUNT+BURST_COUNT},()=>({
-    px:0,vx:1,x:0.5,r:3.0,l:0,life:0,maxLife:1,iters:1,size:3.6,color:"",
-    hx:[0,0,0,0],hy:[0,0,0,0],hlen:0
-  }));
-
-  function computeTracerMetrics(r,x){
-    let l=0,cx=x;
-    for(let i=0;i<35;i++){cx=r*cx*(1-cx);l+=Math.log(Math.abs(r*(1-2*cx))+1e-12);}
-    l/=35;
-    return l;
-  }
-
-  function populateTracer(t,targetPx,isBurst,spreadInitial){
-    const px=targetPx!==undefined?targetPx:(spreadInitial?(Math.random()*W):(Math.random()*(W*0.04)));
-    const clampedPx=Math.max(0,Math.min(W-1,px));
-    const r=2.85+(4.0-2.85)*(clampedPx/W);
-    let x=0.35+0.3*((Math.floor(clampedPx)*2654435761+(tick*17))%1000)/1000;
-    for(let i=0;i<60;i++) x=r*x*(1-x);
-    const l=computeTracerMetrics(r,x);
-    const vx=isBurst?(3.8+Math.random()*2.8):(0.85+Math.random()*1.45);
-    const maxLife=isBurst?Math.round((W-clampedPx)/vx+30):Math.round(W/vx+50);
-    t.px=clampedPx;
-    t.vx=vx;
-    t.x=x;
-    t.r=r;
-    t.l=l;
-    t.iters=isBurst?2:(Math.random()<0.3?2:1);
-    t.size=isBurst?4.6:(Math.random()<0.35?3.8:2.8);
-    t.maxLife=maxLife;
-    t.life=maxLife;
-    t.hlen=0;
-    t.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
+  function sweep(target){
+    const step=Math.round(24*speedMult);
+    const end=Math.min(W,target||col+step);
+    for(;col<end;col++){
+      ctx.fillStyle=css('--ground');ctx.fillRect(col,0,1.2,H);
+      column(col,280,0.46);
+    }
+    if(col<W){
+      raf=requestAnimationFrame(()=>sweep(0));
+    } else {
+      live=true;
+      if(!reduced&&!reducedData) raf=requestAnimationFrame(shimmer);
+    }
   }
 
   function fireShockwave(originPx){
     if(!W) return;
-    const basePx=originPx!==undefined?originPx:0;
-    for(let k=0;k<BURST_COUNT;k++){
-      const offsetPx=Math.min(W-1,basePx+(k%10)*4);
-      populateTracer(tracers[TRACERS_COUNT+k],offsetPx,true,false);
-    }
-  }
-
-  function initTracers(spreadInitial){
-    if(!W) return;
-    for(let i=0;i<TRACERS_COUNT;i++){
-      populateTracer(tracers[i],undefined,false,spreadInitial);
-    }
-    for(let i=TRACERS_COUNT;i<tracers.length;i++){
-      tracers[i].life=0;tracers[i].maxLife=1;
-    }
+    shockwaves.push({px:originPx!==undefined?originPx:0,vx:Math.round(28*speedMult)});
   }
 
   function shimmer(){
     tick++;
-    // Subtle atmospheric fade wash allowing rich phase space density accumulation
-    if(tick%3===0){
-      ctx.globalAlpha=0.010;
+    // Subtle atmospheric fade wash holding equilibrium density
+    if(tick%4===0){
+      ctx.globalAlpha=0.008;
       ctx.fillStyle=css("--ground");
       ctx.fillRect(0,0,W,H);
       ctx.globalAlpha=1;
     }
 
-    // 1. Advance living trajectory comet tracers from left to right
-    for(let i=0;i<tracers.length;i++){
-      const t=tracers[i];
-      if(t.life<=0) continue;
-
-      t.px+=t.vx*speedMult;
-      if(t.px>=W){
-        if(i<TRACERS_COUNT){
-          populateTracer(t,Math.random()*12,false,false);
-        } else {
-          t.life=0;
-          continue;
-        }
+    // 1. Advance and render energetic shockwave pulses
+    for(let s=shockwaves.length-1;s>=0;s--){
+      const sw=shockwaves[s];
+      const startPx=Math.max(0,Math.round(sw.px));
+      const endPx=Math.min(W,Math.round(sw.px+sw.vx));
+      for(let p=startPx;p<endPx;p++){
+        column(p,380,0.85);
       }
-
-      t.r=2.85+(4.0-2.85)*(Math.max(0,Math.min(W-1,t.px))/W);
-      if(tick%6===0){
-        t.l=computeTracerMetrics(t.r,t.x);
-        t.color=t.l>0.005?css("--chaotic"):t.l<-0.005?css("--locked-hero"):css("--torus");
-      }
-
-      // Step dynamical orbit & deposit progressive phase space density
-      for(let step=0;step<t.iters;step++){
-        t.x=t.r*t.x*(1-t.x);
-        const y=(1-t.x)*H;
-        // Filament density deposit (builds up the phase space tree over time)
-        ctx.fillStyle=t.color;
-        ctx.globalAlpha=0.38;
-        ctx.fillRect(t.px,y,1.25,1.25);
-      }
-
-      const curY=(1-t.x)*H;
-
-      // Update comet history (circular shift)
-      if(t.hlen<4){
-        t.hx[t.hlen]=t.px;t.hy[t.hlen]=curY;t.hlen++;
-      } else {
-        t.hx[0]=t.hx[1];t.hy[0]=t.hy[1];
-        t.hx[1]=t.hx[2];t.hy[1]=t.hy[2];
-        t.hx[2]=t.hx[3];t.hy[2]=t.hy[3];
-        t.hx[3]=t.px;t.hy[3]=curY;
-      }
-
-      // Draw trailing comet segments
-      for(let k=0;k<t.hlen-1;k++){
-        const tailAlpha=0.15+0.25*(k/3);
-        ctx.fillStyle=t.color;
-        ctx.globalAlpha=tailAlpha;
-        const tailSize=1.5+k*0.5;
-        ctx.fillRect(t.hx[k]-tailSize/2,t.hy[k]-tailSize/2,tailSize,tailSize);
-      }
-
-      // Render glowing tracer head
-      const progress=t.life/t.maxLife;
-      const headAlpha=Math.min(1,Math.sin(progress*Math.PI)*1.6)*0.95;
-      ctx.fillStyle=t.color;
-      ctx.globalAlpha=headAlpha;
-      ctx.fillRect(t.px-t.size/2,curY-t.size/2,t.size,t.size);
-
-      t.life--;
-      if(t.life<=0&&i<TRACERS_COUNT){
-        populateTracer(t,undefined,false,false);
-      }
+      sw.px+=sw.vx;
+      if(sw.px>=W) shockwaves.splice(s,1);
     }
-    ctx.globalAlpha=1;
 
-    // 2. Harmonic branch resonance shimmering on key windows
-    if(tick%3===0){
+    // 2. Harmonic branch resonance shimmering on key Feigenbaum windows
+    if(tick%2===0){
       const resonance=[3.0, 3.2, 3.449, 3.544, 3.5699, 3.63, 3.738, 3.8284, 3.845, 3.905, 3.96];
-      const targetR=resonance[Math.floor((tick/3)%resonance.length)];
+      const targetR=resonance[Math.floor((tick/2)%resonance.length)];
       const targetPx=Math.round(((targetR-2.85)/(4.0-2.85))*W);
       if(targetPx>=0&&targetPx<W){
-        const twinkleAlpha=0.30+0.30*Math.sin(tick*0.14);
-        column(targetPx,70,twinkleAlpha);
+        const twinkleAlpha=0.45+0.35*Math.sin(tick*0.18);
+        column(targetPx,120,twinkleAlpha);
       }
     }
 
     if(live) raf=requestAnimationFrame(shimmer);
   }
 
-  // Resizing / initial reset starts with clean slate and fires page-load shockwave by default
   function reset(carry){
     const dpr=Math.min(devicePixelRatio||1,2);
     const nw=Math.round(cv.clientWidth*dpr),nh=Math.round(cv.clientHeight*dpr);
@@ -918,17 +830,15 @@ function hero(){
     W=nw;H=nh;cv.width=W;cv.height=H;
     ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
-    col=0;live=false;
+    col=0;live=false;shockwaves=[];
     if(raf)cancelAnimationFrame(raf);
-    initTracers(carry?true:false);
-    fireShockwave(0); // Launch shockwave blast by default on page load!
-    if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
+    sweep(reduced?W:0);
   }
 
   // pause when off-screen; an attractor nobody can see should not burn a core
   new IntersectionObserver(es=>{
     for(const e of es){
-      if(e.isIntersecting){ if(!live&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
+      if(e.isIntersecting){ if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);} }
       else { live=false; if(raf)cancelAnimationFrame(raf); }
     }
   },{threshold:0.01}).observe(cv);
@@ -1024,9 +934,7 @@ function hero(){
 
   if(btnReset){
     btnReset.addEventListener("click",()=>{
-      ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
-      initTracers(false);
-      fireShockwave(0);
+      reset(false);
     });
   }
   if(btnBurst){
