@@ -775,14 +775,12 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  // ---------------- Ultra-Slow Tranquil Starlight Swarm ----------------
-  const N=70;
-  const px=new Float32Array(N), py=new Float32Array(N);
-  const vx=new Float32Array(N), vy=new Float32Array(N);
-  const mr=new Float32Array(N), mx=new Float32Array(N);
-  const targetX=new Float32Array(N), targetY=new Float32Array(N);
-  const heat=new Float32Array(N), phase=new Float32Array(N), freq=new Float32Array(N);
-  const stepTimer=new Uint16Array(N);
+  // ---------------- Strictly-On-Attractor Starlight Beacons ----------------
+  const N=80;
+  const starPx=new Float32Array(N), starPy=new Float32Array(N);
+  const starR=new Float32Array(N);
+  const starPhase=new Float32Array(N), starFreq=new Float32Array(N);
+  const starGlow=new Float32Array(N);
 
   function periodHint(rv){
     if(rv<3.0) return 1;
@@ -799,29 +797,36 @@ function hero(){
     return lam[ix];
   }
 
-  function seedPool(){
+  function seedStars(){
     for(let i=0;i<N;i++){
-      const rv=R0+Math.pow(Math.random(),0.6)*DR;
-      mr[i]=rv;
-      let xi=0.15+0.7*Math.random();
-      for(let k=0;k<120;k++) xi=rv*xi*(1-xi);
-      mx[i]=xi;
-      targetX[i]=((rv-R0)/DR)*W;
-      targetY[i]=(1-xi)*H;
-      px[i]=targetX[i]+(Math.random()-0.5)*50;
-      py[i]=targetY[i]+(Math.random()-0.5)*50;
-      vx[i]=0;
-      vy[i]=0;
-      heat[i]=0.3*Math.random();
-      phase[i]=Math.random()*Math.PI*2;
-      freq[i]=0.005+0.012*Math.random(); // 8-15 second deep breathing cycle
-      stepTimer[i]=Math.floor(Math.random()*180);
+      let rv;
+      if(i<10){
+        rv=2.90+Math.random()*0.50; // [2.90, 3.40] Period 1 & 2
+      } else if(i<25){
+        rv=3.45+Math.random()*0.12; // [3.45, 3.57] Period 4, 8 & Cascade
+      } else if(i<40){
+        rv=3.82+Math.random()*0.04; // [3.82, 3.86] Period-3 window
+      } else {
+        rv=3.57+Math.random()*0.42; // [3.57, 3.99] Chaotic bands
+      }
+      starR[i]=rv;
+
+      let x=0.4+0.2*Math.random();
+      for(let k=0;k<400;k++) x=rv*x*(1-x);
+      const extra=Math.floor(Math.random()*32);
+      for(let k=0;k<extra;k++) x=rv*x*(1-x);
+
+      starPx[i]=((rv-R0)/DR)*W;
+      starPy[i]=(1-x)*H;
+      starPhase[i]=Math.random()*Math.PI*2;
+      starFreq[i]=0.006+0.014*Math.random(); // 8-15s deep breathing cycle
+      starGlow[i]=0;
     }
   }
 
   let front=null;
   function startFront(){
-    front={r:R0,vr:0.0012*speedMult,sig:0.12,amp:0.5,life:1};
+    front={r:R0,vr:0.0012*speedMult,sig:0.10,amp:1.0,life:1};
   }
 
   function stepFront(){
@@ -832,81 +837,52 @@ function hero(){
     const s2=2*front.sig*front.sig;
     const amp=front.amp*front.life;
     for(let i=0;i<N;i++){
-      const g=Math.exp(-((mr[i]-front.r)*(mr[i]-front.r))/s2);
+      const g=Math.exp(-((starR[i]-front.r)*(starR[i]-front.r))/s2);
       const lift=amp*g;
-      if(lift>0.03) heat[i]=Math.max(heat[i],lift);
+      if(lift>0.04) starGlow[i]=Math.max(starGlow[i],lift);
     }
   }
 
   function burst(cx,cy){
-    const R=Math.min(W,H)*0.2, R2=R*R;
+    const R=Math.min(W,H)*0.25, R2=R*R;
     for(let i=0;i<N;i++){
-      const dx=px[i]-cx, dy=py[i]-cy;
+      const dx=starPx[i]-cx, dy=starPy[i]-cy;
       const d2=dx*dx+dy*dy;
       if(d2>R2) continue;
       const w=1-d2/R2;
-      heat[i]=Math.min(0.8,heat[i]+0.35*w);
-      const ang=Math.random()*Math.PI*2;
-      vx[i]+=Math.cos(ang)*0.8*w;
-      vy[i]+=Math.sin(ang)*0.8*w;
+      starGlow[i]=Math.min(1.0,starGlow[i]+0.6*w);
     }
   }
 
-  function stepMotes(){
-    const COOL=0.992;
-    for(let i=0;i<N;i++){
-      let th=heat[i]*COOL;
-      const rv=mr[i];
-
-      stepTimer[i]++;
-      if(stepTimer[i]>180+Math.floor(Math.random()*120)){
-        stepTimer[i]=0;
-        let xi=mx[i];
-        xi=rv*xi*(1-xi);
-        if(!(xi>0&&xi<1)) xi=0.15+0.7*Math.random();
-        mx[i]=xi;
-        targetY[i]=(1-xi)*H;
-      }
-
-      const kappa=0.02+0.08*(1-th);
-      const damp=0.92;
-      const sig=0.015+0.25*th;
-      vx[i]=vx[i]*damp+(targetX[i]-px[i])*kappa+(Math.random()-0.5)*sig;
-      vy[i]=vy[i]*damp+(targetY[i]-py[i])*kappa+(Math.random()-0.5)*sig;
-      px[i]+=vx[i]*speedMult;
-      py[i]+=vy[i]*speedMult;
-
-      phase[i]+=freq[i];
-      heat[i]=th;
-    }
-  }
-
-  function drawMotes(){
+  function drawStars(){
     if(!mctx||!W||!H) return;
-    mctx.globalCompositeOperation="destination-out";
-    mctx.globalAlpha=0.05;
-    mctx.fillStyle="#000";
-    mctx.fillRect(0,0,W,H);
+    mctx.clearRect(0,0,W,H);
 
-    mctx.globalCompositeOperation="source-over";
     const colC=css("--chaotic"), colL=css("--locked-hero"), colT=css("--torus");
 
     for(let i=0;i<N;i++){
-      const th=heat[i];
-      const twinkle=Math.pow(0.5+0.5*Math.sin(phase[i]),3);
-      const ly=lamAt(mr[i]);
+      if(starPx[i]>col) continue; // Never render ahead of sweep line!
+
+      starPhase[i]+=starFreq[i];
+      starGlow[i]*=0.993;
+
+      const twinkle=Math.pow(0.5+0.5*Math.sin(starPhase[i]),3);
+      const ly=lamAt(starR[i]);
       const fill=ly>0.005?colC:ly<-0.005?colL:colT;
 
       mctx.fillStyle=fill;
-      const a=0.12+0.65*twinkle*(0.7+0.3*(1-th));
-      const s=1.0+1.8*twinkle;
-      mctx.globalAlpha=a;
-      mctx.fillRect(px[i]-s/2,py[i]-s/2,s,s);
+      const baseAlpha=0.20+0.65*twinkle;
+      const totalAlpha=Math.min(1.0,baseAlpha+0.45*starGlow[i]);
+      const size=1.1+1.8*twinkle+1.2*starGlow[i];
 
-      if(twinkle>0.88){
-        mctx.globalAlpha=a*0.4;
-        mctx.fillRect(px[i]-2.5,py[i]-0.3,5.0,0.6);
-        mctx.fillRect(px[i]-0.3,py[i]-2.5,0.6,5.0);
+      mctx.globalAlpha=totalAlpha;
+      mctx.fillRect(starPx[i]-size/2,starPy[i]-size/2,size,size);
+
+      if(twinkle>0.82||starGlow[i]>0.4){
+        mctx.globalAlpha=totalAlpha*0.55;
+        const flareLen=3.0+3.0*twinkle+4.0*starGlow[i];
+        mctx.fillRect(starPx[i]-flareLen/2,starPy[i]-0.4,flareLen,0.8);
+        mctx.fillRect(starPx[i]-0.4,starPy[i]-flareLen/2,0.8,flareLen);
       }
     }
     mctx.globalAlpha=1;
@@ -923,7 +899,7 @@ function hero(){
     tick++;
     if(sweeping) stepSweep();
     if(front) stepFront();
-    if(poolOn){ stepMotes(); drawMotes(); }
+    if(poolOn) drawStars();
     if(shimmerOn) stepShimmer();
     if(needFrame()) raf=requestAnimationFrame(frame);
   }
@@ -984,7 +960,7 @@ function hero(){
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
     col=0;sweeping=true;shimmerOn=false;poolOn=true;front=null;
     seedOffset=Math.floor(Math.random()*10000);
-    seedPool();
+    seedStars();
     if(beam) beam.hidden=true;
     if(raf){cancelAnimationFrame(raf);raf=null;}
     schedule();
