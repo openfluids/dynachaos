@@ -173,6 +173,7 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 /* ------------------------------ hero ------------------------------ */
 .hero{position:relative;height:100svh;min-height:100svh;display:grid;grid-template-rows:minmax(0,1fr) auto;overflow:hidden;border-bottom:1px solid var(--rule);contain:layout style;isolation:isolate;}
 #bifurcation{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;z-index:0;will-change:transform;cursor:crosshair;}
+#hero-motes{position:absolute;inset:-8% 0 -8% 0;width:100%;height:116%;display:block;z-index:1;pointer-events:none;will-change:transform;}
 .hero-shock{position:absolute;top:-8%;bottom:-8%;left:0;width:3px;height:116%;z-index:1;pointer-events:none;
   background:var(--chaotic);
   box-shadow:0 0 10px 4px color-mix(in oklab,var(--chaotic) 75%,transparent),0 0 36px 16px color-mix(in oklab,var(--chaotic) 40%,transparent);
@@ -747,31 +748,202 @@ function makeFocusTrap(getFocusables){
    motion is on. Leaving the plate pauses only the idle shimmer. */
 function hero(){
   const cv=document.getElementById("bifurcation");
+  const mcv=document.getElementById("hero-motes");
   if(!cv) return ()=>{};
   const ctx=cv.getContext("2d",{alpha:false});
+  const mctx=mcv?mcv.getContext("2d",{alpha:true}):null;
   const beam=document.getElementById("hero-shock");
   let raf=null,col=0,W=0,H=0,tick=0;
   let speedMult=1.0,cobwebEnabled=false;
-  let shockwaves=[];
-  let sweeping=false,shimmerOn=false;
-
+  let sweeping=false,shimmerOn=false,poolOn=false;
   let seedOffset=0;
 
+  const R0=2.85, R1=4.0, DR=R1-R0;
+  let lam=new Float32Array(0);
+
   function column(px,iters,alpha,sOffset){
-    const r=2.85+(4.0-2.85)*(px/W);
+    const r=R0+DR*(px/W);
     const s=(sOffset!==undefined?sOffset:seedOffset);
     let x=0.35+0.3*((px*2654435761+s*17)%1000)/1000,l=0;
     for(let i=0;i<380;i++) x=r*x*(1-x);
     for(let i=0;i<160;i++){x=r*x*(1-x);l+=Math.log(Math.abs(r*(1-2*x))+1e-12);}
     l/=160;
+    if(lam.length>px) lam[px]=l;
     ctx.fillStyle=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
     ctx.globalAlpha=alpha;
     for(let i=0;i<iters;i++){x=r*x*(1-x);ctx.fillRect(px,(1-x)*H,1.15,1.15);}
     ctx.globalAlpha=1;
   }
 
+  // ---------------- Stochastic Mote Swarm ----------------
+  const N=220, K=8;
+  const px=new Float32Array(N), py=new Float32Array(N);
+  const vx=new Float32Array(N), vy=new Float32Array(N);
+  const mr=new Float32Array(N), mx=new Float32Array(N);
+  const heat=new Float32Array(N), phase=new Float32Array(N);
+  const orbit=new Float32Array(N*K);
+  const head=new Uint8Array(N);
+
+  function periodHint(rv){
+    if(rv<3.0) return 1;
+    if(rv<3.44949) return 2;
+    if(rv<3.54409) return 4;
+    if(rv<3.56441) return 8;
+    if(rv>3.8284&&rv<3.8415) return 3;
+    return 0;
+  }
+
+  function lamAt(rv){
+    if(!lam.length||!W) return 0;
+    const ix=Math.max(0,Math.min(W-1,Math.round(((rv-R0)/DR)*W)));
+    return lam[ix];
+  }
+
+  function seedPool(){
+    for(let i=0;i<N;i++){
+      const rv=R0+Math.pow(Math.random(),0.65)*DR;
+      mr[i]=rv;
+      let xi=0.15+0.7*Math.random();
+      for(let k=0;k<60;k++) xi=rv*xi*(1-xi);
+      mx[i]=xi;
+      px[i]=Math.random()*W;
+      py[i]=Math.random()*H;
+      vx[i]=(Math.random()-0.5)*2.4;
+      vy[i]=(Math.random()-0.5)*2.4;
+      heat[i]=0.85+0.15*Math.random();
+      phase[i]=Math.random()*Math.PI*2;
+      head[i]=0;
+      for(let k=0;k<K;k++) orbit[i*K+k]=xi;
+    }
+  }
+
+  let front=null;
+  function startFront(){
+    front={r:R0,vr:0.012*speedMult,sig:0.06,amp:0.75,life:1};
+  }
+
+  function stepFront(){
+    if(!front) return;
+    front.r+=front.vr;
+    front.life*=0.994;
+    if(front.r>R1+0.08||front.life<0.05){front=null;return;}
+    const s2=2*front.sig*front.sig;
+    const amp=front.amp*front.life;
+    for(let i=0;i<N;i++){
+      const g=Math.exp(-((mr[i]-front.r)*(mr[i]-front.r))/s2);
+      const lift=amp*g;
+      if(lift>0.05) heat[i]=Math.max(heat[i],lift);
+      if(g>0.35&&Math.random()<0.08){
+        mx[i]=0.05+0.90*Math.random();
+        vy[i]+=(Math.random()-0.5)*2.6;
+      }
+    }
+  }
+
+  function burst(cx,cy){
+    const R=Math.min(W,H)*0.25, R2=R*R;
+    for(let i=0;i<N;i++){
+      const dx=px[i]-cx, dy=py[i]-cy;
+      const d2=dx*dx+dy*dy;
+      if(d2>R2) continue;
+      const w=1-d2/R2;
+      heat[i]=Math.min(1,0.6+0.4*w);
+      mx[i]=0.05+0.9*Math.random();
+      const ang=Math.random()*Math.PI*2;
+      const kick=(3.0+5.0*w)*(0.6+0.4*Math.random());
+      vx[i]+=Math.cos(ang)*kick;
+      vy[i]+=Math.sin(ang)*kick;
+      phase[i]=0;
+    }
+  }
+
+  function stepMotes(){
+    const COOL=0.976;
+    const crawl=0.0006*speedMult;
+    for(let i=0;i<N;i++){
+      let th=heat[i]*COOL;
+      const rv=mr[i], p=periodHint(rv);
+
+      const nIter=1+(((1-th)*2)|0);
+      let xi=mx[i];
+      for(let n=0;n<nIter;n++){
+        xi=rv*xi*(1-xi);
+        if(!(xi>0&&xi<1)) xi=0.15+0.7*Math.random();
+        orbit[i*K+head[i]]=xi;
+        head[i]=(head[i]+1)%K;
+      }
+      mx[i]=xi;
+
+      const tx=((rv-R0)/DR)*W;
+      const ty=(1-xi)*H;
+
+      const kappa=0.06+0.28*(1-th);
+      const damp=0.78+0.16*(1-th);
+      const sig=0.06+1.6*th;
+      vx[i]=vx[i]*damp+(tx-px[i])*kappa+(Math.random()-0.5)*sig;
+      vy[i]=vy[i]*damp+(ty-py[i])*kappa+(Math.random()-0.5)*sig;
+      px[i]+=vx[i]*speedMult;
+      py[i]+=vy[i]*speedMult;
+
+      if(th<0.20){
+        mr[i]=Math.max(R0,Math.min(R1,rv+(Math.random()-0.5)*crawl));
+      }
+
+      const ly=lamAt(mr[i]);
+      const omega=p?(Math.PI*2)/(p*12):0.08;
+      phase[i]+=omega+0.05*th;
+      const spark=0.004+0.025*Math.max(0,Math.min(1,ly/0.55));
+      if(Math.random()<spark){
+        phase[i]=0;
+        th=Math.min(1,th+0.1);
+      }
+      heat[i]=th;
+    }
+  }
+
+  function drawMotes(){
+    if(!mctx||!W||!H) return;
+    mctx.globalCompositeOperation="destination-out";
+    mctx.globalAlpha=0.16;
+    mctx.fillStyle="#000";
+    mctx.fillRect(0,0,W,H);
+
+    mctx.globalCompositeOperation="source-over";
+    const colC=css("--chaotic"), colL=css("--locked-hero"), colT=css("--torus");
+
+    for(let i=0;i<N;i++){
+      const th=heat[i];
+      const g=Math.pow(Math.max(0,Math.cos(phase[i])),10);
+      const ly=lamAt(mr[i]);
+      const fill=ly>0.005?colC:ly<-0.005?colL:colT;
+      const p=periodHint(mr[i]);
+      const nGhost=th>0.28?K:Math.max(2,p||4);
+      const rx=((mr[i]-R0)/DR)*W;
+
+      mctx.fillStyle=fill;
+      for(let k=0;k<nGhost;k++){
+        const xk=orbit[i*K+((head[i]-1-k+K*8)%K)];
+        const fade=1-k/nGhost;
+        mctx.globalAlpha=(0.08+0.22*fade)*(1-0.45*th);
+        mctx.fillRect(rx-0.5,(1-xk)*H,1.2,1.2);
+      }
+
+      const a=0.20+0.75*g*(0.45+0.55*(1-0.4*th));
+      const s=0.8+2.4*g+1.4*th;
+      mctx.globalAlpha=a;
+      mctx.fillRect(px[i]-s/2,py[i]-s/2,s,s);
+
+      if(g>0.80){
+        mctx.globalAlpha=a*0.6;
+        mctx.fillRect(px[i]-3.5,py[i]-0.4,7.0,0.8);
+        mctx.fillRect(px[i]-0.4,py[i]-3.5,0.8,7.0);
+      }
+    }
+    mctx.globalAlpha=1;
+  }
+
   function needFrame(){
-    return sweeping||shockwaves.length>0||shimmerOn;
+    return sweeping||shimmerOn||poolOn||!!front;
   }
   function schedule(){
     if(!raf&&needFrame()) raf=requestAnimationFrame(frame);
@@ -780,9 +952,9 @@ function hero(){
     raf=null;
     tick++;
     if(sweeping) stepSweep();
-    if(shockwaves.length) stepWaves();
+    if(front) stepFront();
+    if(poolOn){ stepMotes(); drawMotes(); }
     if(shimmerOn) stepShimmer();
-    placeBeam();
     if(needFrame()) raf=requestAnimationFrame(frame);
   }
 
@@ -795,50 +967,8 @@ function hero(){
     }
     if(col>=W){
       sweeping=false;
-      if(!reduced&&!reducedData) shimmerOn=true;
+      if(!reduced&&!reducedData){ shimmerOn=true; poolOn=true; }
     }
-  }
-
-  function stepWaves(){
-    for(let s=shockwaves.length-1;s>=0;s--){
-      const sw=shockwaves[s];
-      const prevPx=Math.max(0,Math.round(sw.px-sw.vx));
-      const startPx=Math.max(0,Math.round(sw.px));
-      const endPx=Math.min(W,Math.round(sw.px+Math.max(sw.vx,12)));
-      for(let p=prevPx;p<startPx;p++){
-        ctx.fillStyle=css("--ground");
-        ctx.fillRect(p,0,1.2,H);
-        column(p,280,0.46);
-      }
-      for(let p=startPx;p<endPx;p++){
-        ctx.fillStyle=css("--ground");
-        ctx.fillRect(p,0,1.2,H);
-        column(p,420,0.92);
-      }
-      if(endPx<W){
-        ctx.fillStyle=css("--chaotic");
-        ctx.globalAlpha=0.85;
-        ctx.fillRect(endPx-2,0,5,H);
-        ctx.globalAlpha=0.25;
-        ctx.fillRect(Math.max(0,endPx-16),0,32,H);
-        ctx.globalAlpha=1;
-      }
-      sw.px+=sw.vx;
-      if(sw.px>=W+48) shockwaves.splice(s,1);
-    }
-  }
-
-  function placeBeam(){
-    if(!beam) return;
-    if(!shockwaves.length||!W){
-      beam.hidden=true;
-      return;
-    }
-    const sw=shockwaves[shockwaves.length-1];
-    const x=(sw.px/W)*cv.clientWidth;
-    const par=reduced?0:Math.min(scrollY,innerHeight)*0.16;
-    beam.hidden=false;
-    beam.style.transform="translate3d("+x.toFixed(1)+"px,"+par.toFixed(1)+"px,0)";
   }
 
   function stepShimmer(){
@@ -861,8 +991,9 @@ function hero(){
 
   function fireShockwave(originPx){
     if(!W) return;
-    const vx=Math.max(8,Math.round(W/90*speedMult));
-    shockwaves.push({px:originPx!==undefined?originPx:0,vx:vx});
+    if(originPx===undefined) startFront();
+    else burst(originPx,H*0.5);
+    poolOn=true;
     schedule();
   }
 
@@ -876,10 +1007,14 @@ function hero(){
       prev.getContext("2d").drawImage(cv,0,0);
     }
     W=nw;H=nh;cv.width=W;cv.height=H;
+    if(mcv){mcv.width=W;mcv.height=H;}
+    lam=new Float32Array(W);
     ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
+    if(mctx) mctx.clearRect(0,0,W,H);
     if(prev){ctx.globalAlpha=0.85;ctx.drawImage(prev,0,0,W,H);ctx.globalAlpha=1;}
-    col=0;sweeping=true;shimmerOn=false;shockwaves=[];
+    col=0;sweeping=true;shimmerOn=false;poolOn=true;front=null;
     seedOffset=Math.floor(Math.random()*10000);
+    seedPool();
     if(beam) beam.hidden=true;
     if(raf){cancelAnimationFrame(raf);raf=null;}
     schedule();
@@ -889,9 +1024,9 @@ function hero(){
   new IntersectionObserver(es=>{
     for(const e of es){
       if(e.isIntersecting){
-        if(col>=W&&!reduced&&!reducedData){shimmerOn=true;schedule();}
+        if(col>=W&&!reduced&&!reducedData){shimmerOn=true;poolOn=true;schedule();}
       } else {
-        shimmerOn=false;
+        shimmerOn=false;poolOn=false;
       }
     }
   },{threshold:0.01}).observe(cv);
@@ -992,7 +1127,7 @@ function hero(){
   }
   if(btnBurst){
     btnBurst.addEventListener("click",()=>{
-      fireShockwave(0);
+      fireShockwave();
     });
   }
   if(btnCobweb){
@@ -1036,8 +1171,9 @@ function hero(){
   if(!reduced){
     addEventListener("scroll",()=>{
       const y=Math.min(scrollY,innerHeight);
-      cv.style.transform="translate3d(0,"+(y*0.16).toFixed(1)+"px,0)";
-      placeBeam();
+      const ty="translate3d(0,"+(y*0.16).toFixed(1)+"px,0)";
+      cv.style.transform=ty;
+      if(mcv) mcv.style.transform=ty;
     },{passive:true});
   }
 
