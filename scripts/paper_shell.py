@@ -780,6 +780,7 @@ function hero(){
   function fireShockwave(originPx){
     if(!W) return;
     shockwaves.push({px:originPx!==undefined?originPx:0,vx:Math.round(28*speedMult)});
+    if(!live&&col>=W&&!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
   }
 
   function shimmer(){
@@ -798,6 +799,7 @@ function hero(){
       const startPx=Math.max(0,Math.round(sw.px));
       const endPx=Math.min(W,Math.round(sw.px+sw.vx));
       for(let p=startPx;p<endPx;p++){
+        ctx.fillStyle=css('--ground');ctx.fillRect(p,0,1.2,H);
         column(p,380,0.85);
       }
       sw.px+=sw.vx;
@@ -821,7 +823,7 @@ function hero(){
   function reset(carry){
     const dpr=Math.min(devicePixelRatio||1,2);
     const nw=Math.round(cv.clientWidth*dpr),nh=Math.round(cv.clientHeight*dpr);
-    if(!nw||!nh||(nw===W&&nh===H&&carry!==undefined)) return;
+    if(!nw||!nh||(nw===W&&nh===H&&carry)) return;
     let prev=null;
     if(carry&&W&&H){
       prev=document.createElement("canvas");prev.width=W;prev.height=H;
