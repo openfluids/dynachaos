@@ -786,24 +786,54 @@ function hero(){
   function shimmer(){
     tick++;
     // Subtle atmospheric fade wash holding equilibrium density
-    if(tick%4===0){
-      ctx.globalAlpha=0.008;
+    if(tick%5===0){
+      ctx.globalAlpha=0.006;
       ctx.fillStyle=css("--ground");
       ctx.fillRect(0,0,W,H);
       ctx.globalAlpha=1;
     }
 
-    // 1. Advance and render energetic shockwave pulses
+    // 1. Advance and render energetic shockwave pulses with luminous beam
     for(let s=shockwaves.length-1;s>=0;s--){
       const sw=shockwaves[s];
+      const prevPx=Math.max(0,Math.round(sw.px-sw.vx));
       const startPx=Math.max(0,Math.round(sw.px));
       const endPx=Math.min(W,Math.round(sw.px+sw.vx));
+
+      // Clean and restore the previous wave column to erase the glow beam
+      for(let p=prevPx;p<startPx;p++){
+        ctx.fillStyle=css("--ground");
+        ctx.fillRect(p,0,1.2,H);
+        column(p,280,0.46);
+      }
+
+      // Draw refreshed attractor points along the active wave slice
       for(let p=startPx;p<endPx;p++){
-        ctx.fillStyle=css('--ground');ctx.fillRect(p,0,1.2,H);
+        ctx.fillStyle=css("--ground");
+        ctx.fillRect(p,0,1.2,H);
         column(p,380,0.85);
       }
+
+      // Draw the bright luminous shockwave wavefront beam at the leading edge
+      if(endPx<W){
+        ctx.fillStyle=css("--chaotic");
+        ctx.globalAlpha=0.85;
+        ctx.fillRect(endPx-2,0,5,H);
+        ctx.globalAlpha=0.25;
+        ctx.fillRect(Math.max(0,endPx-16),0,32,H);
+        ctx.globalAlpha=1;
+      }
+
       sw.px+=sw.vx;
-      if(sw.px>=W) shockwaves.splice(s,1);
+      if(sw.px>=W+32){
+        // Final clean of trailing edge
+        for(let p=Math.max(0,Math.round(sw.px-sw.vx));p<W;p++){
+          ctx.fillStyle=css("--ground");
+          ctx.fillRect(p,0,1.2,H);
+          column(p,280,0.46);
+        }
+        shockwaves.splice(s,1);
+      }
     }
 
     // 2. Harmonic branch resonance shimmering on key Feigenbaum windows

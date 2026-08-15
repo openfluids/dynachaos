@@ -21,6 +21,7 @@ Equations are native MathML, so they need no JavaScript and no math library;
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -1246,8 +1247,15 @@ def minify_html(html_str: str) -> str:
     return "".join(tokens).strip()
 
 
-def assemble(body: str, nav: str, meta: dict[str, str], index_json: str = "") -> str:
+def assemble(
+    body: str, nav: str, meta: dict[str, str], index_json: str = "", js_hash: str = ""
+) -> str:
     min_css = minify_css(CSS)
+    script_tag = (
+        f'<script src="app.js?v={js_hash}" defer></script>'
+        if js_hash
+        else '<script src="app.js" defer></script>'
+    )
     raw_html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1260,7 +1268,7 @@ def assemble(body: str, nav: str, meta: dict[str, str], index_json: str = "") ->
 <link rel="preload" href="fonts/pagella-regular.woff2" as="font" type="font/woff2" crossorigin>
 {PREF_SCRIPT}
 <style>{min_css}</style>
-<script src="app.js" defer></script>
+{script_tag}
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>
@@ -1389,9 +1397,10 @@ def main() -> None:
     (SITE / "search-index.json").write_text(index_json, encoding="utf-8")
 
     min_js = minify_js(JS)
+    js_hash = hashlib.sha256(min_js.encode("utf-8")).hexdigest()[:10]
     (SITE / "app.js").write_text(min_js, encoding="utf-8")
 
-    page = assemble(body, build_nav(nav), meta, index_json)
+    page = assemble(body, build_nav(nav), meta, index_json, js_hash)
     out = SITE / "index.html"
     out.write_text(page, encoding="utf-8")
 

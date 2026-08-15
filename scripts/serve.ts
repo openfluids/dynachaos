@@ -20,13 +20,16 @@ const MIME_TYPES: Record<string, string> = {
 
 const COMPRESSIBLE = new Set([".html", ".css", ".js", ".json", ".svg"]);
 
-// In-memory cache for compressed static assets
-const fileCache = new Map<string, { raw: Uint8Array; gz: Uint8Array; br: Uint8Array; mime: string; ext: string }>();
+// In-memory cache for compressed static assets with mtime validation
+const fileCache = new Map<string, { raw: Uint8Array; gz: Uint8Array; br: Uint8Array; mime: string; ext: string; mtime: number }>();
 
 function getAsset(filePath: string) {
+  if (!existsSync(filePath)) return null;
+  const stat = statSync(filePath);
+  if (!stat.isFile()) return null;
+
   let cached = fileCache.get(filePath);
-  if (!cached) {
-    if (!existsSync(filePath) || !statSync(filePath).isFile()) return null;
+  if (!cached || cached.mtime !== stat.mtimeMs) {
     const raw = readFileSync(filePath);
     const ext = extname(filePath).toLowerCase();
     const mime = MIME_TYPES[ext] || "application/octet-stream";
@@ -34,7 +37,7 @@ function getAsset(filePath: string) {
     const br = COMPRESSIBLE.has(ext)
       ? zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } })
       : raw;
-    cached = { raw, gz, br, mime, ext };
+    cached = { raw, gz, br, mime, ext, mtime: stat.mtimeMs };
     fileCache.set(filePath, cached);
   }
   return cached;
@@ -65,10 +68,10 @@ serve({
     headers.set("Content-Type", asset.mime);
     headers.set("Vary", "Accept-Encoding");
 
-    if (asset.ext === ".woff2" || asset.ext === ".webp" || asset.ext === ".png" || asset.ext === ".js" || asset.ext === ".css") {
+    if (asset.ext === ".woff2" || asset.ext === ".webp" || asset.ext === ".png") {
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     } else {
-      headers.set("Cache-Control", "public, max-age=3600");
+      headers.set("Cache-Control", "no-cache, must-revalidate");
     }
 
     if (COMPRESSIBLE.has(asset.ext) && acceptEncoding.includes("br")) {
