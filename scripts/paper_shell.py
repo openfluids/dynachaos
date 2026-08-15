@@ -206,6 +206,7 @@ pre{background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padd
 .hero-btn{appearance:none;background:color-mix(in oklab,var(--sunken) 70%,transparent);border:1px solid var(--rule-soft);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:0.64rem;letter-spacing:0.05em;padding:0.22rem 0.55rem;cursor:pointer;transition:all .15s ease;white-space:nowrap;}
 .hero-btn:hover{background:var(--raised);border-color:color-mix(in oklab,var(--chaotic) 40%,transparent);color:var(--chaotic);transform:translateY(-1px);}
 .hero-btn:active{transform:translateY(0);}
+.hero-btn[aria-pressed="true"]{background:color-mix(in oklab,var(--torus) 20%,transparent);border-color:var(--torus);color:var(--ink);font-weight:600;}
 .hero-cobweb{position:absolute;bottom:calc(100% + 12px);right:var(--gutter);z-index:30;padding:0.6rem 0.75rem 0.5rem;border-radius:8px;background:color-mix(in oklab,var(--ground) 92%,transparent);backdrop-filter:blur(14px);border:1px solid var(--rule);box-shadow:0 12px 32px rgba(0,0,0,0.18);opacity:0;visibility:hidden;pointer-events:none;transform:translateY(6px) scale(0.96);transition:opacity .2s ease,transform .2s ease,visibility .2s;}
 .hero-cobweb.active{opacity:1;visibility:visible;transform:none;}
 .cobweb-head{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;font-family:var(--mono);font-size:0.65rem;font-weight:600;color:var(--ink);margin-bottom:0.4rem;}
@@ -759,8 +760,8 @@ function hero(){
     ctx.globalAlpha=1;
   }
 
-  const TRACERS_COUNT=200, BURST_COUNT=40;
-  let speedMult=1.0;
+  const TRACERS_COUNT=160, BURST_COUNT=80;
+  let speedMult=1.0, cobwebEnabled=false;
   const tracers=Array.from({length:TRACERS_COUNT+BURST_COUNT},()=>({
     px:0,vx:1,x:0.5,r:3.0,l:0,life:0,maxLife:1,iters:1,size:3.6,color:"",
     hx:[0,0,0,0],hy:[0,0,0,0],hlen:0
@@ -774,25 +775,34 @@ function hero(){
   }
 
   function populateTracer(t,targetPx,isBurst,spreadInitial){
-    const px=targetPx!==undefined?targetPx:(spreadInitial?(Math.random()*W):(-Math.random()*(W*0.06)));
+    const px=targetPx!==undefined?targetPx:(spreadInitial?(Math.random()*W):(Math.random()*(W*0.04)));
     const clampedPx=Math.max(0,Math.min(W-1,px));
     const r=2.85+(4.0-2.85)*(clampedPx/W);
     let x=0.35+0.3*((Math.floor(clampedPx)*2654435761+(tick*17))%1000)/1000;
     for(let i=0;i<60;i++) x=r*x*(1-x);
     const l=computeTracerMetrics(r,x);
-    const vx=isBurst?(2.8+Math.random()*2.2):(0.75+Math.random()*1.35);
-    const maxLife=isBurst?(55+Math.floor(Math.random()*35)):Math.round(W/vx+50);
-    t.px=px;
+    const vx=isBurst?(3.8+Math.random()*2.8):(0.85+Math.random()*1.45);
+    const maxLife=isBurst?Math.round((W-clampedPx)/vx+30):Math.round(W/vx+50);
+    t.px=clampedPx;
     t.vx=vx;
     t.x=x;
     t.r=r;
     t.l=l;
     t.iters=isBurst?2:(Math.random()<0.3?2:1);
-    t.size=isBurst?4.2:(Math.random()<0.35?3.8:2.8);
+    t.size=isBurst?4.6:(Math.random()<0.35?3.8:2.8);
     t.maxLife=maxLife;
     t.life=maxLife;
     t.hlen=0;
     t.color=l>0.005?css("--chaotic"):l<-0.005?css("--locked-hero"):css("--torus");
+  }
+
+  function fireShockwave(originPx){
+    if(!W) return;
+    const basePx=originPx!==undefined?originPx:0;
+    for(let k=0;k<BURST_COUNT;k++){
+      const offsetPx=Math.min(W-1,basePx+(k%10)*4);
+      populateTracer(tracers[TRACERS_COUNT+k],offsetPx,true,false);
+    }
   }
 
   function initTracers(spreadInitial){
@@ -823,7 +833,7 @@ function hero(){
       t.px+=t.vx*speedMult;
       if(t.px>=W){
         if(i<TRACERS_COUNT){
-          populateTracer(t,-Math.random()*16,false,false);
+          populateTracer(t,Math.random()*12,false,false);
         } else {
           t.life=0;
           continue;
@@ -895,7 +905,7 @@ function hero(){
     if(live) raf=requestAnimationFrame(shimmer);
   }
 
-  // Resizing / initial reset starts with a clean slate and progressive stream
+  // Resizing / initial reset starts with clean slate and fires page-load shockwave by default
   function reset(carry){
     const dpr=Math.min(devicePixelRatio||1,2);
     const nw=Math.round(cv.clientWidth*dpr),nh=Math.round(cv.clientHeight*dpr);
@@ -911,6 +921,7 @@ function hero(){
     col=0;live=false;
     if(raf)cancelAnimationFrame(raf);
     initTracers(carry?true:false);
+    fireShockwave(0); // Launch shockwave blast by default on page load!
     if(!reduced&&!reducedData){live=true;raf=requestAnimationFrame(shimmer);}
   }
 
@@ -989,7 +1000,7 @@ function hero(){
     hud.classList.add("active");
     hud.innerHTML=`<span class="hud-dot" aria-hidden="true"></span><span class="hud-val">r = ${r.toFixed(4)}</span> &nbsp; <span class="hud-val">&lambda; = ${sign}${l.toFixed(3)}</span> &nbsp; <span class="hud-tag ${tag.c}">${tag.t}</span>`;
 
-    if(cobwebBox&&cobwebR&&cobwebRegime){
+    if(cobwebEnabled&&cobwebBox&&cobwebR&&cobwebRegime){
       cobwebR.textContent=`r = ${r.toFixed(4)}`;
       cobwebRegime.className=`hud-tag ${tag.c}`;
       cobwebRegime.textContent=tag.t;
@@ -1008,20 +1019,26 @@ function hero(){
   // Simulation controls listeners
   const btnReset=document.getElementById("btn-hero-reset");
   const btnBurst=document.getElementById("btn-hero-burst");
+  const btnCobweb=document.getElementById("btn-hero-cobweb");
   const btnSpeed=document.getElementById("btn-hero-speed");
 
   if(btnReset){
     btnReset.addEventListener("click",()=>{
       ctx.fillStyle=css("--ground");ctx.fillRect(0,0,W,H);
       initTracers(false);
+      fireShockwave(0);
     });
   }
   if(btnBurst){
     btnBurst.addEventListener("click",()=>{
-      for(let k=0;k<BURST_COUNT;k++){
-        const px=Math.floor(Math.random()*(W*0.3));
-        populateTracer(tracers[TRACERS_COUNT+k],px,true,false);
-      }
+      fireShockwave(0);
+    });
+  }
+  if(btnCobweb){
+    btnCobweb.addEventListener("click",()=>{
+      cobwebEnabled=!cobwebEnabled;
+      btnCobweb.setAttribute("aria-pressed",cobwebEnabled?"true":"false");
+      if(!cobwebEnabled&&cobwebBox) cobwebBox.classList.remove("active");
     });
   }
   if(btnSpeed){
@@ -1047,13 +1064,7 @@ function hero(){
     const dpr=Math.min(devicePixelRatio||1,2);
     const center=Math.max(0,Math.min(W-1,Math.round((e.clientX-rect.left)*dpr)));
     updateHUD(center);
-    // Populate burst pool slots with high-velocity shockwave tracers heading right
-    for(let k=0;k<BURST_COUNT;k++){
-      const off=(k-(BURST_COUNT>>1))*0.8;
-      const px=Math.max(0,Math.min(W-1,center+off));
-      if(k%2===0) column(px,420,0.65);
-      populateTracer(tracers[TRACERS_COUNT+k],px,true,false);
-    }
+    fireShockwave(center);
   },{passive:true});
 
   cv.addEventListener("pointerleave",()=>{

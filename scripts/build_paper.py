@@ -1141,8 +1141,9 @@ def hero(meta: dict[str, str], body: str) -> str:
 </div>
 <span class="hero-hud" id="hero-hud"><span class="hud-dot" aria-hidden="true"></span><span class="hud-r">r &in; [2.85, 4.00]</span> &mdash; <span class="hud-state">live simulation &middot; hover / tap to inspect</span></span>
 <div class="hero-actions">
+<button type="button" class="hero-btn" id="btn-hero-burst" title="Emit energetic shockwave blast">⚡ Shockwave</button>
+<button type="button" class="hero-btn" id="btn-hero-cobweb" aria-pressed="false" title="Toggle Cobweb diagram lens">🕸️ Cobweb</button>
 <button type="button" class="hero-btn" id="btn-hero-reset" title="Restart progressive drawing from left">↺ Re-Draw</button>
-<button type="button" class="hero-btn" id="btn-hero-burst" title="Emit energetic shockwave burst">⚡ Shockwave</button>
 <button type="button" class="hero-btn" id="btn-hero-speed" title="Toggle flow speed">⏩ 1&times;</button>
 </div>
 <div class="hero-cobweb" id="hero-cobweb" aria-hidden="true">
