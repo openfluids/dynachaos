@@ -345,17 +345,18 @@ def test_appendix_letters_follow_document_order():
     ]
 
 
-def test_every_reference_on_the_built_page_names_the_number_its_target_shows():
+def test_the_assembled_page_numbers_everything_the_way_the_manuscript_does():
     """The whole-page check the unit tests above cannot make.
 
     Each unit test holds one helper to its contract. None of them can see the
     assembled page, which is where the defect actually appeared: a sentence
-    saying "Figure 22" linked to the figure captioned 23, and every build was
-    green. This walks the finished page and compares the text of every figure
-    reference against the number that figure displays.
+    naming one figure linked to the figure captioned with the next number, and
+    every build stayed green.
 
-    It builds into ``site/``, which git ignores and CI writes anyway, so
-    running the suite refreshes the page rather than leaving a stale one.
+    The three assertions live in one test on purpose. The page is built here,
+    into the ignored ``site/`` directory that CI writes anyway, and a separate
+    test reading that file would race the build under ``pytest -n auto``: a
+    clean checkout has no ``site/index.html`` at all.
     """
     import subprocess
 
@@ -370,6 +371,7 @@ def test_every_reference_on_the_built_page_names_the_number_its_target_shows():
             shown[fid.group(1)] = num.group(1)
     assert len(shown) == 37, f"expected 37 numbered figures, found {len(shown)}"
 
+    # Every figure reference must name the number its figure displays.
     disagreements = [
         (target, text, shown[target])
         for target, text in re.findall(
@@ -379,23 +381,14 @@ def test_every_reference_on_the_built_page_names_the_number_its_target_shows():
     ]
     assert not disagreements, f"reference text disagrees with the figure it names: {disagreements}"
 
+    # The programme arc is shown last for design reasons, but the manuscript
+    # calls it Figure 1. Numbering it by page position slid every other figure
+    # one below the paper.
+    assert shown.get("fig:program_map") == "1"
 
-def test_the_programme_arc_figure_keeps_the_manuscript_number():
-    """It is shown last for design reasons but the manuscript calls it Figure 1.
-    Numbering it by page position slid every other figure one below the paper."""
-    page = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
-
-    arc = re.search(r'<figure[^>]*id="fig:program_map"[^>]*>', page)
-    assert arc is not None
-    assert 'data-fignum="1"' in arc.group(0)
-
-
-def test_the_appendices_are_lettered_on_the_built_page():
-    """LaTeX restarts numbering at ``\\appendix``. A reader told to see
-    Appendix B must not find a section called 12."""
-    page = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
-
+    # LaTeX restarts numbering at \appendix. A reader told to see Appendix B
+    # must not find a section called 12.
     for sec_id, letter in (("app:provenance", "A"), ("app:repro_index", "B")):
-        start = page.index(f'id="{sec_id}"')
-        heading = page[start : page.index("</h", start)]
+        head = page.index(f'id="{sec_id}"')
+        heading = page[head : page.index("</h", head)]
         assert f'<span class="secno">{letter}</span>' in heading, sec_id
