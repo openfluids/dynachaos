@@ -958,9 +958,14 @@ def transform(
     body = FIG_RE.sub(do_figure, body)
     body = TABLE_RE.sub(lambda m: f'<div class="table-wrap">{m.group(0)}</div>', body)
 
-    # Number the figures in reading order, so a reader can name what they are
-    # looking at. Done after the figure rewrite so the count matches the page.
-    fig_no = 0
+    # Number the figures so a reader can name what they are looking at, and so
+    # that a number cited from this page means the same figure in the
+    # manuscript. The page shows the programme-arc figure last for design
+    # reasons, but the manuscript calls it Figure 1, so its number is reserved
+    # here and the figures that follow it in the manuscript start at 2. Page
+    # order and manuscript order agree once that one figure is set aside.
+    arc_fignum = 1
+    fig_no = arc_fignum
 
     def number_figure(match: re.Match[str]) -> str:
         nonlocal fig_no
@@ -978,9 +983,8 @@ def transform(
                 "could not find the fig:program_map caption in the manuscript body "
                 "to build the timeline figure"
             )
-        fig_no += 1
         body = body.replace(
-            PROGRAM_ARC_SLOT, program_arc("fig:program_map", arc_caption, fig_no), 1
+            PROGRAM_ARC_SLOT, program_arc("fig:program_map", arc_caption, arc_fignum), 1
         )
 
     # Keep pandoc's ids verbatim: they are the manuscript's own \label anchors,
