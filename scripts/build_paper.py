@@ -59,8 +59,11 @@ TABLE_RE = re.compile(r"<table\b.*?</table>", re.S)
 
 
 ANCHORED_ENVS = re.compile(
-    r"\\begin\{(equation\*?|align\*?|gather\*?|table\*?)\}(.*?)\\end\{\1\}", re.S
+    r"\\begin\{(equation\*?|align\*?|gather\*?|multline\*?|table\*?)\}(.*?)\\end\{\1\}", re.S
 )
+# LaTeX numbers every display environment whose name has no star. The page must
+# use the same rule, or its numbers drift away from the manuscript's.
+NUMBERED_ENVS = frozenset({"equation", "align", "gather", "multline"})
 LABEL_RE = re.compile(r"\\label\{((?:eq|tab):[^}]+)\}")
 ID_ATTR = re.compile(r'\sid="([^"]+)"')
 
@@ -175,7 +178,7 @@ def extract_tags(tex: str) -> tuple[str, list[str]]:
 
 
 def anchor_labels(tex: str) -> tuple[str, int]:
-    """Insert ``\\hypertarget`` before every labelled equation and table.
+    """Insert ``\\hypertarget`` before every equation LaTeX numbers, and every table.
 
     Pandoc drops ``\\label`` inside display math, and misses it on some table
     environments, so ``\\eqref`` and table cross-references would dangle.
@@ -183,16 +186,36 @@ def anchor_labels(tex: str) -> tuple[str, int]:
     (where pandoc *did* emit an id) are removed afterwards by
     :func:`dedupe_ids`. Operates on an in-memory copy; the manuscript on disk is
     never touched.
+
+    An unlabelled equation gets an anchor too, and this is what keeps the page
+    honest. LaTeX numbers every unstarred display environment, labelled or not.
+    Anchoring only the labelled ones made the page skip the others and count
+    1, 2, 3 over a shorter list, so its numbers slid below the manuscript's:
+    the coupled-map lattice was (13) in the PDF and (11) on the page. The
+    generated ids use the ``eq:`` prefix that :func:`number_equations` looks
+    for, and are positional, so a shared link keeps working.
     """
     count = 0
+    unlabelled = 0
 
     def repl(match: re.Match[str]) -> str:
-        nonlocal count
+        nonlocal count, unlabelled
+        env = match.group(1)
+        is_table = env.startswith("table")
         label = LABEL_RE.search(match.group(2))
-        if not label:
+        if not is_table and env not in NUMBERED_ENVS:
+            # A starred environment shows no number, so anchoring it here would
+            # let :func:`number_equations` give it one the manuscript does not.
             return match.group(0)
+        if label:
+            count += 1
+            return f"\\hypertarget{{{label.group(1)}}}{{}}{match.group(0)}"
+        if is_table:
+            # An unlabelled table is never cross-referenced.
+            return match.group(0)
+        unlabelled += 1
         count += 1
-        return f"\\hypertarget{{{label.group(1)}}}{{}}{match.group(0)}"
+        return f"\\hypertarget{{eq:unlabelled-{unlabelled}}}{{}}{match.group(0)}"
 
     return ANCHORED_ENVS.sub(repl, tex), count
 
