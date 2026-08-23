@@ -1130,16 +1130,16 @@ def fold_back_matter(body: str) -> tuple[str, int]:
         body = body[:end] + "</details>" + body[end:]
 
     # The reader has just been told which manuscript figure each one reproduces;
-    # this is where the two numbering schemes are most likely to be compared.
+    # this is where the numbering is most likely to be compared.
     note = (
-        '<p class="fig-note">Figure numbers on this page follow the order figures '
-        "appear here, not the order of the manuscript PDF -- the programme-arc "
-        "figure, for instance, is moved to the end of this page.</p>"
+        '<p class="fig-note">Figure numbers on this page are the manuscript\'s own, so a '
+        "number cited from here means the same figure in the paper. One figure sits out "
+        "of order: the programme arc is Figure 1 but is shown at the end of this page.</p>"
     )
     marker = '<table id="tab:repro_index"'
     if marker not in body:
-        # Without the note a reader comparing this page against the manuscript
-        # PDF meets renumbered figures with no explanation -- fail the build
+        # Without the note a reader meets the programme-arc figure at the end of
+        # the page carrying the number 1, with no explanation -- fail the build
         # rather than ship that silently.
         raise SystemExit(
             "fold_back_matter: reproduction-index table not found; "

@@ -173,8 +173,9 @@ def test_search_index_json_is_embeddable_in_a_script_tag():
 
 
 def test_unnumbered_display_equations_get_an_anchor_but_no_number():
-    """Numbering them would shift every subsequent equation number and the page
-    would stop agreeing with the manuscript it reproduces."""
+    """Only starred display maths reaches this step, and LaTeX gives those no
+    number. The equations LaTeX does number are anchored earlier, in
+    anchor_labels, whether or not the manuscript labelled them."""
     module = _load()
     numbered = '<div class="eqn"><math display="block">a</math><span class="eqno">(1)</span></div>'
     body = numbered + '<p>text</p><math display="block">b</math>'
@@ -189,9 +190,9 @@ def test_unnumbered_display_equations_get_an_anchor_but_no_number():
 
 
 def test_the_numbering_note_lands_before_the_reproduction_index():
-    """The page renumbers figures relative to the manuscript; shipping without
-    the disclosure note would leave that unexplained, so its absence must fail
-    the build rather than pass silently."""
+    """The page shows the programme-arc figure at the end while it keeps the
+    number 1; shipping without the note would leave that unexplained, so its
+    absence must fail the build rather than pass silently."""
     module = _load()
     body = '<table id="tab:repro_index"><caption>Reproduction index.</caption></table>'
 
@@ -199,6 +200,7 @@ def test_the_numbering_note_lands_before_the_reproduction_index():
 
     note_at = out.index("Figure numbers on this page")
     assert note_at < out.index('<table id="tab:repro_index"')
+    assert "the manuscript's own" in out
 
 
 def test_a_missing_reproduction_index_fails_the_build():
@@ -257,3 +259,87 @@ def test_hero_offscreen_pause_does_not_cancel_the_frame_loop():
     match = re.search(r"new IntersectionObserver\((.*?)\)\.observe", js, re.S)
     assert match, "IntersectionObserver is missing"
     assert "cancelAnimationFrame" not in match.group(1)
+
+
+def test_every_unstarred_display_equation_is_anchored_even_without_a_label():
+    """LaTeX numbers an equation whether or not the manuscript labelled it.
+    Anchoring only the labelled ones made the page count over a shorter list,
+    so its numbers slid below the manuscript's: the coupled-map lattice showed
+    (11) here against (13) in the paper."""
+    module = _load()
+    tex = (
+        "\\begin{equation}a\\label{eq:one}\\end{equation}"
+        "\\begin{equation}b\\end{equation}"
+        "\\begin{equation}c\\label{eq:three}\\end{equation}"
+    )
+
+    out, count = module.anchor_labels(tex)
+
+    assert count == 3
+    assert "\\hypertarget{eq:one}" in out
+    assert "\\hypertarget{eq:unlabelled-1}" in out
+    assert "\\hypertarget{eq:three}" in out
+
+
+def test_a_starred_equation_is_never_anchored():
+    """A starred environment shows no number. Anchoring it would let
+    ``number_equations`` give it one the manuscript does not have."""
+    module = _load()
+    tex = "\\begin{equation*}a\\end{equation*}"
+
+    out, count = module.anchor_labels(tex)
+
+    assert count == 0
+    assert "\\hypertarget" not in out
+
+
+def test_the_multline_environment_is_anchored():
+    """The co-moving Lyapunov equation is a multline. It was missing from the
+    environment list, so it reached the page with no anchor and no number."""
+    module = _load()
+    tex = "\\begin{multline}a\\label{eq:comoving}\\end{multline}"
+
+    out, count = module.anchor_labels(tex)
+
+    assert count == 1
+    assert "\\hypertarget{eq:comoving}" in out
+
+
+def test_tables_inside_an_appendix_are_lettered():
+    """LaTeX restarts numbering at ``\\appendix``, so the provenance table is
+    A1, not 3. The page called it 3 and the prose cited 3, agreeing with each
+    other and with nothing in the paper."""
+    module = _load()
+    body = (
+        '<div id="tab:notation"></div><table id="tab:notation">'
+        "<caption>Global notation.</caption></table>"
+        '<section id="app:provenance" class="level1">'
+        '<div id="tab:provenance"></div><table id="tab:provenance">'
+        "<caption>Equation provenance.</caption></table></section>"
+        '<section id="app:repro_index" class="level1">'
+        '<div id="tab:repro_index"></div><table id="tab:repro_index">'
+        "<caption>Reproduction index.</caption></table></section>"
+    )
+
+    out, numbers = module.number_tables(body)
+
+    assert numbers == {"tab:notation": "1", "tab:provenance": "A1", "tab:repro_index": "B1"}
+    assert '<caption><span class="num">Table A1.</span> Equation provenance.' in out
+
+
+def test_appendix_letters_follow_document_order():
+    """The letter comes from the position of the appendix, so a new appendix
+    inserted between two others takes its letter from where it sits."""
+    module = _load()
+    body = (
+        '<section id="app:first" class="level1"></section>'
+        '<section id="sec:body" class="level1"></section>'
+        '<section id="app:second" class="level1"></section>'
+    )
+
+    found = module.appendix_letters(body)
+
+    assert [(sec_id, letter) for _, sec_id, letter in found] == [
+        ("app:first", "A"),
+        ("app:second", "B"),
+    ]
