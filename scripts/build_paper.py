@@ -426,6 +426,25 @@ def anchor_unnumbered_equations(body: str) -> tuple[str, int]:
 TABLE_CAP_RE = re.compile(r'(<table id="(tab:[^"]+)"[^>]*>\s*<caption>)(.*?)(</caption>)', re.S)
 
 
+APPENDIX_SEC_RE = re.compile(r'<section id="(app:[^"]+)" class="([^"]*)"')
+
+
+def appendix_letters(body: str) -> list[tuple[int, str, str]]:
+    """Find where each appendix starts, and the letter LaTeX gives it.
+
+    ``\\appendix`` restarts top-level numbering as A, B, C. The manuscript
+    labels those sections ``app:``, and pandoc keeps the id, so the prefix is
+    the signal. Returns ``(start offset, id, letter)`` in document order.
+    """
+    out = []
+    for index, match in enumerate(APPENDIX_SEC_RE.finditer(body)):
+        if "level1" not in match.group(2):
+            continue
+        out.append((match.start(), match.group(1), chr(ord("A") + len(out))))
+        del index
+    return out
+
+
 def number_tables(body: str) -> tuple[str, dict[str, str]]:
     """Number the tables in reading order so table references resolve.
 
@@ -433,10 +452,22 @@ def number_tables(body: str) -> tuple[str, dict[str, str]]:
     citation and its caption cannot disagree -- the same fix ``renumber_figure_refs``
     applies to figures.
     """
+    appendices = appendix_letters(body)
     numbers: dict[str, str] = {}
+    main_count = 0
+    within: dict[str, int] = {}
     for match in HYPERTARGET_RE.finditer(body):
-        if match.group(2).startswith("tab:"):
-            numbers[match.group(2)] = str(len(numbers) + 1)
+        if not match.group(2).startswith("tab:"):
+            continue
+        # A table inside an appendix is numbered A1, B1 and so on, restarting
+        # in each appendix, which is what LaTeX does after \\appendix.
+        letter = next((ltr for start, _, ltr in reversed(appendices) if start < match.start()), "")
+        if letter:
+            within[letter] = within.get(letter, 0) + 1
+            numbers[match.group(2)] = f"{letter}{within[letter]}"
+        else:
+            main_count += 1
+            numbers[match.group(2)] = str(main_count)
 
     def number_caption(match: re.Match[str]) -> str:
         number = numbers.get(match.group(2))
@@ -449,6 +480,9 @@ def number_tables(body: str) -> tuple[str, dict[str, str]]:
 
 
 FIGREF_RE = re.compile(r'(<a href="#(fig:[^"]+)"[^>]*data-reference-type="ref"[^>]*>)([^<]*)</a>')
+SECREF_RE = re.compile(
+    r'(<a href="#((?:sec|app|tab):[^"]+)"[^>]*data-reference-type="ref"[^>]*>)([^<]*)</a>'
+)
 
 
 def renumber_figure_refs(body: str) -> tuple[str, int, int]:
@@ -958,6 +992,10 @@ def transform(
     # shell's type scale applies.
     nav: list[tuple[int, str, str, str]] = []
     top = sub = 0
+    # After \appendix the manuscript numbers top-level sections A, B, C, and
+    # its subsections A.1, B.1. The page has to do the same or a reader
+    # following "see B" from the paper lands on a section called 12.
+    letter = ""
     for m in re.finditer(r'<section id="([^"]+)" class="([^"]*)"', body):
         sec_id, cls = m.group(1), m.group(2)
         tail = body[m.end() : m.end() + 4000]
@@ -968,12 +1006,16 @@ def transform(
         number = ""
         if "unnumbered" not in cls:
             if level == 1:
-                top += 1
                 sub = 0
-                number = str(top)
+                if sec_id.startswith("app:"):
+                    letter = chr(ord("A") + (0 if not letter else ord(letter) - ord("A") + 1))
+                    number = letter
+                else:
+                    top += 1
+                    number = str(top)
             else:
                 sub += 1
-                number = f"{top}.{sub}"
+                number = f"{letter or top}.{sub}"
         nav.append((level, sec_id, strip_tags(h.group(3)), number))
 
     numbers = iter(n for *_, n in nav)
@@ -998,11 +1040,26 @@ def transform(
         return f"<{new}{attrs}>{label}{text}{anchor}</{new}>"
 
     body = HEAD_RE.sub(demote, body)
+
+    shown_secs = {sec_id: number for _, sec_id, _, number in nav if number}
     body, n_tagged = apply_eq_tags(body, eq_tags or [])
     body, eq_numbers, n_eq = number_equations(body)
     body, n_bare = anchor_unnumbered_equations(body)
     body, tab_numbers = number_tables(body)
     body, n_fixed = resolve_refs(body, {**eq_numbers, **tab_numbers})
+
+    # Pandoc resolved section and table references at import time and does not
+    # act on \appendix, so it wrote "12" where the manuscript says "B" and "3"
+    # where it says "A1". resolve_refs cannot correct these: it only rewrites
+    # the references pandoc left as literal text. Rewrite them from the numbers
+    # this build assigned, the way renumber_figure_refs does for figures.
+    shown_refs = {**shown_secs, **tab_numbers}
+
+    def fix_ref(match: re.Match[str]) -> str:
+        number = shown_refs.get(match.group(2))
+        return match.group(0) if number is None else f"{match.group(1)}{number}</a>"
+
+    body = SECREF_RE.sub(fix_ref, body)
     body, n_figref, n_figref_missing = renumber_figure_refs(body)
     # The raw-LaTeX annotation duplicates every equation as plain text when a
     # browser does not render MathML; drop it rather than rely on a UA stylesheet.
