@@ -10,6 +10,7 @@ sentence against the number in the caption.
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -358,9 +359,10 @@ def test_the_assembled_page_numbers_everything_the_way_the_manuscript_does():
     test reading that file would race the build under ``pytest -n auto``: a
     clean checkout has no ``site/index.html`` at all.
     """
-    import subprocess
-
-    subprocess.run([sys.executable, str(SCRIPT)], cwd=ROOT, check=True, capture_output=True)
+    build = subprocess.run(
+        [sys.executable, str(SCRIPT)], cwd=ROOT, capture_output=True, text=True
+    )
+    assert build.returncode == 0, f"the build failed:\n{build.stderr}"
     page = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
 
     shown: dict[str, str] = {}

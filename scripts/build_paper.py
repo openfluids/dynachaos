@@ -429,6 +429,11 @@ TABLE_CAP_RE = re.compile(r'(<table id="(tab:[^"]+)"[^>]*>\s*<caption>)(.*?)(</c
 APPENDIX_SEC_RE = re.compile(r'<section id="(app:[^"]+)" class="([^"]*)"')
 
 
+def is_appendix(sec_id: str, cls: str) -> bool:
+    """True for a top-level section that ``\\appendix`` numbers with a letter."""
+    return sec_id.startswith("app:") and "level1" in cls and "unnumbered" not in cls
+
+
 def appendix_letters(body: str) -> list[tuple[int, str, str]]:
     """Find where each appendix starts, and the letter LaTeX gives it.
 
@@ -436,12 +441,11 @@ def appendix_letters(body: str) -> list[tuple[int, str, str]]:
     labels those sections ``app:``, and pandoc keeps the id, so the prefix is
     the signal. Returns ``(start offset, id, letter)`` in document order.
     """
-    out = []
-    for index, match in enumerate(APPENDIX_SEC_RE.finditer(body)):
-        if "level1" not in match.group(2):
+    out: list[tuple[int, str, str]] = []
+    for match in APPENDIX_SEC_RE.finditer(body):
+        if not is_appendix(match.group(1), match.group(2)):
             continue
         out.append((match.start(), match.group(1), chr(ord("A") + len(out))))
-        del index
     return out
 
 
@@ -995,7 +999,7 @@ def transform(
     # marks unnumbered, then demote level1 -> h2 and level2 -> h3 so the
     # shell's type scale applies.
     nav: list[tuple[int, str, str, str]] = []
-    top = sub = 0
+    top = sub = n_app = 0
     # After \appendix the manuscript numbers top-level sections A, B, C, and
     # its subsections A.1, B.1. The page has to do the same or a reader
     # following "see B" from the paper lands on a section called 12.
@@ -1011,10 +1015,12 @@ def transform(
         if "unnumbered" not in cls:
             if level == 1:
                 sub = 0
-                if sec_id.startswith("app:"):
-                    letter = chr(ord("A") + (0 if not letter else ord(letter) - ord("A") + 1))
+                if is_appendix(sec_id, cls):
+                    n_app += 1
+                    letter = chr(ord("A") + n_app - 1)
                     number = letter
                 else:
+                    letter = ""
                     top += 1
                     number = str(top)
             else:
