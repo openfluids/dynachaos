@@ -21,9 +21,12 @@ from dynachaos.utils.style import (
     figure_spec,
     finalize_legend,
     marker_for,
+    panel_label,
+    reference_line,
     save_theme_previews,
     series_style,
     setup,
+    system_color,
     theme_description,
 )
 
@@ -144,6 +147,65 @@ def test_axes_polish_and_legend_helpers():
     assert ax.get_title(loc="left") == "Test"
     assert ax._left_title.get_fontsize() == spec.title_size
     assert ax.xaxis.get_label().get_fontsize() == spec.label_size
+    plt.close(fig)
+
+
+def test_apply_axes_polish_finds_title_set_at_a_different_loc():
+    # The title was set at "left", but title_loc requests "right": the
+    # requested location is empty, so apply_axes_polish falls back to
+    # scanning left/center/right for whichever one actually holds text
+    # (style.py:389-394).
+    setup()
+    fig, ax = plt.subplots()
+    ax.set_title("Left title", loc="left")
+
+    spec = apply_axes_polish(ax, kind="single", title_loc="right")
+
+    assert ax._left_title.get_fontsize() == spec.title_size
+    plt.close(fig)
+
+
+def test_finalize_legend_returns_none_without_handles():
+    setup()
+    fig, ax = plt.subplots()
+
+    legend = finalize_legend(ax, kind="single")
+
+    assert legend is None
+    plt.close(fig)
+
+
+def test_system_color_rejects_unknown_system():
+    with pytest.raises(KeyError, match="Unknown system"):
+        system_color("not-a-real-system")
+
+
+def test_theme_description_rejects_unknown_theme():
+    with pytest.raises(ValueError, match="Unknown theme"):
+        theme_description("not-a-real-theme")
+
+
+def test_panel_label_falls_back_to_upper_left_for_unknown_loc():
+    setup()
+    fig, ax = plt.subplots()
+
+    text = panel_label(ax, "(a)", loc="middle")
+
+    assert text.get_ha() == "left"
+    assert text.get_va() == "top"
+    plt.close(fig)
+
+
+def test_reference_line_annotates_vertical_line_label():
+    setup()
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0], [0.0, 1.0])
+
+    line = reference_line(ax, 0.5, axis="x", label="onset")
+
+    assert line is not None
+    texts = [t.get_text() for t in ax.texts]
+    assert " onset" in texts
     plt.close(fig)
 
 

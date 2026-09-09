@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from dynachaos.pipelines import runner
-from dynachaos.pipelines.registry import get_section, list_sections
+from dynachaos.pipelines.registry import get_figure, get_section, list_sections
 from dynachaos.pipelines.runner import run_section, validate_section_cache, validate_section_outputs
 
 
@@ -45,6 +45,32 @@ def test_registry_covers_all_includegraphics_targets():
 
     missing = include_targets - declared_pngs
     assert not missing, f"Missing includegraphics coverage for: {sorted(missing)}"
+
+
+def test_section_spec_cache_and_output_paths_resolve_under_section_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("DYNACHAOS_OUTPUT_ROOT", str(tmp_path))
+    spec = get_section("sec02_circle_map")
+
+    cache_paths = spec.cache_paths()
+    output_paths = spec.output_paths()
+
+    assert cache_paths == tuple(tmp_path / "sec02_circle_map" / name for name in spec.cache_files)
+    assert output_paths == tuple(tmp_path / "sec02_circle_map" / name for name in spec.output_files)
+
+
+def test_get_figure_returns_none_for_unregistered_png():
+    assert get_figure("sec02_circle_map", "not_a_registered_figure.png") is None
+
+
+def test_get_figure_returns_matching_spec_for_registered_png():
+    spec = get_section("sec02_circle_map")
+    assert spec.figures, "sec02_circle_map must register at least one figure"
+    known_png = spec.figures[0].png
+
+    figure = get_figure("sec02_circle_map", known_png)
+
+    assert figure is not None
+    assert figure.png == known_png
 
 
 def test_smoke_profile_requires_precomputed_cache(tmp_path):
@@ -210,6 +236,49 @@ def test_section_validators_can_check_cache_and_outputs_without_running_modules(
     )
 
 
+def test_section_cache_validator_rejects_malformed_npz(tmp_path):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    (section_dir / "devils_staircase.npz").write_bytes(b"not a valid npz archive")
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+
+    with pytest.raises(RuntimeError, match="malformed NPZ artifact"):
+        validate_section_cache("sec02_circle_map", output_root=tmp_path)
+
+
+def test_validate_artifact_rejects_unsupported_extension(tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_text("hi", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unsupported extension: .txt"):
+        runner._validate_artifact(path, required_keys=(), section_id="sec02")
+
+
+def test_validate_artifact_raises_assertion_for_unrecognized_status(monkeypatch, tmp_path):
+    # _classify_artifact only ever returns known statuses; this exercises the
+    # defensive final branch in _validate_artifact by forcing an impossible
+    # status through monkeypatching.
+    monkeypatch.setattr(runner, "_classify_artifact", lambda path, **kw: ("bogus", "??"))
+    with pytest.raises(AssertionError, match="unknown artifact status: bogus"):
+        runner._validate_artifact(tmp_path / "x.npz", required_keys=(), section_id="sec02")
+
+
+def test_inspect_section_artifacts_reports_cache_and_output_roles(tmp_path):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    for png_name in ("devils_staircase.png", "arnold_tongues.png", "staircase_zoom.png"):
+        (section_dir / png_name).write_bytes(b"png")
+
+    results = runner.inspect_section_artifacts("sec02_circle_map", output_root=tmp_path)
+
+    roles = {r.role for r in results}
+    assert roles == {"cache", "output"}
+    assert all(r.status == "ok" for r in results)
+
+
 def test_section_output_validator_rejects_empty_figure(tmp_path):
     section_dir = tmp_path / "sec02_circle_map"
     section_dir.mkdir()
@@ -313,6 +382,211 @@ def test_run_module_returns_child_peak_rss_mb(monkeypatch, tmp_path):
     rss = _runner._run_module("dummy.module", tmp_path, "paper")
 
     assert rss == pytest.approx(256.0, abs=0.01)
+
+
+def test_run_module_raises_when_wait4_reports_nonzero_exit(monkeypatch, tmp_path):
+    import os as _os
+
+    from dynachaos.pipelines import runner as _runner
+
+    if not hasattr(_os, "wait4"):
+        pytest.skip("os.wait4 not available on this platform")
+
+    class FakeRusage:
+        ru_maxrss = 1024
+
+    class FakePopen:
+        pid = 9999
+        returncode = None
+
+        def __init__(self, cmd, env=None):
+            pass
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(_runner.os, "wait4", lambda pid, opts: (pid, 5 << 8, FakeRusage()))
+    if hasattr(_os, "waitstatus_to_exitcode"):
+        monkeypatch.setattr(_runner.os, "waitstatus_to_exitcode", lambda x: x >> 8)
+
+    with pytest.raises(RuntimeError, match=r"exit 5"):
+        _runner._run_module("dummy.module", tmp_path, "paper")
+
+
+def test_run_module_falls_back_to_wifexited_without_waitstatus_helper(monkeypatch, tmp_path):
+    import os as _os
+
+    from dynachaos.pipelines import runner as _runner
+
+    if not hasattr(_os, "wait4"):
+        pytest.skip("os.wait4 not available on this platform")
+
+    class FakeRusage:
+        ru_maxrss = 1024
+
+    class FakePopen:
+        pid = 9999
+        returncode = None
+
+        def __init__(self, cmd, env=None):
+            pass
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    # Clean exit (status 0) with no waitstatus_to_exitcode: falls through to
+    # the WIFEXITED/WEXITSTATUS branch.
+    monkeypatch.setattr(_runner.os, "wait4", lambda pid, opts: (pid, 0, FakeRusage()))
+    monkeypatch.delattr(_runner.os, "waitstatus_to_exitcode", raising=False)
+
+    rss = _runner._run_module("dummy.module", tmp_path, "paper")
+    assert rss is not None
+
+
+def test_run_module_reports_negative_signal_exit_code(monkeypatch, tmp_path):
+    import os as _os
+    import signal
+
+    from dynachaos.pipelines import runner as _runner
+
+    if not hasattr(_os, "wait4"):
+        pytest.skip("os.wait4 not available on this platform")
+
+    class FakeRusage:
+        ru_maxrss = 1024
+
+    class FakePopen:
+        pid = 9999
+        returncode = None
+
+        def __init__(self, cmd, env=None):
+            pass
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    # A raw signal-terminated status (low byte == signal number, no
+    # waitstatus_to_exitcode) exercises the WTERMSIG branch.
+    monkeypatch.setattr(
+        _runner.os, "wait4", lambda pid, opts: (pid, int(signal.SIGKILL), FakeRusage())
+    )
+    monkeypatch.delattr(_runner.os, "waitstatus_to_exitcode", raising=False)
+
+    with pytest.raises(RuntimeError, match=r"exit -9"):
+        _runner._run_module("dummy.module", tmp_path, "paper")
+
+
+def test_run_module_without_wait4_uses_simple_wait(monkeypatch, tmp_path):
+    from dynachaos.pipelines import runner as _runner
+
+    class FakePopen:
+        returncode = 0
+
+        def __init__(self, cmd, env=None):
+            pass
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    monkeypatch.delattr(_runner.os, "wait4", raising=False)
+
+    rss = _runner._run_module("dummy.module", tmp_path, "paper")
+    assert rss is None
+
+
+def test_run_module_without_wait4_raises_on_nonzero_returncode(monkeypatch, tmp_path):
+    from dynachaos.pipelines import runner as _runner
+
+    class FakePopen:
+        returncode = 7
+
+        def __init__(self, cmd, env=None):
+            pass
+
+        def wait(self):
+            return 7
+
+    monkeypatch.setattr(_runner.subprocess, "Popen", FakePopen)
+    monkeypatch.delattr(_runner.os, "wait4", raising=False)
+
+    with pytest.raises(RuntimeError, match=r"exit 7"):
+        _runner._run_module("dummy.module", tmp_path, "paper")
+
+
+def test_repo_src_dir_returns_none_when_no_checkout_found(monkeypatch):
+    from pathlib import Path as _Path
+
+    from dynachaos.pipelines import runner as _runner
+
+    monkeypatch.setattr(_Path, "is_dir", lambda self: False)
+    assert _runner._repo_src_dir() is None
+
+
+def test_runner_env_appends_to_existing_pythonpath(monkeypatch, tmp_path):
+    from dynachaos.pipelines import runner as _runner
+
+    monkeypatch.setenv("PYTHONPATH", "/some/existing/path")
+    monkeypatch.setattr(_runner, "_repo_src_dir", lambda: Path("/repo/src"))
+
+    env = _runner._runner_env(tmp_path, "paper")
+
+    assert env["PYTHONPATH"].startswith(f"/repo/src{_runner.os.pathsep}")
+    assert "/some/existing/path" in env["PYTHONPATH"]
+
+
+def test_runner_env_sets_pythonpath_when_none_was_set(monkeypatch, tmp_path):
+    from dynachaos.pipelines import runner as _runner
+
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    monkeypatch.setattr(_runner, "_repo_src_dir", lambda: Path("/repo/src"))
+
+    env = _runner._runner_env(tmp_path, "paper")
+
+    assert env["PYTHONPATH"] == "/repo/src"
+
+
+def test_run_section_rejects_invalid_profile(tmp_path):
+    with pytest.raises(ValueError, match="profile must be one of"):
+        run_section("sec02_circle_map", output_root=tmp_path, profile="bogus")
+
+
+def test_run_section_recompute_deletes_existing_outputs_before_running(tmp_path, monkeypatch):
+    section_dir = tmp_path / "sec02_circle_map"
+    section_dir.mkdir()
+    np.savez_compressed(section_dir / "devils_staircase.npz", A=[1.0], rho=[0.0], lam=[0.0])
+    np.savez_compressed(section_dir / "arnold_tongues.npz", Omega=[0.0], K=[1.0], rho=[0.0])
+    np.savez_compressed(section_dir / "staircase_zoom.npz", A=[1.0], rho=[0.0])
+    stale_png = section_dir / "devils_staircase.png"
+    stale_png.write_bytes(b"stale")
+
+    def fake_run_module(module_name, output_root, profile):
+        # Simulate the module regenerating its declared output artifacts
+        # with content that satisfies each artifact's NPZ contract.
+        spec = get_section("sec02_circle_map")
+        for name in spec.output_files:
+            path = section_dir / name
+            if name.endswith(".npz"):
+                keys = spec.required_npz_keys(name)
+                np.savez_compressed(path, **{key: [0.0] for key in keys})
+            else:
+                path.write_bytes(b"fresh")
+        return None
+
+    monkeypatch.setattr(runner, "_run_module", fake_run_module)
+    run_section("sec02_circle_map", output_root=tmp_path, profile="paper", recompute=True)
+
+    assert stale_png.read_bytes() == b"fresh"
+
+
+def test_run_all_runs_every_registered_section(tmp_path, monkeypatch):
+    from dynachaos.pipelines.registry import list_sections
+
+    ran_sections = []
+
+    def fake_run_section(section_id, *, output_root, profile, recompute, timing_ledger):
+        ran_sections.append(section_id)
+        return [output_root / section_id / "dummy.png"]
+
+    monkeypatch.setattr(runner, "run_section", fake_run_section)
+    results = runner.run_all(output_root=tmp_path, profile="paper")
+
+    assert ran_sections == list(list_sections())
+    assert set(results) == set(list_sections())
 
 
 @pytest.mark.skipif(not hasattr(__import__("os"), "wait4"), reason="requires POSIX wait4")
@@ -457,3 +731,172 @@ def test_ledger_records_child_rss_not_orchestrator(tmp_path, monkeypatch):
         f"ledger does not track the child's allocation; it may be recording the "
         f"orchestrator's own rusage."
     )
+
+
+# ---------------------------------------------------------------------------
+# Profile helpers (pipelines.profile module)
+# ---------------------------------------------------------------------------
+
+
+def test_current_profile_defaults_to_paper(monkeypatch):
+    """current_profile() returns 'paper' when DYNACHAOS_PROFILE is not set."""
+    monkeypatch.delenv("DYNACHAOS_PROFILE", raising=False)
+    from dynachaos.pipelines.profile import current_profile
+
+    assert current_profile() == "paper"
+
+
+def test_current_profile_returns_paper_when_set():
+    """current_profile() returns 'paper' when explicitly set."""
+    import os
+
+    from dynachaos.pipelines.profile import current_profile
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "paper"
+        assert current_profile() == "paper"
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_current_profile_returns_smoke_when_set():
+    """current_profile() returns 'smoke' when explicitly set."""
+    import os
+
+    from dynachaos.pipelines.profile import current_profile
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "smoke"
+        assert current_profile() == "smoke"
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_current_profile_normalizes_whitespace_and_case():
+    """current_profile() strips whitespace and lowercases the value."""
+    import os
+
+    from dynachaos.pipelines.profile import current_profile
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "  SMOKE  "
+        assert current_profile() == "smoke"
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_current_profile_rejects_invalid_profile_name():
+    """current_profile() falls back to 'paper' for invalid profile names."""
+    import os
+
+    from dynachaos.pipelines.profile import current_profile
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "invalid_profile"
+        assert current_profile() == "paper"
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_is_smoke_returns_true_when_smoke_is_active():
+    """is_smoke() returns True when current_profile() == 'smoke'."""
+    import os
+
+    from dynachaos.pipelines.profile import is_smoke
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "smoke"
+        assert is_smoke() is True
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_is_smoke_returns_false_when_paper_is_active():
+    """is_smoke() returns False when current_profile() == 'paper'."""
+    import os
+
+    from dynachaos.pipelines.profile import is_smoke
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "paper"
+        assert is_smoke() is False
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_choose_returns_paper_value_when_paper_active():
+    """choose(paper, smoke) returns paper when profile is 'paper'."""
+    import os
+
+    from dynachaos.pipelines.profile import choose
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "paper"
+        result = choose(paper=100, smoke=50)
+        assert result == 100
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_choose_returns_smoke_value_when_smoke_active():
+    """choose(paper, smoke) returns smoke when profile is 'smoke'."""
+    import os
+
+    from dynachaos.pipelines.profile import choose
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "smoke"
+        result = choose(paper=100, smoke=50)
+        assert result == 50
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val
+
+
+def test_choose_works_with_strings():
+    """choose() works with non-numeric types (e.g., strings)."""
+    import os
+
+    from dynachaos.pipelines.profile import choose
+
+    old_val = os.environ.get("DYNACHAOS_PROFILE")
+    try:
+        os.environ["DYNACHAOS_PROFILE"] = "smoke"
+        result = choose(paper="large_run", smoke="quick_run")
+        assert result == "quick_run"
+    finally:
+        if old_val is None:
+            os.environ.pop("DYNACHAOS_PROFILE", None)
+        else:
+            os.environ["DYNACHAOS_PROFILE"] = old_val

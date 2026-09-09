@@ -125,3 +125,38 @@ def test_backend_metadata_reports_rust_when_rust_scanners_are_used(monkeypatch):
     monkeypatch.setattr(rec_mod, "_RUST_AVAILABLE", True)
     _, rqa_record = rec_mod.rqa_from_trajectory(traj, percentile=10, return_metadata=True)
     assert rqa_record.backend == "rust"
+
+
+# ── Coverage: _json_safe edge cases ────────────────────────────────────────────
+
+
+def test_json_safe_ndarray_conversion():
+    """_json_safe converts ndarray to list (line 25)."""
+    from dynachaos.diagnostics.reliability import _json_safe
+
+    arr = np.array([1.0, 2.0, 3.0])
+    result = _json_safe(arr)
+    assert isinstance(result, list)
+    assert result == [1.0, 2.0, 3.0]
+
+
+def test_json_safe_numpy_scalar_to_builtin_float():
+    """_json_safe converts np.generic to builtin float (line 30)."""
+    from dynachaos.diagnostics.reliability import _json_safe
+
+    scalar = np.float64(3.14)
+    result = _json_safe(scalar)
+    assert isinstance(result, float)
+    assert result == 3.14
+
+
+def test_json_safe_fallback_str_conversion():
+    """_json_safe falls back to str() for unmatched types (line 42)."""
+    from dynachaos.diagnostics.reliability import _json_safe
+
+    class CustomType:
+        def __str__(self):
+            return "custom_value"
+
+    result = _json_safe(CustomType())
+    assert result == "custom_value"

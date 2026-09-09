@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
+
+import dynachaos.cli as cli_mod
 
 
 def _repo_src() -> Path:
@@ -13,7 +16,7 @@ def _repo_src() -> Path:
 
 def _cli_env() -> dict[str, str]:
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(_repo_src())
+    env["PYTHONPATH"] = str(_repo_src()) + os.pathsep + env.get("PYTHONPATH", "")
     return env
 
 
@@ -144,6 +147,117 @@ def test_cli_verify_outputs_reports_missing_without_recomputing(tmp_path):
     assert proc.returncode == 1
     assert "missing expected artifact" in proc.stderr
     assert "devils_staircase.png" in proc.stderr
+
+
+def test_cli_verify_defaults_target_to_all_sections(tmp_path):
+    from dynachaos.pipelines.registry import list_sections
+
+    # Only sec02 has a fixture helper, so the other sections stay empty and
+    # fail on a missing artifact. What this checks is that "all" is the default
+    # target and every registered section is reached, not that they pass.
+    _write_sec02_artifacts(tmp_path, include_outputs=False)
+
+    proc = _run_cli("verify", "caches", "--output-root", str(tmp_path))
+
+    assert "Unknown target" not in proc.stderr
+    # The walk stops at the first section that fails, so only the first two
+    # appear. Seeing the second one is what proves the default really is "all"
+    # and not the single section the fixture prepared.
+    first, second = list_sections()[:2]
+    assert f"[{first}]" in proc.stdout
+    assert second in proc.stdout + proc.stderr
+
+
+def test_cli_verify_unknown_target_reports_error(tmp_path):
+    proc = _run_cli("verify", "caches", "not_a_real_section", "--output-root", str(tmp_path))
+    assert proc.returncode != 0
+    assert "Unknown target" in proc.stderr
+
+
+def test_cli_inspect_unknown_section_reports_error(tmp_path):
+    proc = _run_cli("inspect", "section", "not_a_real_section", "--output-root", str(tmp_path))
+    assert proc.returncode != 0
+    assert "Unknown target" in proc.stderr
+
+
+def test_cli_style_preview_unknown_theme_reports_error(tmp_path):
+    proc = _run_cli(
+        "style", "preview", "--theme", "not_a_real_theme", "--output-dir", str(tmp_path)
+    )
+    assert proc.returncode != 0
+    assert "invalid choice" in proc.stderr
+
+
+def test_cli_analyze_success_prints_output_paths(tmp_path):
+    np.save(tmp_path / "x.npy", np.sin(np.linspace(0.0, 10.0, 64)))
+    cfg = tmp_path / "cfg.jsonc"
+    cfg.write_text(
+        '{"input": {"path": "x.npy"}, "output": {"dir": "out"}, '
+        '"diagnostics": [{"name": "permutation_entropy"}]}',
+        encoding="utf-8",
+    )
+
+    proc = _run_cli("analyze", str(cfg))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "output_dir\t" in proc.stdout
+    assert "results\t" in proc.stdout
+    assert "metadata\t" in proc.stdout
+    assert "summary\t" in proc.stdout
+
+
+def test_cli_analyze_workflow_error_reports_without_traceback(tmp_path):
+    cfg = tmp_path / "missing_config.jsonc"  # never written -> config file does not exist
+
+    proc = _run_cli("analyze", str(cfg))
+
+    assert proc.returncode == 2
+    assert "dynachaos analyze:" in proc.stderr
+    assert "config file does not exist" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+def test_cli_run_unknown_target_reports_error(tmp_path):
+    proc = _run_cli("run", "not_a_real_section", "--output-root", str(tmp_path))
+    assert proc.returncode != 0
+    assert "Unknown target" in proc.stderr
+
+
+def test_main_run_all_delegates_to_run_all_and_reports_each_section(monkeypatch, tmp_path):
+    from dynachaos.pipelines.registry import list_sections
+
+    calls = {}
+
+    def fake_run_all(*, output_root, profile, recompute, timing_ledger):
+        calls["output_root"] = output_root
+        calls["profile"] = profile
+        return {section_id: [tmp_path / section_id / "dummy.png"] for section_id in list_sections()}
+
+    monkeypatch.setattr(cli_mod, "run_all", fake_run_all)
+
+    exit_code = cli_mod.main(["run", "all", "--output-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert calls["profile"] == "paper"
+    assert calls["output_root"] == tmp_path
+
+
+def test_main_run_all_prints_output_counts(monkeypatch, tmp_path, capsys):
+    def fake_run_all(*, output_root, profile, recompute, timing_ledger):
+        return {"sec02_circle_map": [tmp_path / "a.png", tmp_path / "b.png"]}
+
+    monkeypatch.setattr(cli_mod, "run_all", fake_run_all)
+
+    exit_code = cli_mod.main(["run", "all", "--output-root", str(tmp_path)])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "[sec02_circle_map] 2 outputs" in out
+
+
+def test_main_run_unknown_target_raises_system_exit_via_parser_error(tmp_path):
+    with pytest.raises(SystemExit):
+        cli_mod.main(["run", "not_a_real_section", "--output-root", str(tmp_path)])
 
 
 def test_cli_inspect_section_reports_expected_artifacts(tmp_path):

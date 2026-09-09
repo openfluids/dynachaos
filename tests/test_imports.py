@@ -22,6 +22,12 @@ def test_output_path_helpers(tmp_path, monkeypatch):
     assert section_dir("sec02_circle_map") == tmp_path / "figures" / "sec02_circle_map"
 
 
+def test_output_root_honors_env_override(tmp_path, monkeypatch):
+    override = tmp_path / "custom_output"
+    monkeypatch.setenv("DYNACHAOS_OUTPUT_ROOT", str(override))
+    assert output_root() == override.expanduser().resolve()
+
+
 # ---------------------------------------------------------------------------
 # Re-export smoke tests
 # ---------------------------------------------------------------------------

@@ -258,3 +258,89 @@ def test_fuzzy_entropy_rust_python_parity(monkeypatch):
     fe_python = fuzzy_entropy(x, m=2, r=r, n=2)
 
     assert abs(fe_rust - fe_python) < 1e-9
+
+
+# ── Coverage: verbose output and edge cases ────────────────────────────────────
+
+
+def test_sample_entropy_verbose_with_fast_execution(capsys):
+    """Verbose output triggers _print_timing (lines 177, 58-59)."""
+    x = logistic_series(n=50, a=1.99, burn=20)
+    sample_entropy(x, m=2, verbose=True)
+    captured = capsys.readouterr()
+    assert "entropy" in captured.out
+    assert "pairs/s" in captured.out or "M pairs" in captured.out
+
+
+def test_approximate_entropy_verbose_backend_selection(capsys):
+    """Approximate entropy backend name printed in verbose mode (lines 240-241)."""
+    x = logistic_series(n=50, a=1.99, burn=20)
+    approximate_entropy(x, m=2, verbose=True)
+    captured = capsys.readouterr()
+    assert "entropy" in captured.out
+
+
+def test_fuzzy_entropy_verbose(capsys):
+    """Fuzzy entropy verbose _print_timing call (line 308)."""
+    x = logistic_series(n=50, a=1.99, burn=20)
+    fuzzy_entropy(x, m=2, verbose=True)
+    captured = capsys.readouterr()
+    assert "entropy" in captured.out
+
+
+def test_sample_entropy_n_m_less_than_2_returns_inf():
+    """When embedding produces fewer than 2 templates, return inf (line 156)."""
+    x = np.array([1.0, 2.0, 3.0])  # m=2 needs at least 3; with m=2, n_m=2 after trimming
+    # Construct a case where n_m < 2 after trimming
+    se = sample_entropy(x, m=2, r=0.1)
+    assert np.isinf(se)
+
+
+def test_approximate_entropy_short_series_returns_inf():
+    """Approximate entropy returns inf when series too short (line 216)."""
+    x = np.array([1.0, 2.0])
+    ae = approximate_entropy(x, m=2)
+    assert np.isinf(ae)
+
+
+def test_fuzzy_entropy_short_series_returns_inf():
+    """Fuzzy entropy returns inf when series too short (line 280)."""
+    x = np.array([1.0, 2.0])
+    fe = fuzzy_entropy(x, m=2)
+    assert np.isinf(fe)
+
+
+def test_fuzzy_entropy_n_m_less_than_2_returns_inf():
+    """Fuzzy entropy returns inf when n_m < 2 (line 289)."""
+    x = np.array([1.0, 2.0, 3.0])
+    fe = fuzzy_entropy(x, m=2)
+    assert np.isinf(fe)
+
+
+def test_multiscale_entropy_verbose(capsys):
+    """Multiscale entropy verbose call (line 378)."""
+    x = logistic_series(n=50, a=1.99, burn=20)
+    multiscale_entropy(x, scales=[1, 2], verbose=True)
+    captured = capsys.readouterr()
+    assert "MSE" in captured.out
+
+
+def test_multiscale_entropy_invalid_scale_error():
+    """Multiscale entropy raises error for scale < 1 (line 367)."""
+    x = logistic_series(n=100, a=1.99)
+    with pytest.raises(ValueError, match="all scales must be >= 1"):
+        multiscale_entropy(x, scales=[0, 1])
+
+
+def test_approximate_entropy_invalid_m_error():
+    """Approximate entropy raises when m < 1 (line 214)."""
+    x = logistic_series(n=100, a=1.99)
+    with pytest.raises(ValueError, match="m must be >= 1"):
+        approximate_entropy(x, m=0)
+
+
+def test_fuzzy_entropy_invalid_m_error():
+    """Fuzzy entropy raises when m < 1 (line 276)."""
+    x = logistic_series(n=100, a=1.99)
+    with pytest.raises(ValueError, match="m must be >= 1"):
+        fuzzy_entropy(x, m=0)

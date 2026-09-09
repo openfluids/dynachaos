@@ -1076,6 +1076,63 @@ class TestDiscreteMap:
         lm = LogisticMap(a=1.5)
         assert "Logistic" in repr(lm)
 
+    def test_henon_lyapunov_uses_nd_spectrum_branch(self):
+        # dim=2 routes through lyapunov_spectrum instead of
+        # lyapunov_exponent_1d; the largest exponent of the canonical Henon
+        # map (a=1.4, b=0.3) is the textbook ~0.42.
+        from dynachaos.maps.base import HenonMap
+
+        hm = HenonMap(a=1.4, b=0.3)
+        spectrum = hm.lyapunov(x0=np.array([0.1, 0.1]), n_iter=50_000, n_transient=5_000)
+        assert spectrum.shape == (2,)
+        assert spectrum[0] == pytest.approx(0.42, abs=0.05)
+
+    def test_bifurcation_returns_param_values_and_attractors(self):
+        from dynachaos.maps.base import BifurcationData, LogisticMap
+
+        lm = LogisticMap(a=1.5)
+        params = np.array([1.5, 1.99])
+        data = lm.bifurcation(
+            params, lambda a: LogisticMap(a=a).f, x0=0.1, n_transient=100, n_record=20
+        )
+        assert isinstance(data, BifurcationData)
+        np.testing.assert_array_equal(data.param_values, params)
+        assert len(data.attractors) == 2
+        for pts in data.attractors:
+            assert pts.shape == (20,)
+            assert np.all(np.isfinite(pts))
+
+    def test_bifurcation_extracts_first_component_for_nd_maps(self):
+        from dynachaos.maps.base import HenonMap
+
+        hm = HenonMap(a=1.4, b=0.3)
+        params = np.array([1.4])
+        data = hm.bifurcation(
+            params,
+            lambda a: HenonMap(a=a, b=0.3).f,
+            x0=np.array([0.1, 0.1]),
+            n_transient=50,
+            n_record=10,
+        )
+        assert len(data.attractors) == 1
+        assert data.attractors[0].shape == (10,)
+
+    def test_circle_map_constructor(self):
+        from dynachaos.maps.base import CircleMap
+
+        cm = CircleMap(omega=0.2, K=0.5)
+        traj = cm.trajectory(x0=0.1, n_iter=20)
+        assert traj.shape == (20,)
+        assert "Circle" in repr(cm)
+
+    def test_standard_map_constructor(self):
+        from dynachaos.maps.base import StandardMap
+
+        sm = StandardMap(K=1.0)
+        traj = sm.trajectory(x0=np.array([0.1, 0.1]), n_iter=20)
+        assert traj.shape == (20, 2)
+        assert "StandardMap" in repr(sm)
+
 
 class TestViz:
     """Smoke tests for viz subpackage (non-interactive)."""
@@ -1104,3 +1161,74 @@ class TestVersion:
         import dynachaos
 
         assert dynachaos.__version__ == version("dynachaos")
+
+
+@rust_extension
+class TestCircleMapTileParity:
+    """The Rust rotation-number tile must match the NumPy reference sweep.
+
+    The reference is the loop `dynachaos.maps.arnold_tongues.compute` runs:
+    theta advances by ``Omega + K sin(2 pi theta)`` without reduction modulo 1,
+    and the rotation number is the mean drift over the second stretch.
+    """
+
+    N_OMEGA = 7
+    N_K = 5
+    N_TRANSIENT = 200
+    N_ITER = 500
+    THETA0 = 0.1
+
+    def _numpy_reference(self):
+        two_pi = 2.0 * np.pi
+        omega_values = np.linspace(0.0, 1.0, self.N_OMEGA)
+        k_values = np.linspace(0.0, 0.3, self.N_K)
+        omega_grid, k_grid = np.meshgrid(omega_values, k_values)
+        omega_flat = omega_grid.ravel()
+        k_flat = k_grid.ravel()
+
+        theta = np.full(omega_flat.size, self.THETA0)
+        for _ in range(self.N_TRANSIENT):
+            theta += omega_flat + k_flat * np.sin(two_pi * theta)
+        theta_start = theta.copy()
+        for _ in range(self.N_ITER):
+            theta += omega_flat + k_flat * np.sin(two_pi * theta)
+        return ((theta - theta_start) / self.N_ITER).reshape(self.N_K, self.N_OMEGA)
+
+    def _rust_tile(self):
+        from dynachaos._rust import rotation_number_tile
+
+        return rotation_number_tile(
+            0.0,
+            1.0,
+            self.N_OMEGA,
+            0.0,
+            0.3,
+            self.N_K,
+            self.N_TRANSIENT,
+            self.N_ITER,
+            self.THETA0,
+        )
+
+    def test_rust_tile_matches_numpy_reference(self):
+        rust_tile = self._rust_tile()
+        reference = self._numpy_reference()
+
+        assert rust_tile.shape == (self.N_K, self.N_OMEGA)
+        # On Linux x86-64 the two agree bit for bit. The tolerance covers a
+        # possible one-unit-in-last-place difference between the platform sin
+        # used by Rust and the one NumPy uses on macOS and Windows.
+        np.testing.assert_allclose(rust_tile, reference, rtol=1e-13, atol=1e-15)
+
+    def test_zero_coupling_row_returns_omega(self):
+        """The K = 0 row is a known analytic case: the drift per step is Omega."""
+        rust_tile = self._rust_tile()
+
+        np.testing.assert_allclose(
+            rust_tile[0], np.linspace(0.0, 1.0, self.N_OMEGA), rtol=0.0, atol=1e-12
+        )
+
+    def test_invalid_grid_shape_is_rejected(self):
+        from dynachaos._rust import rotation_number_tile
+
+        with pytest.raises(ValueError, match="n_omega and n_k must be >= 1"):
+            rotation_number_tile(0.0, 1.0, 0, 0.0, 0.3, 4, 10, 10, 0.1)

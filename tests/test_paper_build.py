@@ -359,9 +359,7 @@ def test_the_assembled_page_numbers_everything_the_way_the_manuscript_does():
     test reading that file would race the build under ``pytest -n auto``: a
     clean checkout has no ``site/index.html`` at all.
     """
-    build = subprocess.run(
-        [sys.executable, str(SCRIPT)], cwd=ROOT, capture_output=True, text=True
-    )
+    build = subprocess.run([sys.executable, str(SCRIPT)], cwd=ROOT, capture_output=True, text=True)
     assert build.returncode == 0, f"the build failed:\n{build.stderr}"
     page = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
 

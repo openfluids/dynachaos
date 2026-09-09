@@ -122,3 +122,16 @@ def test_rqa_streaming_percentile_threshold_matches_dense():
     # the squareform multiset; this fixture exposed eps 4.6 vs 5.0 pre-fix
     X = np.array([[15.0], [18.0], [23.0]])
     _assert_streaming_matches_dense(X, eps=None, percentile=40, l_min=1, v_min=1)
+
+
+# ── Coverage: rqa_streaming edge cases ────────────────────────────────────────
+
+
+def test_rqa_streaming_early_return_when_return_counts_false():
+    """rqa_streaming_from_trajectory returns early when return_counts=False (line 34)."""
+    X = np.array([[0.0], [0.1], [0.2], [0.3], [0.4]], dtype=float)
+    result = rqa_streaming_from_trajectory(X, eps=0.15, return_counts=False)
+    assert isinstance(result, dict)
+    assert "RR" in result
+    assert "DET" in result
+    assert not isinstance(result, tuple)

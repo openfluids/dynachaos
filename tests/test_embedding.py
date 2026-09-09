@@ -13,6 +13,8 @@ import pytest
 from conftest import logistic_series
 
 from dynachaos.diagnostics.embedding import (
+    _embed,
+    _smooth_series,
     average_mutual_information,
     cao_method,
     false_nearest_neighbors,
@@ -20,6 +22,17 @@ from dynachaos.diagnostics.embedding import (
     optimal_dimension,
     select_dimension_cao,
 )
+
+
+def test_embed_rejects_series_too_short_for_requested_embedding():
+    with pytest.raises(ValueError, match="Series too short"):
+        _embed(np.arange(5.0), d=3, tau=3)
+
+
+def test_smooth_series_applies_moving_average_when_window_greater_than_one():
+    smoothed = _smooth_series(np.array([1.0, 2.0, 3.0, 4.0, 5.0]), window=3)
+    # Edge-padded moving average of length-3 window centered at each point.
+    np.testing.assert_allclose(smoothed, [4 / 3, 2.0, 3.0, 4.0, 14 / 3])
 
 
 class TestAMI:
@@ -61,6 +74,52 @@ class TestAMI:
 
         np.testing.assert_array_equal(mi, np.zeros(5))
 
+    def test_ami_ravels_2d_input(self):
+        x2d = np.sin(np.linspace(0, 20 * np.pi, 300)).reshape(-1, 1)
+        _, mi = average_mutual_information(x2d, tau_max=5, n_bins=16)
+        assert mi.shape == (5,)
+
+    def test_ami_rejects_noncastable_tau_max(self):
+        with pytest.raises(ValueError, match="positive integers"):
+            average_mutual_information(np.arange(10.0), tau_max="abc")
+
+    def test_ami_python_fallback_zeros_out_when_lag_leaves_too_few_pairs(self):
+        # For a delay close to the series length, N - t < 2 leaves fewer
+        # than two pairs, so the Python fallback floors those lags to 0
+        # instead of computing a degenerate histogram.
+        import dynachaos.diagnostics.embedding as emb_mod
+
+        old = emb_mod._RUST_AVAILABLE
+        emb_mod._RUST_AVAILABLE = False
+        try:
+            x = np.sin(np.linspace(0, 5, 8))
+            _, mi = average_mutual_information(x, tau_max=7, n_bins=4)
+        finally:
+            emb_mod._RUST_AVAILABLE = old
+        assert mi[-1] == 0.0
+        assert mi[-2] == 0.0
+
+    def test_ami_python_fallback_matches_rust_within_binning_noise(self):
+        import dynachaos.diagnostics.embedding as emb_mod
+
+        x = np.sin(np.linspace(0, 20 * np.pi, 500))
+        _, mi_rust = average_mutual_information(x, tau_max=10, n_bins=16)
+
+        old = emb_mod._RUST_AVAILABLE
+        emb_mod._RUST_AVAILABLE = False
+        try:
+            _, mi_python = average_mutual_information(x, tau_max=10, n_bins=16)
+        finally:
+            emb_mod._RUST_AVAILABLE = old
+
+        np.testing.assert_allclose(mi_python, mi_rust, atol=1e-8)
+
+    def test_optimal_delay_returns_one_when_series_too_short_for_local_minimum(self):
+        # tau_max=1 leaves a single MI value, so the search range for a local
+        # minimum is empty and the function falls back to tau=1.
+        x = np.sin(np.linspace(0, 20 * np.pi, 300))
+        assert optimal_delay(x, tau_max=1) == 1
+
 
 class TestCao:
     def test_cao_returns_correct_shape(self):
@@ -84,6 +143,24 @@ class TestCao:
         assert not np.allclose(E2, 1.0, atol=0.1), (
             "E2 should deviate from 1 for deterministic signal"
         )
+
+    def test_cao_marks_e1_nan_when_series_too_short_for_high_dimensions(self):
+        # len(x) - d*tau < 2 for the larger d's tested here, exercising the
+        # M < 2 guard that fills E1/E2 with NaN instead of raising.
+        x = np.sin(np.linspace(0, 10, 15))
+        E1, E2 = cao_method(x, tau=3, d_max=6)
+        assert np.any(np.isnan(E1))
+        assert np.any(np.isnan(E2))
+
+    def test_cao_theiler_window_still_returns_finite_statistics(self):
+        # Densely sampled sinusoid puts many points within the Theiler
+        # window of their nearest neighbor, exercising the re-query branch
+        # that searches for a neighbor outside the window.
+        rng = np.random.default_rng(0)
+        x = np.sin(np.linspace(0, 40 * np.pi, 400)) + 1e-3 * rng.standard_normal(400)
+        E1, E2 = cao_method(x, tau=2, d_max=6, theiler_window=5)
+        assert np.all(np.isfinite(E1))
+        assert np.all(np.isfinite(E2))
 
 
 class TestFNN:
@@ -109,6 +186,21 @@ class TestFNN:
         for arr in (f1, f2, f3):
             valid = arr[np.isfinite(arr)]
             assert np.all(valid >= 0) and np.all(valid <= 1)
+
+    def test_fnn_marks_nan_when_series_too_short_for_high_dimensions(self):
+        x = np.sin(np.linspace(0, 10, 15))
+        f1, f2, f3 = false_nearest_neighbors(x, tau=3, d_max=6)
+        assert np.any(np.isnan(f1))
+        assert np.any(np.isnan(f2))
+        assert np.any(np.isnan(f3))
+
+    def test_fnn_theiler_window_still_returns_finite_fractions(self):
+        rng = np.random.default_rng(0)
+        x = np.sin(np.linspace(0, 40 * np.pi, 400)) + 1e-3 * rng.standard_normal(400)
+        f1, f2, f3 = false_nearest_neighbors(x, tau=2, d_max=6, theiler_window=5)
+        assert np.all(np.isfinite(f1))
+        assert np.all(np.isfinite(f2))
+        assert np.all(np.isfinite(f3))
 
 
 class TestOptimalDimension:
@@ -203,6 +295,95 @@ class TestOptimalDimension:
         x = logistic_series(n=1000)
         with pytest.raises(ValueError, match="Unknown method"):
             optimal_dimension(x, tau=1, method="invalid")
+
+    def test_cao_legacy_falls_back_to_d_max_when_e1_never_exceeds_threshold(self):
+        # Pure noise: E1 stays well below 0.95 across all tested dimensions,
+        # so the legacy selector exhausts its search and returns d_max.
+        rng = np.random.default_rng(3)
+        x = rng.standard_normal(3000)
+        d = optimal_dimension(x, tau=1, d_max=5, method="cao_legacy")
+        assert d == 5
+
+    def test_fnn_falls_back_to_d_max_when_fraction_never_drops_below_threshold(self):
+        rng = np.random.default_rng(3)
+        x = rng.standard_normal(3000)
+        d = optimal_dimension(x, tau=1, d_max=5, method="fnn")
+        assert d == 5
+
+    def test_select_dimension_cao_python_path_handles_empty_and_all_nan_input(self):
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        old_selector = emb_mod._select_dimension_cao_rs
+        emb_mod._select_dimension_cao_rs = None
+        try:
+            assert select_dimension_cao(np.array([]), min_dim=2) == 2
+            assert select_dimension_cao(np.array([np.nan, np.nan]), min_dim=2) == 2
+        finally:
+            emb_mod._select_dimension_cao_rs = old_selector
+
+    def test_select_dimension_cao_swaps_inverted_near_one_band(self):
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        e1 = np.array(
+            [0.0024, 0.0559, 0.2308, 1.0013, 0.9835, 0.9979, 1.0000, 1.0000],
+            dtype=np.float64,
+        )
+        old_selector = emb_mod._select_dimension_cao_rs
+        emb_mod._select_dimension_cao_rs = None
+        try:
+            normal = select_dimension_cao(e1, near_one_lower=0.97, near_one_upper=1.03, min_dim=2)
+            # near_one_lower/upper passed reversed must still work: the
+            # function swaps them internally rather than raising.
+            swapped = select_dimension_cao(e1, near_one_lower=1.03, near_one_upper=0.97, min_dim=2)
+        finally:
+            emb_mod._select_dimension_cao_rs = old_selector
+        assert normal == swapped == 4
+
+    def test_select_dimension_cao_python_path_uses_fallback_ladder(self):
+        from dynachaos.diagnostics import embedding as emb_mod
+
+        old_selector = emb_mod._select_dimension_cao_rs
+        emb_mod._select_dimension_cao_rs = None
+        try:
+            # An isolated near-1 point too close to the array end for a full
+            # plateau window forces the primary onset search to fall through
+            # to Fallback 1 (first near-one crossing).
+            e1_fallback1 = np.array([0.1, 0.99, 0.5, 0.4, 1.0])
+            d1 = select_dimension_cao(
+                e1_fallback1, near_one_lower=0.95, near_one_upper=1.05, min_dim=2, plateau_span=3
+            )
+            assert d1 == 2
+
+            # No value ever enters the near-one band -> Fallback 2 (closest
+            # to 1 overall).
+            e1_fallback2 = np.array([0.1, 0.3, 0.5, 0.7])
+            d2 = select_dimension_cao(
+                e1_fallback2, near_one_lower=0.95, near_one_upper=1.05, min_dim=2
+            )
+            assert d2 == 4
+
+            # min_dim beyond every available dimension: no candidate passes
+            # any fallback, so the final catch-all return fires.
+            e1_none = np.array([0.5, 0.6])
+            d3 = select_dimension_cao(e1_none, near_one_lower=0.95, near_one_upper=1.05, min_dim=10)
+            assert d3 == 10
+
+            # A monotonically rising in-band window has a peak-to-peak span
+            # above the 1.5*saturation_tol ptp criterion, but each
+            # consecutive step stays within saturation_tol, exercising the
+            # separate max-consecutive-diff acceptance criterion.
+            e1_small_steps = np.array([0.1, 0.96, 0.97, 0.98, 0.99, 1.00])
+            d4 = select_dimension_cao(
+                e1_small_steps,
+                near_one_lower=0.95,
+                near_one_upper=1.05,
+                min_dim=2,
+                plateau_span=5,
+                saturation_tol=0.02,
+            )
+            assert d4 == 2
+        finally:
+            emb_mod._select_dimension_cao_rs = old_selector
 
 
 class TestCorrelationIntegralImproved:

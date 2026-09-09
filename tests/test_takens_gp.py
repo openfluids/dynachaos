@@ -16,6 +16,13 @@ from scipy.integrate import solve_ivp
 
 from dynachaos.diagnostics import gp_dimension_robust, takens_theiler_dimension
 from dynachaos.diagnostics.embedding import _embed
+from dynachaos.diagnostics.gp_protocol import (
+    _classify,
+    _dc_of_m,
+    _dominant_period_samples,
+    _is_map_like,
+    _saturation,
+)
 
 N = 14000
 RHO, GOLD = 1.32471795724475, 1.61803398875
@@ -137,3 +144,67 @@ def test_henon_map_tau1_recovered_via_is_map():
     r = gp_dimension_robust(_henon(), m_max=8, n_segments=6, is_map=True)
     assert r["tau_used"] == 1
     assert 1.05 <= r["D_c"] <= 1.40
+
+
+def test_dominant_period_samples_returns_one_for_a_single_sample():
+    assert _dominant_period_samples(np.array([1.0])) == 1
+
+
+def test_is_map_like_is_false_for_a_constant_signal():
+    # A constant signal has zero variance, so the lag-1 autocorrelation
+    # denominator is 0 and the heuristic must not divide by it.
+    assert _is_map_like(np.ones(50)) is False
+
+
+def test_dc_of_m_returns_nan_when_embedding_too_short_for_reliable_estimate():
+    x = np.random.default_rng(0).standard_normal(100)
+    out = _dc_of_m(x, tau=5, theiler=1, m_values=[2, 3], max_pairs=1000, norm="chebyshev")
+    assert np.all(np.isnan(out))
+
+
+def test_saturation_returns_nan_with_fewer_than_four_finite_estimates():
+    saturated, slope, D_c = _saturation([2, 3, 4, 5], [np.nan, np.nan, np.nan, 2.0])
+    assert saturated is False
+    assert np.isnan(slope)
+    assert D_c == pytest.approx(2.0)
+
+
+def test_saturation_falls_back_to_full_range_when_upper_half_too_small():
+    # With 4 finite points, "upper half >= median" can leave only 2 points,
+    # below the 3-point minimum, forcing the fallback to use every point.
+    saturated, slope, D_c = _saturation([2, 3, 4, 5], [1.0, 1.5, 2.0, 2.1])
+    assert D_c == pytest.approx(np.mean([1.0, 1.5, 2.0, 2.1]))
+
+
+@pytest.mark.parametrize("D_c", [1.5, 2.4])
+def test_classify_reports_ambiguous_band_gap(D_c):
+    band_class, certifiable = _classify(D_c, saturated=True)
+    assert band_class == "ambiguous (band gap)"
+    assert certifiable is True
+
+
+def test_gp_dimension_robust_falls_back_to_default_m_cao_when_cao_method_raises(monkeypatch):
+    import dynachaos.diagnostics.gp_protocol as gp_mod
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(gp_mod, "optimal_dimension", boom)
+    x = np.random.default_rng(0).standard_normal(2000)
+    r = gp_mod.gp_dimension_robust(x, tau=5, theiler=5, n_segments=3, m_max=6, max_pairs=50_000)
+    assert r["m_used"] == 5
+
+
+def test_gp_dimension_robust_reports_zero_segments_when_all_too_short_to_embed():
+    # tau=500, m_cao=3 makes (m_cao-1)*tau=1000 dominate min_seg, but the
+    # resulting embed length per segment (~50) is still below the 500-point
+    # floor: every segment is skipped, exercising both the per-segment
+    # continue and the "too few segments" NaN fallback.
+    rng = np.random.default_rng(0)
+    n = 5250
+    x = rng.standard_normal(n)
+    r = gp_dimension_robust(x, tau=500, m_cao=3, theiler=5, n_segments=5, m_max=4, max_pairs=50_000)
+    assert r["n_segments_used"] == 0
+    assert np.isnan(r["sigma"])
+    assert np.isnan(r["ci"][0]) and np.isnan(r["ci"][1])
+    assert np.isnan(r["seg_median"])

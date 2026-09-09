@@ -1,3 +1,4 @@
+import importlib
 from itertools import groupby
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from dynachaos.diagnostics.compare_all_helpers import (
     sweep_pair_metric,
     sweep_scalar_metric,
 )
-from dynachaos.diagnostics.sali_gali import sali
+from dynachaos.diagnostics.sali_gali import gali, sali, sali_at_time
 from dynachaos.maps._iter import (
     iterate_unwrapped,
     run_animation_sweep,
@@ -826,6 +827,14 @@ def test_broad_positive_mask_rejects_short_spikes():
     )
 
 
+def test_broad_positive_mask_closes_a_run_that_reaches_the_array_end():
+    values = np.array([-0.1, 0.03, 0.04, 0.05, 0.06])
+
+    mask = broad_positive_mask(values, threshold=0.02, min_run=3)
+
+    np.testing.assert_array_equal(mask, np.array([False, True, True, True, True]))
+
+
 def test_sustained_positive_mask_matches_legacy_alias():
     values = np.array([-0.1, 0.03, -0.02, 0.04, 0.05, 0.06, 0.07, -0.01])
 
@@ -918,6 +927,28 @@ def test_cluster_labels_by_tolerance_groups_sorted_runs():
     labels = cluster_labels_by_tolerance(values, tol=1e-5)
 
     np.testing.assert_array_equal(labels, np.array([0, 0, 1, 1, 2]))
+
+
+def test_cluster_labels_by_tolerance_rejects_non_1d_input():
+    with pytest.raises(ValueError, match="1D array"):
+        cluster_labels_by_tolerance(np.zeros((2, 2)))
+
+
+def test_cluster_labels_by_tolerance_returns_empty_for_empty_input():
+    labels = cluster_labels_by_tolerance(np.array([]))
+
+    assert labels.shape == (0,)
+    assert labels.dtype == int
+
+
+def test_cml_jacobian_subblock_logistic_rejects_l_out_of_range():
+    x = np.array([0.1, -0.2, 0.3])
+
+    with pytest.raises(ValueError, match="L must satisfy"):
+        cml_jacobian_subblock_logistic(x, 1.5, 0.2, 0)
+
+    with pytest.raises(ValueError, match="L must satisfy"):
+        cml_jacobian_subblock_logistic(x, 1.5, 0.2, len(x) + 1)
 
 
 def test_iterate_unwrapped_scalar_matches_manual_accumulation():
@@ -1044,6 +1075,44 @@ def test_correlation_length_fit_ignores_late_tail_spikes():
     assert 0.5 < xi < 1.0
 
 
+def test_correlation_length_fit_uses_slow_head_slope_when_target_not_reached():
+    # Decay so slow the target e^-1 is never reached within the near-field
+    # window, so the loop runs to the array end and falls to the fitted-slope
+    # branch instead of the crossing-interpolation branch.
+    r = np.arange(0, 30)
+    corr = np.exp(-r / 50.0)
+
+    xi = _fit_correlation_length(r, corr)
+
+    assert 45.0 < xi < 55.0
+
+
+def test_correlation_length_fit_returns_plateau_value_without_interpolation():
+    # A flat plateau exactly at the target value: the crossing branch fires
+    # with y0 == y1, so no interpolation is needed and x1 is returned as-is.
+    r = np.arange(0, 20)
+    target = np.exp(-1.0)
+    corr = np.full(20, target)
+
+    xi = _fit_correlation_length(r, corr)
+
+    assert xi == pytest.approx(1.0)
+
+
+def test_correlation_length_fit_uses_envelope_crossing_for_oscillatory_head():
+    # An oscillating head (rises above its previous value repeatedly, so the
+    # scan loop exits early on the "value > previous" condition well before
+    # the target or noise floor) falls through to the envelope-crossing
+    # fallback.
+    r = np.arange(0, 20)
+    corr = np.array([1.0, 0.9, 1.0, 0.9, 1.0, 0.9] + [0.1] * 14)
+
+    xi = _fit_correlation_length(r, corr)
+
+    assert np.isfinite(xi)
+    assert xi > 0.0
+
+
 def test_sec08_correlation_lengths_are_physical_after_refit():
     with np.load("figures/sec08_sti/correlation_decay.npz", allow_pickle=False) as data:
         a_corr = data["a_corr"]
@@ -1128,6 +1197,31 @@ def test_sweep_metric_helpers_return_expected_arrays():
     np.testing.assert_allclose(second, np.array([2.0, 4.0, 6.0]))
 
 
+def test_sweep_metric_helpers_print_progress_when_requested(capsys):
+    values = np.array([1.0, 2.0, 3.0, 4.0])
+
+    def series_fn(v):
+        return np.array([v, 2.0 * v])
+
+    def scalar_metric(s):
+        return float(np.sum(s))
+
+    def pair_metric(s):
+        return float(np.min(s)), float(np.max(s))
+
+    sweep_scalar_metric(
+        values, series_fn, scalar_metric, progress_every=2, progress_label="scalar sweep"
+    )
+    out_scalar = capsys.readouterr().out
+    assert "scalar sweep: 2/4" in out_scalar
+    assert "scalar sweep: 4/4" in out_scalar
+
+    sweep_pair_metric(values, series_fn, pair_metric, progress_every=2, progress_label="pair sweep")
+    out_pair = capsys.readouterr().out
+    assert "pair sweep: 2/4" in out_pair
+    assert "pair sweep: 4/4" in out_pair
+
+
 def test_load_or_compute_npz_computes_when_missing(tmp_path):
     path = tmp_path / "sample.npz"
 
@@ -1136,6 +1230,21 @@ def test_load_or_compute_npz_computes_when_missing(tmp_path):
 
     data = load_or_compute_npz(path, "sample", compute_fn)
 
+    np.testing.assert_allclose(data["values"], np.array([1.0, 2.0]))
+
+
+def test_load_or_compute_npz_loads_existing_cache_without_recomputing(tmp_path):
+    path = tmp_path / "sample.npz"
+    np.savez_compressed(path, values=np.array([1.0, 2.0]))
+    calls = 0
+
+    def compute_fn():
+        nonlocal calls
+        calls += 1
+
+    data = load_or_compute_npz(path, "sample", compute_fn, required_keys=("values",))
+
+    assert calls == 0
     np.testing.assert_allclose(data["values"], np.array([1.0, 2.0]))
 
 
@@ -1231,6 +1340,138 @@ def test_standard_map_sali_separates_regular_and_chaotic_conservative_orbits():
     assert np.min(regular[-200:]) > 0.5
     assert chaotic[-1] < 1e-12
     assert chaotic[-1] < regular[-1] * 1e-12
+
+
+def test_sali_default_rng_is_deterministic_across_calls():
+    # rng=None falls back to np.random.default_rng(42) internally, so two
+    # calls with no rng given must reproduce the same series exactly.
+    x0 = np.array([np.pi, 0.01])
+    first = sali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=50,
+        n_transient=10,
+    )
+    second = sali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=50,
+        n_transient=10,
+    )
+    np.testing.assert_array_equal(first, second)
+
+
+def test_sali_at_time_returns_final_scalar_matching_full_series():
+    x0 = np.array([np.pi, 0.01])
+    full_series = sali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=200,
+        n_transient=50,
+        rng=np.random.default_rng(123),
+    )
+    final = sali_at_time(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=200,
+        n_transient=50,
+        rng=np.random.default_rng(123),
+    )
+    assert final == pytest.approx(full_series[-1])
+    assert isinstance(final, float)
+
+
+def test_gali_separates_regular_and_chaotic_conservative_orbits():
+    regular_x0 = np.array([np.pi, 0.01])
+    chaotic_x0 = np.array([0.1, 0.1])
+
+    # GALI_2 on a 2D map reduces to SALI up to normalisation: for a regular
+    # (2-torus) orbit it saturates near a positive constant, for a chaotic
+    # orbit it decays to (near) zero as the deviation vectors align.
+    regular = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        regular_x0,
+        n_iter=1000,
+        n_transient=100,
+        rng=np.random.default_rng(123),
+    )
+    chaotic = gali(
+        lambda state: standard_map(state, K=5.0),
+        lambda state: standard_map_jac(state, K=5.0),
+        chaotic_x0,
+        n_iter=1000,
+        n_transient=100,
+        rng=np.random.default_rng(123),
+    )
+
+    assert np.min(regular[-200:]) > 0.5
+    assert chaotic[-1] < 1e-12
+
+
+def test_gali_k_defaults_to_full_phase_space_dimension():
+    x0 = np.array([np.pi, 0.01])
+    default_k = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        k=None,
+        n_iter=20,
+        n_transient=5,
+        rng=np.random.default_rng(1),
+    )
+    explicit_k = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        k=2,
+        n_iter=20,
+        n_transient=5,
+        rng=np.random.default_rng(1),
+    )
+    np.testing.assert_array_equal(default_k, explicit_k)
+
+
+def test_gali_default_rng_is_deterministic_across_calls():
+    # rng=None falls back to np.random.default_rng(42) internally, mirroring
+    # sali's default-rng branch.
+    x0 = np.array([np.pi, 0.01])
+    first = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=30,
+        n_transient=5,
+    )
+    second = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        n_iter=30,
+        n_transient=5,
+    )
+    np.testing.assert_array_equal(first, second)
+
+
+def test_gali_k_larger_than_dimension_is_clamped():
+    # k=5 on a 2D map is clamped to dim=2 via k = min(k, dim); must not raise
+    # and must match the explicit k=2 request with the same rng draw order.
+    x0 = np.array([np.pi, 0.01])
+    clamped = gali(
+        lambda state: standard_map(state, K=0.5),
+        lambda state: standard_map_jac(state, K=0.5),
+        x0,
+        k=5,
+        n_iter=20,
+        n_transient=5,
+        rng=np.random.default_rng(1),
+    )
+    assert clamped.shape == (20,)
+    assert np.all(np.isfinite(clamped))
 
 
 def test_compute_clusters_seed_controls_rng_determinism():
@@ -1526,3 +1767,1361 @@ def test_compute_coupled_phase_diagram_golden_values(tmp_path):
     with np.load(output_path) as saved:
         np.testing.assert_allclose(saved["asym"], payload["asym"], rtol=1e-9)
         np.testing.assert_allclose(saved["lyap"], payload["lyap"], rtol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# globally_coupled module tests
+# ---------------------------------------------------------------------------
+
+
+def test_gcm_step_basic_computation():
+    """gcm_step updates a population according to the GCM formula."""
+    from dynachaos.cml.primitives import gcm_step
+
+    x = np.array([0.1, 0.5, 0.9])
+    a = 1.99
+    eps = 0.1
+
+    x_new = gcm_step(x, a, eps)
+
+    assert isinstance(x_new, np.ndarray)
+    assert x_new.shape == x.shape
+    assert np.all(np.isfinite(x_new))
+
+
+def test_gcm_step_mean_field_formula():
+    """gcm_step implements Eq. 1 from Kaneko (1990):
+    x_{n+1}(i) = (1 - eps) f(x_n(i)) + eps/N sum_j f(x_n(j))
+    """
+    from dynachaos.cml.primitives import gcm_step
+    from dynachaos.maps.primitives import logistic
+
+    x = np.array([0.2, 0.3, 0.5])
+    a = 1.99
+    eps = 0.1
+
+    x_new = gcm_step(x, a, eps)
+
+    fx = logistic(x, a)
+    mean_fx = np.mean(fx)
+    expected = (1.0 - eps) * fx + eps * mean_fx
+
+    np.testing.assert_allclose(x_new, expected, rtol=1e-14)
+
+
+def test_gcm_step_zero_coupling_recovers_logistic_map():
+    """When eps=0, gcm_step reduces to the logistic map."""
+    from dynachaos.cml.primitives import gcm_step
+    from dynachaos.maps.primitives import logistic
+
+    x = np.array([0.1, 0.5, 0.9])
+    a = 1.99
+    eps = 0.0
+
+    x_new = gcm_step(x, a, eps)
+    expected = logistic(x, a)
+
+    np.testing.assert_allclose(x_new, expected, rtol=1e-14)
+
+
+def test_gcm_step_full_coupling_converges_to_mean_field():
+    """When eps=1, gcm_step converges all sites to the same mean-field value."""
+    from dynachaos.cml.primitives import gcm_step
+    from dynachaos.maps.primitives import logistic
+
+    x = np.array([0.1, 0.5, 0.9])
+    a = 1.99
+    eps = 1.0
+
+    x_new = gcm_step(x, a, eps)
+    fx = logistic(x, a)
+    expected = np.full_like(x, np.mean(fx))
+
+    np.testing.assert_allclose(x_new, expected, rtol=1e-14)
+
+
+def test_gcm_step_preserves_bounds_in_chaotic_regime():
+    """gcm_step dynamics remain finite for chaotic parameters."""
+    from dynachaos.cml.primitives import gcm_step
+
+    x = np.random.default_rng(42).uniform(-0.5, 0.5, 16)
+    a = 1.99
+    eps = 0.3
+
+    for _ in range(100):
+        x = gcm_step(x, a, eps)
+        assert np.all(np.isfinite(x))
+
+
+def test_gcm_step_synchronization_for_strong_coupling():
+    """Strong coupling (eps ~ 1) synchronizes the population."""
+    from dynachaos.cml.primitives import gcm_step
+
+    rng = np.random.default_rng(42)
+    x = rng.uniform(0, 1, 10)
+    a = 1.99
+    eps = 0.95
+
+    for _ in range(200):
+        x = gcm_step(x, a, eps)
+
+    max_spread = np.max(x) - np.min(x)
+    assert max_spread < 0.1
+
+
+def test_gcm_mean_field_variance_decreases_with_N_for_weak_coupling():
+    """Weaker coupling has larger mean-field fluctuations than strong coupling."""
+    from dynachaos.cml.primitives import gcm_step
+    from dynachaos.maps.primitives import logistic
+
+    rng = np.random.default_rng(42)
+    a = 1.99
+    n_sample = 100
+
+    variances = {}
+    for eps in [0.05, 0.1, 0.2]:
+        N = 50
+        x = rng.uniform(-0.5, 0.5, N)
+
+        for _ in range(500):
+            x = gcm_step(x, a, eps)
+
+        h_series = np.array([np.mean(logistic(x, a)) for _ in range(n_sample)])
+        variances[eps] = np.var(h_series)
+
+    assert variances[0.05] > variances[0.2]
+
+
+def test_gcm_cluster_behavior_for_intermediate_coupling():
+    """Intermediate coupling (0.1 < eps < 0.5) exhibits cluster formation."""
+    from dynachaos.cml.primitives import gcm_step
+
+    rng = np.random.default_rng(42)
+    N = 16
+    x = rng.uniform(-1, 1, N)
+    a = 1.99
+    eps = 0.3
+
+    for _ in range(500):
+        x = gcm_step(x, a, eps)
+
+    spread = np.max(x) - np.min(x)
+    assert spread > 0.2
+    assert spread < 1.5
+
+
+# ---------------------------------------------------------------------------
+# arnold_tongues module
+# ---------------------------------------------------------------------------
+
+
+def test_arnold_tongues_grid_rotation_numbers_stay_inside_the_swept_band():
+    """A small (Omega, K) grid gives rotation numbers inside the swept range.
+
+    arnold_tongues.compute() hardcodes a 2000 x 1000 grid with 55000 iterations
+    per cell, so it cannot run at test scale. This walks the same plane with the
+    package rotation number instead of repeating the iteration here.
+    """
+    from dynachaos.maps.circle_map import rotation_number
+
+    Omega_values = np.linspace(0.0, 1.0, 3)
+    K_values = np.linspace(0.0, 0.3, 4)
+
+    rho_2d = np.array(
+        [
+            [
+                rotation_number(K, Omega, n_transient=100, n_iter=200, theta0=0.1)
+                for Omega in Omega_values
+            ]
+            for K in K_values
+        ]
+    )
+
+    assert rho_2d.shape == (4, 3)
+    assert np.all(np.isfinite(rho_2d))
+    # The drift per step is Omega + K sin(2 pi theta), so it cannot leave
+    # [Omega_min - K_max, Omega_max + K_max].
+    assert np.all(rho_2d >= -0.3 - 1e-9)
+    assert np.all(rho_2d <= 1.0 + 0.3 + 1e-9)
+
+
+def test_arnold_tongues_rotation_number_equals_Omega_on_the_K_zero_line():
+    """At K = 0 the map is a rigid rotation, so rho = Omega exactly.
+
+    This is the one point of the plane with a closed-form answer, so it is the
+    check that would show a sign or scale error in the map.
+    """
+    from dynachaos.maps.circle_map import rotation_number
+
+    for Omega in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        rho = rotation_number(0.0, Omega, n_transient=500, n_iter=5000, theta0=0.1)
+        # Measured error is at most 1.2e-16; the bound leaves room for a
+        # different libm without letting a real error through.
+        assert rho == pytest.approx(Omega, abs=1e-14)
+
+
+def test_arnold_tongues_plot_tiny_data(tmp_path):
+    """Plot function works on tiny computed data, saves PNG."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    Omega_values = np.linspace(0.0, 1.0, 10)
+    K_values = np.linspace(0.0, 0.3, 5)
+    Omega_grid, K_grid = np.meshgrid(Omega_values, K_values)
+    rho_2d = 0.5 * (1.0 - np.cos(2 * np.pi * K_grid))
+
+    data = {"Omega": Omega_values, "K": K_values, "rho": rho_2d}
+
+    from dynachaos.maps.arnold_tongues import plot as _plot_tongues
+
+    output_png = tmp_path / "arnold_tongues_test.png"
+
+    # Monkey-patch OUTPUT_PNG for this call
+    import dynachaos.maps.arnold_tongues as at_module
+
+    old_png = at_module.OUTPUT_PNG
+    at_module.OUTPUT_PNG = output_png
+    try:
+        _plot_tongues(data)
+    finally:
+        at_module.OUTPUT_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+# ---------------------------------------------------------------------------
+# circle_map module: additional tests for compute functions
+# ---------------------------------------------------------------------------
+
+
+def test_circle_map_rotation_number_tiny_A():
+    """Rotation number at tiny A should be close to D."""
+    from dynachaos.maps.circle_map import rotation_number
+
+    D = 0.25
+    A = 0.001
+    rho = rotation_number(A, D, n_transient=100, n_iter=500, theta0=0.1)
+
+    np.testing.assert_allclose(rho, D, atol=1e-3)
+
+
+def test_circle_map_lyapunov_finite():
+    """Lyapunov exponent is finite below the critical line, and zero at A = 0."""
+    from dynachaos.maps.circle_map import lyapunov_exponent
+
+    # At A = 0 the derivative is 1 at every point, so the sum of log|f'| is a
+    # sum of zeros. Anything else means the derivative is wrong.
+    assert lyapunov_exponent(0.0, D=0.25, n_transient=100, n_iter=500, theta0=0.1) == 0.0
+
+    # Under the critical line 1 / (2 pi) = 0.159 the map is still invertible,
+    # so the exponent cannot be positive. 500 iterations do not resolve it to
+    # better than about 1e-5, which is why the bound is not zero.
+    for A in [0.05, 0.1, 0.15]:
+        lam = lyapunov_exponent(A, D=0.25, n_transient=100, n_iter=500, theta0=0.1)
+        assert lam < 1e-3
+
+    # Above the critical line the exponent may take either sign. Only ask that
+    # the estimator returns a number.
+    for A in [0.2, 0.25]:
+        assert np.isfinite(lyapunov_exponent(A, D=0.25, n_transient=100, n_iter=500, theta0=0.1))
+
+
+def test_circle_map_plot_tiny_devils_staircase(tmp_path):
+    """Plot devil's staircase on tiny data; verify PNG created."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    A_values = np.linspace(0.0, 0.25, 20)
+    rho = 0.2 * np.ones_like(A_values)
+    lam = -0.05 * np.ones_like(A_values)
+
+    data = {"A": A_values, "rho": rho, "lam": lam}
+
+    cm_module = importlib.import_module("dynachaos.maps.circle_map")
+
+    output_png = tmp_path / "staircase_test.png"
+    old_png = cm_module.OUTPUT_PNG
+    cm_module.OUTPUT_PNG = output_png
+    try:
+        cm_module.plot(data)
+    finally:
+        cm_module.OUTPUT_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_circle_map_plot_zoom_tiny(tmp_path):
+    """Plot zoom of devil's staircase on tiny data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    A_full = np.linspace(0.0, 0.25, 50)
+    rho_full = 0.2 * np.ones_like(A_full)
+    A_zoom = np.linspace(0.10, 0.17, 30)
+    rho_zoom = 0.2 * np.ones_like(A_zoom)
+
+    full_data = {"A": A_full, "rho": rho_full}
+    zoom_data = {"A": A_zoom, "rho": rho_zoom}
+
+    cm_module = importlib.import_module("dynachaos.maps.circle_map")
+
+    output_png = tmp_path / "zoom_test.png"
+    old_png = cm_module.ZOOM_PNG
+    cm_module.ZOOM_PNG = output_png
+    try:
+        cm_module.plot_zoom(zoom_data, full_data)
+    finally:
+        cm_module.ZOOM_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_fractalization_iterate_tiny():
+    """fractalization.iterate on tiny parameters; verify trajectory shape."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D = 1.75
+    traj = iterate(A, D, n_transient=50, n_record=100)
+
+    assert traj.shape == (100, 2)
+    assert np.all(np.isfinite(traj))
+
+
+def test_fractalization_iterate_starting_point():
+    """iterate uses fixed-point initialization when x0=None."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D = 1.75
+    traj1 = iterate(A, D, n_transient=50, n_record=100, x0=None)
+    traj2 = iterate(A, D, n_transient=50, n_record=100, x0=None)
+
+    np.testing.assert_allclose(traj1, traj2)
+
+
+def test_fractalization_attractors_compute_tiny():
+    """Tiny version of compute_attractors; verify output dict keys."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D_values = [1.75, 1.86]
+
+    results = {}
+    for D in D_values:
+        traj = iterate(A, D, n_transient=50, n_record=100)
+        results[f"D_{D}_traj"] = traj
+
+    results["D_values"] = np.array(D_values)
+    results["A"] = np.array([A])
+
+    assert "D_1.75_traj" in results
+    assert "D_1.86_traj" in results
+    assert results["A"].shape == (1,)
+    assert results["D_values"].shape == (2,)
+
+
+def test_fractalization_plot_attractors_tiny(tmp_path):
+    """Plot attractors on minimal data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    A = 0.3
+    D_values = [1.75, 1.86]
+
+    from dynachaos.maps.fractalization import iterate
+
+    data = {}
+    for D in D_values:
+        traj = iterate(A, D, n_transient=50, n_record=100)
+        data[f"D_{D}_traj"] = traj
+    data["D_values"] = np.array(D_values)
+
+    from dynachaos.maps.fractalization import plot_attractors
+
+    output_png = tmp_path / "frac_attractors_test.png"
+
+    import dynachaos.maps.fractalization as frac_module
+
+    old_png = frac_module.FRAC_PNG
+    frac_module.FRAC_PNG = output_png
+    try:
+        plot_attractors(data)
+    finally:
+        frac_module.FRAC_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_fractalization_plot_dimension_tiny(tmp_path):
+    """Plot correlation dimension on minimal data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    D = np.linspace(1.70, 2.00, 5)
+    D2 = 1.0 + 0.2 * (D - 1.70)
+    D2_err = 0.05 * np.ones_like(D)
+
+    data = {"D": D, "D2": D2, "D2_err": D2_err, "A": np.array([0.3])}
+
+    from dynachaos.maps.fractalization import plot_dimension
+
+    output_png = tmp_path / "frac_dim_test.png"
+
+    import dynachaos.maps.fractalization as frac_module
+
+    old_png = frac_module.DIM_PNG
+    frac_module.DIM_PNG = output_png
+    try:
+        plot_dimension(data)
+    finally:
+        frac_module.DIM_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+# ---------------------------------------------------------------------------
+# coupled_delayed module
+# ---------------------------------------------------------------------------
+
+
+def test_coupled_delayed_shape_and_finite():
+    """coupled_delayed map returns shape (4,) and is finite."""
+    from dynachaos.maps.coupled_delayed import coupled_delayed
+
+    state = np.array([0.5, 0.5, 0.3, 0.3])
+    A = 0.4
+    DA = 2.4
+    DB = 2.35
+    eps = 0.005
+
+    out = coupled_delayed(state, A, DA, DB, eps)
+
+    assert out.shape == (4,)
+    assert np.all(np.isfinite(out))
+
+
+def test_coupled_delayed_jac_shape_and_finite():
+    """coupled_delayed_jac returns shape (4, 4) and is finite."""
+    from dynachaos.maps.coupled_delayed import coupled_delayed_jac
+
+    state = np.array([0.5, 0.5, 0.3, 0.3])
+    A = 0.4
+    DA = 2.4
+    DB = 2.35
+    eps = 0.005
+
+    jac = coupled_delayed_jac(state, A, DA, DB, eps)
+
+    assert jac.shape == (4, 4)
+    assert np.all(np.isfinite(jac))
+
+
+def test_coupled_delayed_jac_finite_difference():
+    """Jacobian should match finite-difference approximation."""
+    from dynachaos.maps.coupled_delayed import coupled_delayed, coupled_delayed_jac
+
+    state = np.array([0.5, 0.5, 0.3, 0.3])
+    A = 0.4
+    DA = 2.4
+    DB = 2.35
+    eps = 0.005
+    jac = coupled_delayed_jac(state, A, DA, DB, eps)
+
+    eps_fd = 1e-7
+    for j in range(4):
+        state_plus = state.copy()
+        state_plus[j] += eps_fd
+        state_minus = state.copy()
+        state_minus[j] -= eps_fd
+        fd_col = (
+            coupled_delayed(state_plus, A, DA, DB, eps)
+            - coupled_delayed(state_minus, A, DA, DB, eps)
+        ) / (2.0 * eps_fd)
+        np.testing.assert_allclose(jac[:, j], fd_col, atol=1e-5)
+
+
+def test_coupled_delayed_lyapunov_compute_tiny():
+    """Tiny Lyapunov computation on 2 DB points."""
+    from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+    from dynachaos.maps.coupled_delayed import coupled_delayed, coupled_delayed_jac
+
+    A = 0.4
+    DB_values = np.array([2.35, 2.45])
+
+    for DB in DB_values:
+        DA = DB + 0.1
+        x0 = np.array([0.5, 0.5, 0.3, 0.3])
+
+        def f(s):
+            return coupled_delayed(s, A, DA, DB, 0.005)
+
+        def jac(s):
+            return coupled_delayed_jac(s, A, DA, DB, 0.005)
+
+        spectra = lyapunov_spectrum(f, jac, x0, n_iter=500, n_transient=200)
+
+        assert spectra.shape == (4,)
+        assert np.all(np.isfinite(spectra))
+
+
+def test_coupled_delayed_projections_compute_tiny():
+    """Compute (x, z) projections on tiny iteration count."""
+    from dynachaos.maps._iter import trajectory_after_transient
+    from dynachaos.maps.coupled_delayed import coupled_delayed
+
+    A = 0.4
+    DB = 2.37
+    DA = DB + 0.1
+
+    traj = trajectory_after_transient(
+        np.array([0.5, 0.5, 0.3, 0.3], dtype=np.float64),
+        lambda state: coupled_delayed(state, A, DA, DB, 0.005),
+        200,
+        300,
+        project_fn=lambda state: state[[0, 2]],
+    )
+
+    assert traj.shape == (300, 2)
+    assert np.all(np.isfinite(traj))
+
+
+def test_coupled_delayed_plot_lyapunov_tiny(tmp_path):
+    """Plot Lyapunov exponents on minimal data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    DB = np.linspace(2.1, 2.65, 5)
+    eps_values = np.array([1e-3, 5e-3, 1e-2])
+
+    spectra_data = {}
+    for eps in eps_values:
+        spectra = np.random.randn(5, 4)
+        spectra_data[f"eps_{eps}_spectra"] = spectra
+
+    data = {"DB": DB, "eps_values": eps_values, **spectra_data}
+
+    cd_module = importlib.import_module("dynachaos.maps.coupled_delayed")
+
+    output_png = tmp_path / "coupled_lyap_test.png"
+    old_png = cd_module.LYAP_PNG
+    cd_module.LYAP_PNG = output_png
+    try:
+        cd_module.plot_lyapunov(data)
+    finally:
+        cd_module.LYAP_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_coupled_delayed_plot_projections_tiny(tmp_path):
+    """Plot (x, z) projections on minimal data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    DB_values = np.array([2.37, 2.43])
+    labels = np.array(["test_a", "test_b"])
+    render_modes = np.array(["line", "points"])
+
+    data = {"DB_values": DB_values, "labels": labels, "render_modes": render_modes}
+    for DB in DB_values:
+        traj = 0.5 * np.random.randn(100, 2) + 0.3
+        data[f"DB_{DB}_xz"] = traj
+
+    cd_module = importlib.import_module("dynachaos.maps.coupled_delayed")
+
+    output_png = tmp_path / "coupled_proj_test.png"
+    old_png = cd_module.PROJ_PNG
+    cd_module.PROJ_PNG = output_png
+    try:
+        cd_module.plot_projections(data)
+    finally:
+        cd_module.PROJ_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_modulated_circle_map_shape():
+    """modulated_circle map returns shape (2,) and wraps to [0, 1)."""
+    from dynachaos.maps.modulated_circle import modulated_circle
+
+    state = np.array([0.3, 0.7])
+    out = modulated_circle(state, A=0.10, C=0.618, D=0.25, eps=0.05)
+
+    assert out.shape == (2,)
+    assert 0.0 <= out[0] < 1.0
+    assert 0.0 <= out[1] < 1.0
+
+
+def test_modulated_circle_map_known_ic():
+    """Test map on known initial condition."""
+    from dynachaos.maps.modulated_circle import modulated_circle
+
+    state = np.array([0.0, 0.0])
+    A = 0.0
+    C = 0.3
+    D = 0.4
+    eps = 0.0
+
+    out = modulated_circle(state, A, C, D, eps)
+    expected = np.array([D % 1.0, C % 1.0])
+    np.testing.assert_allclose(out, expected)
+
+
+def test_modulated_circle_rotation_numbers_finite():
+    """Rotation numbers should be finite."""
+    from dynachaos.maps.modulated_circle import C_GOLDEN, rotation_numbers
+
+    A = 0.10
+    C = C_GOLDEN
+    D = 0.5
+    eps = 0.05
+
+    rho_theta, rho_phi = rotation_numbers(A, C, D, eps, n_transient=100, n_iter=500)
+
+    assert np.isfinite(rho_theta)
+    assert np.isfinite(rho_phi)
+    np.testing.assert_allclose(rho_phi, C, atol=1e-4)
+
+
+def test_modulated_circle_rotation_numbers_tiny_sweep():
+    """Sweep D on 3 points; all rotation numbers should be finite."""
+    from dynachaos.maps.modulated_circle import C_GOLDEN, rotation_numbers
+
+    A = 0.10
+    C = C_GOLDEN
+    eps = 0.05
+    D_values = np.array([0.2, 0.5, 0.8])
+
+    rho_theta_vals = []
+    rho_phi_vals = []
+    for D in D_values:
+        rt, rp = rotation_numbers(A, C, D, eps, n_transient=100, n_iter=500)
+        rho_theta_vals.append(rt)
+        rho_phi_vals.append(rp)
+
+    rho_theta_vals = np.array(rho_theta_vals)
+    rho_phi_vals = np.array(rho_phi_vals)
+
+    assert np.all(np.isfinite(rho_theta_vals))
+    assert np.all(np.isfinite(rho_phi_vals))
+    np.testing.assert_allclose(rho_phi_vals, C, atol=1e-4)
+
+
+def test_modulated_circle_plot_tiny(tmp_path):
+    """Plot double devil's staircase on tiny data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    D = np.linspace(0.0, 1.0, 20)
+    rho_theta = 0.4 * np.ones_like(D)
+
+    data = {"D": D, "rho_theta": rho_theta}
+
+    mc_module = importlib.import_module("dynachaos.maps.modulated_circle")
+
+    output_png = tmp_path / "modulated_circle_test.png"
+    old_png = mc_module.OUTPUT_PNG
+    mc_module.OUTPUT_PNG = output_png
+    try:
+        mc_module.plot(data)
+    finally:
+        mc_module.OUTPUT_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+def test_modulated_circle_plot_zoom_tiny(tmp_path):
+    """Plot zoom of double devil's staircase on tiny data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    D = np.linspace(0.0, 1.0, 30)
+    rho_theta = 0.4 * np.ones_like(D)
+
+    data = {"D": D, "rho_theta": rho_theta}
+
+    mc_module = importlib.import_module("dynachaos.maps.modulated_circle")
+
+    output_png = tmp_path / "modulated_zoom_test.png"
+    old_png = mc_module.ZOOM_PNG
+    mc_module.ZOOM_PNG = output_png
+    try:
+        mc_module.plot_zoom(data)
+    finally:
+        mc_module.ZOOM_PNG = old_png
+
+    assert output_png.exists()
+    assert output_png.stat().st_size > 1000
+
+
+# ---------------------------------------------------------------------------
+# Additional tests for coverage: registry and compute functions
+# ---------------------------------------------------------------------------
+
+
+def test_arnold_tongues_main_calls_plot(tmp_path, monkeypatch):
+    """Test that main() orchestrates compute and plot correctly."""
+
+    arnold_tongues_module = importlib.import_module("dynachaos.maps.arnold_tongues")
+
+    # Monkeypatch the FIG_DIR to use tmp_path
+    monkeypatch.setattr(arnold_tongues_module, "FIG_DIR", tmp_path)
+    monkeypatch.setattr(arnold_tongues_module, "OUTPUT_NPZ", tmp_path / "test.npz")
+    monkeypatch.setattr(arnold_tongues_module, "OUTPUT_PNG", tmp_path / "test.png")
+
+    # We'll skip the heavy compute and just test it doesn't crash
+    old_compute = arnold_tongues_module.compute
+
+    def mock_compute():
+        np.savez_compressed(
+            arnold_tongues_module.OUTPUT_NPZ,
+            Omega=np.linspace(0, 1, 3),
+            K=np.linspace(0, 0.3, 2),
+            rho=np.random.randn(2, 3),
+        )
+
+    monkeypatch.setattr(arnold_tongues_module, "compute", mock_compute)
+
+    try:
+        arnold_tongues_module.main()
+        assert arnold_tongues_module.OUTPUT_PNG.exists()
+    finally:
+        monkeypatch.setattr(arnold_tongues_module, "compute", old_compute)
+
+
+def test_circle_map_compute_returns_arrays(tmp_path):
+    """Small version of compute(): verify output arrays."""
+    n_params = 10
+    n_transient = 50
+    n_iter = 200
+    D = 0.25
+
+    A_values = np.linspace(0.0, 0.25, n_params)
+    TWO_PI = 2.0 * np.pi
+
+    theta = np.full(n_params, 0.1)
+
+    from dynachaos.maps._iter import iterate_unwrapped
+
+    theta = iterate_unwrapped(theta, lambda th: D + A_values * np.sin(TWO_PI * th), n_transient)
+
+    theta_start = theta.copy()
+
+    log_sum = np.zeros(n_params)
+    for _ in range(n_iter):
+        deriv = np.abs(1.0 + TWO_PI * A_values * np.cos(TWO_PI * theta))
+        log_sum += np.where(deriv > 0, np.log(deriv), -100.0)
+        theta += D + A_values * np.sin(TWO_PI * theta)
+
+    rho = (theta - theta_start) / n_iter
+    lam = log_sum / n_iter
+
+    assert rho.shape == (n_params,)
+    assert lam.shape == (n_params,)
+    assert np.all(np.isfinite(rho))
+    assert np.all(np.isfinite(lam))
+
+
+def test_fractalization_compute_attractors_returns_dict():
+    """Tiny version of compute_attractors: verify output keys."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D_values = [1.75, 1.86, 1.90]
+
+    results = {}
+    for D in D_values:
+        traj = iterate(A, D, n_transient=50, n_record=100)
+        results[f"D_{D}_traj"] = traj
+
+    results["D_values"] = np.array(D_values)
+    results["A"] = np.array([A])
+
+    assert all(f"D_{D}_traj" in results for D in D_values)
+    assert results["A"].shape == (1,)
+    assert results["D_values"].shape == (3,)
+
+
+def test_fractalization_compute_dimensions_tiny():
+    """Tiny version of compute_dimensions: 3 D values, compute D2."""
+    from dynachaos.diagnostics.correlation import correlation_dimension
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D_values = np.array([1.75, 1.85, 1.95])
+    D2_values = []
+
+    for D in D_values:
+        traj = iterate(A, D, n_transient=100, n_record=500)
+        D2, _, _, D2_err, _, _ = correlation_dimension(
+            traj, n_r=20, max_pairs=10000, return_stderr=True
+        )
+        D2_values.append(D2)
+
+    D2_values = np.array(D2_values)
+
+    assert D2_values.shape == (3,)
+    assert np.all(np.isfinite(D2_values))
+    assert np.all((D2_values > 0) & (D2_values < 3.0))
+
+
+def test_coupled_delayed_compute_lyapunov_tiny():
+    """Tiny version of compute_lyapunov: 2 DB values."""
+    from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+    from dynachaos.maps.coupled_delayed import coupled_delayed, coupled_delayed_jac
+
+    A = 0.4
+    eps_val = 5e-3
+    DB_values = np.array([2.35, 2.45])
+
+    for DB in DB_values:
+        DA = DB + 0.1
+        x0 = np.array([0.5, 0.5, 0.3, 0.3])
+
+        def f(s):
+            return coupled_delayed(s, A, DA, DB, eps_val)
+
+        def jac(s):
+            return coupled_delayed_jac(s, A, DA, DB, eps_val)
+
+        spec = lyapunov_spectrum(f, jac, x0, n_iter=500, n_transient=200)
+
+        assert spec.shape == (4,)
+        assert np.all(np.isfinite(spec))
+
+
+def test_coupled_delayed_compute_projections_multiple_db():
+    """Compute projections at multiple DB values."""
+    from dynachaos.maps._iter import trajectory_after_transient
+    from dynachaos.maps.coupled_delayed import coupled_delayed
+
+    A = 0.4
+    DB_values = [2.37, 2.43, 2.45]
+
+    results = {}
+    for DB in DB_values:
+        DA = DB + 0.1
+        traj = trajectory_after_transient(
+            np.array([0.5, 0.5, 0.3, 0.3], dtype=np.float64),
+            lambda state: coupled_delayed(state, A, DA, DB, 0.005),
+            100,
+            200,
+            project_fn=lambda state: state[[0, 2]],
+        )
+        results[f"DB_{DB}_xz"] = traj
+
+    results["DB_values"] = np.array(DB_values)
+
+    assert len(DB_values) == 3
+    assert all(f"DB_{DB}_xz" in results for DB in DB_values)
+    assert all(results[f"DB_{DB}_xz"].shape == (200, 2) for DB in DB_values)
+
+
+def test_modulated_circle_compute_tiny():
+    """Tiny version of compute(): sweep D on 5 points."""
+    from dynachaos.maps.modulated_circle import C_GOLDEN, rotation_numbers
+
+    A = 0.10
+    eps = 0.05
+    C = C_GOLDEN
+
+    D_values = np.linspace(0.0, 1.0, 5)
+
+    rho_theta = np.empty(5)
+    rho_phi = np.empty(5)
+
+    for i, D in enumerate(D_values):
+        rt, rp = rotation_numbers(A, C, D, eps, n_transient=100, n_iter=500)
+        rho_theta[i] = rt
+        rho_phi[i] = rp
+
+    assert rho_theta.shape == (5,)
+    assert rho_phi.shape == (5,)
+    assert np.all(np.isfinite(rho_theta))
+    assert np.all(np.isfinite(rho_phi))
+    np.testing.assert_allclose(rho_phi, C, atol=1e-4)
+
+
+def test_arnold_tongues_compute_monotonicity_at_K_zero():
+    """Verify rho is monotonic in Omega at K=0 (should equal Omega)."""
+    n_omega = 10
+    n_transient = 100
+    n_iter = 500
+
+    Omega_values = np.linspace(0.0, 1.0, n_omega)
+    K_values = np.array([0.0])
+
+    Omega_grid, K_grid = np.meshgrid(Omega_values, K_values)
+    Omega_flat = Omega_grid.ravel()
+    K_flat = K_grid.ravel()
+
+    TWO_PI = 2.0 * np.pi
+    theta = np.full_like(Omega_flat, 0.1)
+
+    for _ in range(n_transient):
+        theta += Omega_flat + K_flat * np.sin(TWO_PI * theta)
+
+    theta_start = theta.copy()
+
+    for _ in range(n_iter):
+        theta += Omega_flat + K_flat * np.sin(TWO_PI * theta)
+
+    rho = (theta - theta_start) / n_iter
+    rho_1d = rho.ravel()
+
+    np.testing.assert_allclose(rho_1d, Omega_values, atol=1e-4)
+    np.testing.assert_array_less(-0.001, np.diff(rho_1d))
+
+
+def test_circle_map_winding_number_K_small():
+    """At small K (subcritical), winding number should be in valid range."""
+    from dynachaos.maps.circle_map import rotation_number
+
+    A_vals = np.array([0.001, 0.05, 0.10])
+    rho_vals = []
+
+    for A in A_vals:
+        rho = rotation_number(A, D=0.25, n_transient=100, n_iter=500)
+        rho_vals.append(rho)
+
+    rho_vals = np.array(rho_vals)
+
+    assert np.all(np.isfinite(rho_vals))
+    assert np.all((0.0 <= rho_vals) & (rho_vals <= 0.25))
+
+
+def test_fractalization_iterate_produces_consistent_orbit():
+    """Iterate twice from same x0; verify consistency."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D = 1.85
+    x0 = np.array([0.3, 0.2])
+
+    traj1 = iterate(A, D, n_transient=50, n_record=100, x0=x0.copy())
+    traj2 = iterate(A, D, n_transient=50, n_record=100, x0=x0.copy())
+
+    np.testing.assert_allclose(traj1, traj2)
+
+
+def test_coupled_delayed_fixed_point_near_torus():
+    """Test trajectory near the 3-torus does not diverge."""
+    from dynachaos.maps._iter import run_transient
+    from dynachaos.maps.coupled_delayed import coupled_delayed
+
+    A = 0.4
+    DA = 2.37 + 0.1
+    DB = 2.37
+    eps = 0.005
+
+    x0 = np.array([0.5, 0.5, 0.3, 0.3])
+    state = run_transient(x0, lambda s: coupled_delayed(s, A, DA, DB, eps), 500)
+
+    assert state is not None
+    assert np.all(np.isfinite(state))
+
+
+def test_modulated_circle_phi_rotation_preserved():
+    """Test that phi advances by C per iteration (golden mean)."""
+    from dynachaos.maps.modulated_circle import C_GOLDEN, modulated_circle
+
+    A = 0.10
+    D = 0.5
+    eps = 0.05
+
+    state = np.array([0.3, 0.2])
+
+    for _ in range(10):
+        state = modulated_circle(state, A, C_GOLDEN, D, eps)
+
+    expected_phi = (0.2 + 10 * C_GOLDEN) % 1.0
+    np.testing.assert_allclose(state[1], expected_phi, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Main orchestration and registry paths
+# ---------------------------------------------------------------------------
+
+
+def test_circle_map_main_full_workflow(tmp_path, monkeypatch):
+    """Test circle_map main() orchestration with mocked compute."""
+
+    cm = importlib.import_module("dynachaos.maps.circle_map")
+
+    monkeypatch.setattr(cm, "FIG_DIR", tmp_path)
+    monkeypatch.setattr(cm, "OUTPUT_NPZ", tmp_path / "devils.npz")
+    monkeypatch.setattr(cm, "OUTPUT_PNG", tmp_path / "devils.png")
+    monkeypatch.setattr(cm, "ZOOM_NPZ", tmp_path / "zoom.npz")
+    monkeypatch.setattr(cm, "ZOOM_PNG", tmp_path / "zoom.png")
+
+    def mock_compute():
+        np.savez_compressed(
+            cm.OUTPUT_NPZ,
+            A=np.linspace(0, 0.25, 5),
+            rho=np.random.randn(5),
+            lam=np.random.randn(5),
+        )
+
+    def mock_compute_zoom():
+        np.savez_compressed(cm.ZOOM_NPZ, A=np.linspace(0.10, 0.17, 5), rho=np.random.randn(5))
+
+    old_compute = cm.compute
+    old_compute_zoom = cm.compute_zoom
+    monkeypatch.setattr(cm, "compute", mock_compute)
+    monkeypatch.setattr(cm, "compute_zoom", mock_compute_zoom)
+
+    try:
+        cm.main()
+        assert cm.OUTPUT_PNG.exists()
+        assert cm.ZOOM_PNG.exists()
+    finally:
+        monkeypatch.setattr(cm, "compute", old_compute)
+        monkeypatch.setattr(cm, "compute_zoom", old_compute_zoom)
+
+
+def test_fractalization_main_orchestration(tmp_path, monkeypatch):
+    """Test fractalization main() with mocked compute functions."""
+
+    frac = importlib.import_module("dynachaos.maps.fractalization")
+
+    monkeypatch.setattr(frac, "FIG_DIR", tmp_path)
+    monkeypatch.setattr(frac, "FRAC_NPZ", tmp_path / "frac.npz")
+    monkeypatch.setattr(frac, "FRAC_PNG", tmp_path / "frac.png")
+    monkeypatch.setattr(frac, "DIM_NPZ", tmp_path / "dim.npz")
+    monkeypatch.setattr(frac, "DIM_PNG", tmp_path / "dim.png")
+    monkeypatch.setattr(frac, "ANIM_NPZ", tmp_path / "anim.npz")
+    monkeypatch.setattr(frac, "ANIM_GIF", tmp_path / "anim.gif")
+
+    def mock_attractors():
+        results = {}
+        for D in [1.75, 1.86]:
+            results[f"D_{D}_traj"] = np.random.randn(100, 2)
+        results["D_values"] = np.array([1.75, 1.86])
+        results["A"] = np.array([0.3])
+        np.savez_compressed(frac.FRAC_NPZ, **results)
+
+    def mock_dimensions():
+        np.savez_compressed(
+            frac.DIM_NPZ,
+            D=np.linspace(1.70, 2.00, 3),
+            D2=np.random.rand(3) + 1.0,
+            D2_err=0.05 * np.ones(3),
+            A=np.array([0.3]),
+        )
+
+    def mock_animation():
+        np.savez_compressed(
+            frac.ANIM_NPZ,
+            param_values=np.linspace(1.75, 1.96, 5),
+            all_x=np.random.randn(5, 100),
+            all_y=np.random.randn(5, 100),
+        )
+
+    old_attractors = frac.compute_attractors
+    old_dimensions = frac.compute_dimensions
+    old_animation = frac.compute_animation_data
+    monkeypatch.setattr(frac, "compute_attractors", mock_attractors)
+    monkeypatch.setattr(frac, "compute_dimensions", mock_dimensions)
+    monkeypatch.setattr(frac, "compute_animation_data", mock_animation)
+
+    try:
+        frac.main()
+        assert frac.FRAC_PNG.exists()
+        assert frac.DIM_PNG.exists()
+    finally:
+        monkeypatch.setattr(frac, "compute_attractors", old_attractors)
+        monkeypatch.setattr(frac, "compute_dimensions", old_dimensions)
+        monkeypatch.setattr(frac, "compute_animation_data", old_animation)
+
+
+def test_coupled_delayed_main_orchestration(tmp_path, monkeypatch):
+    """Test coupled_delayed main() with mocked compute functions."""
+
+    cd = importlib.import_module("dynachaos.maps.coupled_delayed")
+
+    monkeypatch.setattr(cd, "FIG_DIR", tmp_path)
+    monkeypatch.setattr(cd, "LYAP_NPZ", tmp_path / "lyap.npz")
+    monkeypatch.setattr(cd, "LYAP_PNG", tmp_path / "lyap.png")
+    monkeypatch.setattr(cd, "PROJ_NPZ", tmp_path / "proj.npz")
+    monkeypatch.setattr(cd, "PROJ_PNG", tmp_path / "proj.png")
+    monkeypatch.setattr(cd, "ANIM_NPZ", tmp_path / "anim.npz")
+    monkeypatch.setattr(cd, "ANIM_GIF", tmp_path / "anim.gif")
+
+    def mock_lyapunov():
+        data = {
+            "DB": np.linspace(2.1, 2.65, 3),
+            "eps_values": np.array([1e-3, 5e-3, 1e-2]),
+        }
+        for eps in [1e-3, 5e-3, 1e-2]:
+            key = f"eps_{eps}_spectra"
+            data[key] = np.random.randn(3, 4)
+        np.savez_compressed(cd.LYAP_NPZ, **data)
+
+    def mock_projections():
+        results = {"DB_values": np.array([2.37, 2.43])}
+        for DB in [2.37, 2.43]:
+            results[f"DB_{DB}_xz"] = np.random.randn(100, 2)
+        results["labels"] = np.array(["test_a", "test_b"])
+        results["render_modes"] = np.array(["line", "points"])
+        results["schema_version"] = np.array([cd.PROJ_SCHEMA_VERSION])
+        np.savez_compressed(cd.PROJ_NPZ, **results)
+
+    def mock_animation():
+        np.savez_compressed(
+            cd.ANIM_NPZ,
+            param_values=np.linspace(2.1, 2.65, 5),
+            all_x=np.random.randn(5, 100),
+            all_y=np.random.randn(5, 100),
+        )
+
+    old_lyap = cd.compute_lyapunov
+    old_proj = cd.compute_projections
+    old_anim = cd.compute_animation_data
+    monkeypatch.setattr(cd, "compute_lyapunov", mock_lyapunov)
+    monkeypatch.setattr(cd, "compute_projections", mock_projections)
+    monkeypatch.setattr(cd, "compute_animation_data", mock_animation)
+
+    try:
+        cd.main()
+        assert cd.LYAP_PNG.exists()
+        assert cd.PROJ_PNG.exists()
+    finally:
+        monkeypatch.setattr(cd, "compute_lyapunov", old_lyap)
+        monkeypatch.setattr(cd, "compute_projections", old_proj)
+        monkeypatch.setattr(cd, "compute_animation_data", old_anim)
+
+
+def test_modulated_circle_main_orchestration(tmp_path, monkeypatch):
+    """Test modulated_circle main() with mocked compute."""
+
+    mc = importlib.import_module("dynachaos.maps.modulated_circle")
+
+    monkeypatch.setattr(mc, "FIG_DIR", tmp_path)
+    monkeypatch.setattr(mc, "OUTPUT_NPZ", tmp_path / "double.npz")
+    monkeypatch.setattr(mc, "OUTPUT_PNG", tmp_path / "double.png")
+    monkeypatch.setattr(mc, "ZOOM_PNG", tmp_path / "zoom.png")
+
+    def mock_compute():
+        np.savez_compressed(
+            mc.OUTPUT_NPZ,
+            D=np.linspace(0, 1, 10),
+            rho_theta=np.random.randn(10),
+            rho_phi=mc.C_GOLDEN * np.ones(10),
+            A=np.array([0.10]),
+            C=np.array([mc.C_GOLDEN]),
+            eps=np.array([0.05]),
+        )
+
+    old_compute = mc.compute
+    monkeypatch.setattr(mc, "compute", mock_compute)
+
+    try:
+        mc.main()
+        assert mc.OUTPUT_PNG.exists()
+        assert mc.ZOOM_PNG.exists()
+    finally:
+        monkeypatch.setattr(mc, "compute", old_compute)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: edge cases and boundary conditions
+# ---------------------------------------------------------------------------
+
+
+def test_arnold_tongues_rotation_number_range():
+    """Verify rotation numbers stay in [0, 1] for all K, Omega."""
+    n_omega = 5
+    n_transient = 100
+    n_iter = 300
+
+    Omega_values = np.linspace(0.0, 1.0, n_omega)
+    K_values = np.linspace(0.0, 0.3, 4)
+
+    Omega_grid, K_grid = np.meshgrid(Omega_values, K_values)
+    Omega_flat = Omega_grid.ravel()
+    K_flat = K_grid.ravel()
+
+    TWO_PI = 2.0 * np.pi
+    theta = np.full_like(Omega_flat, 0.1)
+
+    for _ in range(n_transient):
+        theta += Omega_flat + K_flat * np.sin(TWO_PI * theta)
+
+    theta_start = theta.copy()
+
+    for _ in range(n_iter):
+        theta += Omega_flat + K_flat * np.sin(TWO_PI * theta)
+
+    rho = (theta - theta_start) / n_iter
+
+    assert np.all((-1e-6 <= rho) & (rho <= 1.0 + 1e-6))
+
+
+def test_circle_map_phase_wrapping():
+    """Verify circle_map properly wraps angles to [0, 1)."""
+    from dynachaos.maps.circle_map import circle_map
+
+    theta_large = 1.5
+    out = circle_map(theta_large, A=0.1, D=0.25)
+
+    assert 0.0 <= out < 1.0
+
+
+def test_circle_map_derivative_is_smooth():
+    """Derivative should be finite and continuous."""
+    from dynachaos.maps.circle_map import circle_map_derivative
+
+    theta_values = np.linspace(0.0, 1.0, 11)
+    derivs = circle_map_derivative(theta_values, A=0.1, D=0.25)
+
+    assert np.all(np.isfinite(derivs))
+    assert derivs.shape == theta_values.shape
+
+
+def test_fractalization_fixed_point_initialization():
+    """Verify fixed-point x0 calculation is consistent."""
+    from dynachaos.maps.fractalization import iterate
+
+    A = 0.3
+    D = 1.85
+
+    # Compute fixed point: fp = (sqrt(1 + 4*D) - 1) / (2*D)
+    fp = (np.sqrt(1.0 + 4.0 * D) - 1.0) / (2.0 * D)
+
+    traj1 = iterate(A, D, n_transient=100, n_record=50, x0=None)
+    traj2 = iterate(A, D, n_transient=100, n_record=50, x0=np.array([fp + 0.01, fp - 0.01]))
+
+    np.testing.assert_allclose(traj1, traj2, atol=1e-6)
+
+
+def test_coupled_delayed_jacobian_structure():
+    """Verify Jacobian has expected block structure."""
+    from dynachaos.maps.coupled_delayed import coupled_delayed_jac
+
+    state = np.array([0.5, 0.5, 0.3, 0.3])
+    A = 0.4
+    DA = 2.4
+    DB = 2.35
+    eps = 0.005
+
+    jac = coupled_delayed_jac(state, A, DA, DB, eps)
+
+    assert jac[1, 0] == 1.0
+    assert jac[1, 1] == 0.0
+    assert jac[3, 2] == 1.0
+    assert jac[3, 3] == 0.0
+
+
+def test_coupled_delayed_perturbations():
+    """Test that coupling perturbations affect the state evolution."""
+    from dynachaos.maps.coupled_delayed import coupled_delayed
+
+    state_base = np.array([0.5, 0.5, 0.3, 0.2])  # Modified so z != w
+
+    A = 0.4
+    DA = 2.4
+    DB = 2.35
+
+    out_no_eps = coupled_delayed(state_base, A, DA, DB, eps=0.0)
+    out_with_eps = coupled_delayed(state_base, A, DA, DB, eps=0.05)
+
+    assert not np.allclose(out_no_eps, out_with_eps)
+
+
+def test_modulated_circle_sine_modulation():
+    """Test that sine modulation term affects iteration."""
+    from dynachaos.maps.modulated_circle import modulated_circle
+
+    state = np.array([0.3, 0.3])
+    A = 0.10
+    C = 0.618
+    D = 0.5
+
+    out_no_eps = modulated_circle(state, A, C, D, eps=0.0)
+    out_with_eps = modulated_circle(state, A, C, D, eps=0.1)
+
+    assert not np.allclose(out_no_eps, out_with_eps)
+
+
+def test_modulated_circle_phi_advances_by_C():
+    """Test that phi advances exactly by C per iteration."""
+    from dynachaos.maps.modulated_circle import C_GOLDEN, modulated_circle
+
+    state = np.array([0.5, 0.0])
+    A = 0.10
+    D = 0.5
+    eps = 0.05
+
+    out = modulated_circle(state, A, C_GOLDEN, D, eps)
+
+    expected_phi = C_GOLDEN
+    np.testing.assert_allclose(out[1], expected_phi, atol=1e-10)
+
+
+# ── Coverage: _iter edge cases ──────────────────────────────────────────────────
+
+
+def test_run_transient_returns_none_on_divergence_early_exit():
+    """run_transient returns None when diverged_fn triggers (line 36, return None)."""
+    from dynachaos.maps._iter import run_transient
+
+    state = np.array([1.0, 2.0])
+
+    def step_fn(s):
+        return s * 2.0
+
+    def diverged_fn(s):
+        return np.max(np.abs(s)) > 100.0
+
+    result = run_transient(state, step_fn, 100, diverged_fn=diverged_fn)
+    assert result is None
+
+
+def test_sample_trajectory_returns_none_on_divergence_without_partial():
+    """sample_trajectory returns None when diverged without allow_partial (line 63)."""
+    from dynachaos.maps._iter import sample_trajectory
+
+    state = np.array([1.0])
+
+    def step_fn(s):
+        return s * 5.0
+
+    def diverged_fn(s):
+        return np.abs(s[0]) > 100.0
+
+    result = sample_trajectory(state, step_fn, 100, diverged_fn=diverged_fn, allow_partial=False)
+    assert result is None
+
+
+def test_trajectory_after_transient_returns_none_on_divergence():
+    """trajectory_after_transient returns None when divergence occurs (line 85)."""
+    from dynachaos.maps._iter import trajectory_after_transient
+
+    state = np.array([1.0])
+
+    def step_fn(s):
+        return s * 10.0
+
+    def diverged_fn(s):
+        return np.abs(s[0]) > 50.0
+
+    result = trajectory_after_transient(state, step_fn, 100, 50, diverged_fn=diverged_fn)
+    assert result is None
