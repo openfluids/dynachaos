@@ -222,7 +222,7 @@ boundary: for general use on your own signals, see the quickstart and recipe
 gallery above.
 
 Eight of the thirty-seven figures are shown below; click any of them for the
-full-resolution render. **[Browse the complete gallery](https://openfluids.github.io/dynachaos/)**
+full-resolution render. **[Browse the complete gallery](https://openfluids.github.io/dynachaos/gallery.html)**
 for all thirty-seven, in section order, with captions.
 
 | | |
@@ -242,9 +242,12 @@ The reproducible benchmark for Rust Grassberger-Procaccia parity and dense
 recurrence/RQA memory limits lives in `benchmarks/scale_envelope.py`.
 The local benchmark command is
 `uv run python benchmarks/scale_envelope.py benchmarks/scale_envelope.jsonc`;
-inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. The
-checked artifact reports a 42.95x CI-mode Rust Grassberger-Procaccia speedup at
-N=1000 for the largest common logistic case, and a predicted dense-RQA
+inspect `benchmarks/results/scale_envelope.{json,md}` after it runs. At N=1000
+the Rust Grassberger-Procaccia kernel runs about an order of magnitude faster
+than the Python fallback for the largest common logistic case; the harness
+times one un-warmed call per case, so the exact multiple it prints varies with
+machine load and core count and should not be quoted as a fixed figure (see
+`docs/claims-checklist.md`). The benchmark also predicts a dense-RQA
 distance-matrix cost of 8*N^2 bytes, which becomes impractical near N≈23170
 under the default cap. The measured Rust acceleration roadmap and local hotspot profiler are
 documented in `docs/rust-acceleration-roadmap.md` and
@@ -282,6 +285,21 @@ To rebuild the gallery thumbnails and the static gallery site:
 ```bash
 uv run --extra viz python scripts/build_gallery.py
 ```
+
+To build the WebAssembly bundle that the live figures use:
+
+```bash
+rustup target add wasm32-unknown-unknown   # once
+uv run python scripts/build_wasm.py
+```
+
+This compiles the kernels in `rust/core` for the browser and writes
+`site/wasm/`. The script installs the `wasm-bindgen` command line tool at the
+version `rust/wasm/Cargo.lock` resolves to; pass `--no-install` to make a
+mismatch an error instead. A live figure therefore computes with the same code
+the published figure used — see
+[docs/wasm-architecture.md](docs/wasm-architecture.md) for the contract those
+kernels follow and what the browser build does and does not guarantee.
 
 ## Contributing
 

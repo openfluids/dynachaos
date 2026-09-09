@@ -43,8 +43,17 @@ uv run ruff format --check src/ tests/ scripts/
 If you touched the Rust code:
 
 ```bash
-cargo fmt --manifest-path rust/Cargo.toml -- --check
-cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+`rust/wasm` has its own workspace, so those two commands do not reach it. If you
+touched the browser build, add:
+
+```bash
+cargo fmt --manifest-path rust/wasm/Cargo.toml --all -- --check
+cargo clippy --manifest-path rust/wasm/Cargo.toml --all-targets -- -D warnings
+uv run python scripts/build_wasm.py && uv run python scripts/check_wasm_parity.py
 ```
 
 If one fails for a reason you think is unrelated to your change, say so in the
