@@ -141,7 +141,7 @@ def _multifractal_moments_python(
         p /= used_mass
 
         for qi, q in enumerate(q_values):
-            if np.isclose(q, 1.0):
+            if np.abs(q - 1.0) < 1e-12:
                 shannon = float(np.sum(p * np.log(p)))
                 # Z_1(r) = sum_i p_i = 1 by normalization.
                 log_z[si, qi] = 0.0
@@ -217,7 +217,7 @@ def multifractal_spectrum(
         f_cj[qi], r2_f[qi] = _linear_fit_slope_r2(ln_scales, f_num[:, qi])
 
     dq = np.full_like(q, np.nan, dtype=np.float64)
-    mask_q1 = np.isclose(q, 1.0)
+    mask_q1 = np.abs(q - 1.0) < 1e-12
     mask_qn = ~mask_q1
     dq[mask_qn] = tau[mask_qn] / (q[mask_qn] - 1.0)
     # Information dimension limit at q=1 from canonical alpha slope.

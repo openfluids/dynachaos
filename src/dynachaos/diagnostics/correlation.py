@@ -149,6 +149,10 @@ def correlation_integral(
     traj = np.asarray(traj, dtype=np.float64)
     if traj.ndim == 1:
         traj = traj[:, np.newaxis]
+    # Empty and single-point trajectories keep their degenerate return path;
+    # only non-finite values are rejected.
+    if not np.all(np.isfinite(traj)):
+        raise ValueError("traj must contain only finite values")
     r_values, theiler_window, use_chebyshev = _validate_correlation_inputs(
         r_values, theiler_window, norm
     )
@@ -368,6 +372,10 @@ def correlation_dimension(
     traj = np.asarray(traj, dtype=np.float64)
     if traj.ndim == 1:
         traj = traj[:, np.newaxis]
+    # Empty and single-point trajectories keep their NaN return path;
+    # only non-finite values are rejected.
+    if not np.all(np.isfinite(traj)):
+        raise ValueError("traj must contain only finite values")
     if n_r < 1:
         raise ValueError("n_r must be >= 1")
 

@@ -29,6 +29,8 @@ For sweeping a parameter and computing the maximal exponent::
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from dynachaos.diagnostics._validation import nonnegative_int, positive_int
+
 
 def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
     """Compute the Lyapunov exponent of a 1D map.
@@ -51,6 +53,8 @@ def lyapunov_exponent_1d(f, df, x0, n_iter=100_000, n_transient=10_000):
     float
         The Lyapunov exponent.
     """
+    n_iter = positive_int(n_iter, "n_iter")
+    n_transient = nonnegative_int(n_transient, "n_transient")
     x = x0
     # Transient
     for _ in range(n_transient):
@@ -105,6 +109,8 @@ def lyapunov_spectrum(
         If return_convergence is True, returns ``(spectrum, conv_err)``, where
         ``conv_err`` is reordered to match the descending spectrum.
     """
+    n_iter = positive_int(n_iter, "n_iter")
+    n_transient = nonnegative_int(n_transient, "n_transient")
     x = np.asarray(x0, dtype=np.float64)
     dim = len(x)
 
