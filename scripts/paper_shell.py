@@ -1756,10 +1756,6 @@ document.querySelectorAll("figure").forEach(fig=>{
   function loadIndex(){
     if(INDEX) return Promise.resolve(INDEX);
     if(indexLoading) return indexLoading;
-    const dataEl=document.getElementById("search-index");
-    if(dataEl&&dataEl.textContent.trim()){
-      try{INDEX=JSON.parse(dataEl.textContent);return Promise.resolve(INDEX);}catch(e){INDEX=[];}
-    }
     indexLoading=fetch("search-index.json")
       .then(r=>r.json())
       .then(data=>{INDEX=data;return INDEX;})

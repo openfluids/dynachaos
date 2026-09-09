@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import sys
 from pathlib import Path
@@ -355,7 +356,7 @@ body {
                 html_parts.append("</div>")
                 html_parts.append("</div>")
             html_parts.append('<div class="section">')
-            html_parts.append(f"<h2>{SECTION_TITLES[section_id]}</h2>")
+            html_parts.append(f"<h2>{html.escape(SECTION_TITLES[section_id])}</h2>")
             html_parts.append('<div class="grid">')
             open_section = section_id
 
@@ -376,27 +377,27 @@ body {
                 pass
 
         data_full = f"full/{section_id}/{png_name}"
-        html_parts.append(f'<div class="card" data-full="{data_full}">')
+        html_parts.append(f'<div class="card" data-full="{html.escape(data_full)}">')
         if thumb_width and thumb_height:
             img_tag = (
                 f'<img class="card-image" '
                 f'src="thumbs/{section_id}/{webp_name}" '
                 f'loading="lazy" width="{thumb_width}" '
-                f'height="{thumb_height}" alt="{png_name}">'
+                f'height="{thumb_height}" alt="{html.escape(png_name)}">'
             )
             html_parts.append(img_tag)
         else:
             img_tag = (
                 f'<img class="card-image" '
                 f'src="thumbs/{section_id}/{webp_name}" '
-                f'loading="lazy" alt="{png_name}">'
+                f'loading="lazy" alt="{html.escape(png_name)}">'
             )
             html_parts.append(img_tag)
         html_parts.append('<div class="card-meta">')
         if fig_label:
             html_parts.append(f'<div class="card-fignum">{fig_label}</div>')
-        html_parts.append(f'<div class="card-filename">{png_name}</div>')
-        html_parts.append(f'<p class="card-caption">{caption}</p>')
+        html_parts.append(f'<div class="card-filename">{html.escape(png_name)}</div>')
+        html_parts.append(f'<p class="card-caption">{html.escape(caption)}</p>')
         html_parts.append("</div>")
         html_parts.append("</div>")
 

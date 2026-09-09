@@ -1325,9 +1325,7 @@ def minify_html(html_str: str) -> str:
     return "".join(tokens).strip()
 
 
-def assemble(
-    body: str, nav: str, meta: dict[str, str], index_json: str = "", js_hash: str = ""
-) -> str:
+def assemble(body: str, nav: str, meta: dict[str, str], js_hash: str = "") -> str:
     min_css = minify_css(CSS)
     script_tag = (
         f'<script src="app.js?v={js_hash}" defer></script>'
@@ -1378,7 +1376,6 @@ dynachaos run all</code></pre>
 {SEARCH_OVERLAY}
 {HELP_OVERLAY}
 {TOC_BACKDROP}
-<script type="application/json" id="search-index"></script>
 </body>
 </html>"""
     return minify_html(raw_html)
@@ -1478,7 +1475,7 @@ def main() -> None:
     js_hash = hashlib.sha256(min_js.encode("utf-8")).hexdigest()[:10]
     (SITE / "app.js").write_text(min_js, encoding="utf-8")
 
-    page = assemble(body, build_nav(nav), meta, index_json, js_hash)
+    page = assemble(body, build_nav(nav), meta, js_hash)
     out = SITE / "index.html"
     out.write_text(page, encoding="utf-8")
 
