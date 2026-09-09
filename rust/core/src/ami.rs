@@ -1,57 +1,36 @@
 //! Average Mutual Information via histogram estimation.
 //!
 //! Computes the delayed mutual information I(τ) for τ = 1..τ_max using
-//! fixed-width histograms.  This is the hot loop that Python delegates to
-//! Rust: for each τ, accumulate a joint histogram and compute MI from it.
+//! fixed-width histograms.
 //!
 //! Reference: Fraser & Swinney (1986), Phys. Rev. A 33(2), 1134-1140.
 
-use numpy::{PyArray1, PyReadonlyArray1};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
+use crate::CoreError;
 
-/// Compute the Average Mutual Information I(τ) for τ = 1..tau_max.
+/// Compute delayed mutual information I(τ) for τ = 1..tau_max.
 ///
-/// Uses uniform histogram binning with `n_bins` bins per axis.
-///
-/// Parameters
-/// ----------
-/// x : numpy.ndarray of float64, shape (N,)
-///     Scalar time series.
-/// tau_max : int
-///     Maximum delay.
-/// n_bins : int
-///     Number of histogram bins (default 64).
-///
-/// Returns
-/// -------
-/// numpy.ndarray of float64, shape (tau_max,)
-///     Mutual information values I(1), I(2), ..., I(tau_max).
-#[pyfunction]
-#[pyo3(signature = (x, tau_max, n_bins = 64))]
-pub fn ami_histogram<'py>(
-    py: Python<'py>,
-    x: PyReadonlyArray1<'py, f64>,
-    tau_max: usize,
-    n_bins: usize,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
+/// The estimator uses a uniform histogram with `n_bins` bins on each axis.
+pub fn ami_histogram(x: &[f64], tau_max: usize, n_bins: usize) -> Result<Vec<f64>, CoreError> {
     if n_bins == 0 {
-        return Err(PyValueError::new_err("n_bins must be > 0"));
+        return Err(CoreError::invalid_argument("n_bins must be > 0"));
     }
 
-    let arr = x.as_slice()?;
-    let n = arr.len();
+    let n = x.len();
     if n < 2 {
-        return Err(PyValueError::new_err("x must contain at least two values"));
+        return Err(CoreError::invalid_argument(
+            "x must contain at least two values",
+        ));
     }
-    if arr.iter().any(|v| !v.is_finite()) {
-        return Err(PyValueError::new_err("x must contain only finite values"));
+    if x.iter().any(|v| !v.is_finite()) {
+        return Err(CoreError::invalid_argument(
+            "x must contain only finite values",
+        ));
     }
 
     // Find data range
     let mut x_min = f64::INFINITY;
     let mut x_max = f64::NEG_INFINITY;
-    for &v in arr {
+    for &v in x {
         if v < x_min {
             x_min = v;
         }
@@ -62,7 +41,7 @@ pub fn ami_histogram<'py>(
     // Slight padding so max value falls inside last bin
     let range = x_max - x_min;
     if range <= 0.0 {
-        return Ok(PyArray1::from_vec(py, vec![0.0f64; tau_max]));
+        return Ok(vec![0.0f64; tau_max]);
     }
     let x_max_padded = x_max + range * 1e-10;
     let bin_width = (x_max_padded - x_min) / n_bins as f64;
@@ -97,8 +76,8 @@ pub fn ami_histogram<'py>(
 
         // Accumulate
         for t in 0..n_pairs {
-            let bx = ((arr[t] - x_min) / bin_width) as usize;
-            let by = ((arr[t + tau] - x_min) / bin_width) as usize;
+            let bx = ((x[t] - x_min) / bin_width) as usize;
+            let by = ((x[t + tau] - x_min) / bin_width) as usize;
             // Clamp to valid range (shouldn't be needed but safety)
             let bx = bx.min(n_bins - 1);
             let by = by.min(n_bins - 1);
@@ -128,5 +107,5 @@ pub fn ami_histogram<'py>(
         mi_values[tau - 1] = mi;
     }
 
-    Ok(PyArray1::from_vec(py, mi_values))
+    Ok(mi_values)
 }

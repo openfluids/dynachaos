@@ -9,76 +9,52 @@
 //! `mu_i(r, q) = p_i(r)^q / sum_j p_j(r)^q`.
 //!
 //! These are the canonical moments used to recover `tau(q)`, `D_q`,
-//! `alpha(q)`, and `f(alpha)` via log-log regressions in Python.
+//! `alpha(q)`, and `f(alpha)` via log-log regressions.
 
 use ndarray::Array2;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::prelude::*;
+
+use crate::CoreError;
+
+/// Canonical moments at each box scale and moment order q.
+pub struct MultifractalMoments {
+    pub log_z: Array2<f64>,
+    pub alpha_num: Array2<f64>,
+    pub f_num: Array2<f64>,
+    pub ln_scales: Vec<f64>,
+}
 
 /// Compute multifractal canonical moments for a 2D nonnegative measure field.
 ///
-/// Parameters
-/// ----------
-/// field : numpy.ndarray of float64, shape (ny, nx)
-///     Nonnegative measure field.
-/// box_sizes : numpy.ndarray of int64, shape (n_scales,)
-///     Box side lengths. Each scale uses non-overlapping boxes and truncates
-///     edge remainders.
-/// q_values : numpy.ndarray of float64, shape (n_q,)
-///     Moment orders q.
-///
-/// Returns
-/// -------
-/// tuple
-///     (log_z, alpha_num, f_num, ln_scales), where:
-///     - log_z: ndarray, shape (n_scales, n_q)
-///     - alpha_num: ndarray, shape (n_scales, n_q)
-///     - f_num: ndarray, shape (n_scales, n_q)
-///     - ln_scales: ndarray, shape (n_scales,)
-#[pyfunction]
-#[pyo3(signature = (field, box_sizes, q_values))]
-pub fn multifractal_moments<'py>(
-    py: Python<'py>,
-    field: PyReadonlyArray2<'py, f64>,
-    box_sizes: PyReadonlyArray1<'py, i64>,
-    q_values: PyReadonlyArray1<'py, f64>,
-) -> PyResult<(
-    Bound<'py, PyArray2<f64>>,
-    Bound<'py, PyArray2<f64>>,
-    Bound<'py, PyArray2<f64>>,
-    Bound<'py, PyArray1<f64>>,
-)> {
-    #![allow(clippy::type_complexity)]
-    let arr = field.as_array();
-    let ny = arr.shape()[0];
-    let nx = arr.shape()[1];
-    let field_slice = arr.as_slice().ok_or_else(|| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>("field must be C-contiguous")
-    })?;
-
-    let scales = box_sizes.as_slice()?;
-    let qs = q_values.as_slice()?;
-    let n_scales = scales.len();
-    let n_q = qs.len();
+/// `field` is row-major with shape (ny, nx). Each box scale uses
+/// non-overlapping boxes and truncates edge remainders.
+pub fn multifractal_moments(
+    field: &[f64],
+    ny: usize,
+    nx: usize,
+    box_sizes: &[i64],
+    q_values: &[f64],
+) -> Result<MultifractalMoments, CoreError> {
+    let n_scales = box_sizes.len();
+    let n_q = q_values.len();
 
     let mut ln_scales = vec![f64::NAN; n_scales];
     let mut log_z = vec![f64::NAN; n_scales * n_q];
     let mut alpha_num = vec![f64::NAN; n_scales * n_q];
     let mut f_num = vec![f64::NAN; n_scales * n_q];
 
-    let total_mass: f64 = field_slice.iter().copied().sum();
+    let total_mass: f64 = field.iter().copied().sum();
     if !total_mass.is_finite() || total_mass <= 0.0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+        return Err(CoreError::invalid_argument(
             "field must have a positive finite total mass",
         ));
     }
-    if field_slice.iter().any(|&v| !v.is_finite() || v < 0.0) {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+    if field.iter().any(|&v| !v.is_finite() || v < 0.0) {
+        return Err(CoreError::invalid_argument(
             "field must contain only finite nonnegative values",
         ));
     }
 
-    for (si, &b_i64) in scales.iter().enumerate() {
+    for (si, &b_i64) in box_sizes.iter().enumerate() {
         if b_i64 <= 0 {
             continue;
         }
@@ -103,7 +79,7 @@ pub fn multifractal_moments<'py>(
                     let row = y0 + yy;
                     let base = row * nx;
                     for xx in 0..b {
-                        mass += field_slice[base + x0 + xx];
+                        mass += field[base + x0 + xx];
                     }
                 }
                 if mass > 0.0 {
@@ -121,7 +97,7 @@ pub fn multifractal_moments<'py>(
             *p *= inv_used_mass;
         }
 
-        for (qi, &q) in qs.iter().enumerate() {
+        for (qi, &q) in q_values.iter().enumerate() {
             let idx = si * n_q + qi;
             if !q.is_finite() {
                 continue;
@@ -165,20 +141,17 @@ pub fn multifractal_moments<'py>(
         }
     }
 
-    let log_z_arr = Array2::from_shape_vec((n_scales, n_q), log_z).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("shape error log_z: {e}"))
-    })?;
-    let alpha_arr = Array2::from_shape_vec((n_scales, n_q), alpha_num).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("shape error alpha_num: {e}"))
-    })?;
-    let f_arr = Array2::from_shape_vec((n_scales, n_q), f_num).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("shape error f_num: {e}"))
-    })?;
+    let log_z_arr = Array2::from_shape_vec((n_scales, n_q), log_z)
+        .map_err(|e| CoreError::runtime(format!("shape error log_z: {e}")))?;
+    let alpha_arr = Array2::from_shape_vec((n_scales, n_q), alpha_num)
+        .map_err(|e| CoreError::runtime(format!("shape error alpha_num: {e}")))?;
+    let f_arr = Array2::from_shape_vec((n_scales, n_q), f_num)
+        .map_err(|e| CoreError::runtime(format!("shape error f_num: {e}")))?;
 
-    Ok((
-        PyArray2::from_owned_array(py, log_z_arr),
-        PyArray2::from_owned_array(py, alpha_arr),
-        PyArray2::from_owned_array(py, f_arr),
-        PyArray1::from_vec(py, ln_scales),
-    ))
+    Ok(MultifractalMoments {
+        log_z: log_z_arr,
+        alpha_num: alpha_arr,
+        f_num: f_arr,
+        ln_scales,
+    })
 }

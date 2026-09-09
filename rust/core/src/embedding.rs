@@ -3,9 +3,6 @@
 //! The expensive Cao/FNN nearest-neighbor statistics stay in Python/SciPy,
 //! where cKDTree is substantially faster than the old brute-force Rust kernels.
 
-use numpy::PyReadonlyArray1;
-use pyo3::prelude::*;
-
 /// Moving-average smoothing helper for 1D diagnostics.
 #[inline]
 fn smooth_series(values: &[f64], window: usize) -> Vec<f64> {
@@ -38,20 +35,9 @@ fn smooth_series(values: &[f64], window: usize) -> Vec<f64> {
 /// 1) choose onset of a stable near-1 plateau (forward window),
 /// 2) fallback to first near-one crossing,
 /// 3) fallback to closest value to 1.
-#[pyfunction]
-#[pyo3(signature = (
-    e1,
-    near_one_lower = 0.95,
-    near_one_upper = 1.05,
-    saturation_tol = 0.02,
-    plateau_span = 3,
-    smoothing_window = 1,
-    min_dim = 2,
-    max_dim = None
-))]
 #[allow(clippy::too_many_arguments)]
 pub fn select_dimension_cao(
-    e1: PyReadonlyArray1<'_, f64>,
+    e1: &[f64],
     near_one_lower: f64,
     near_one_upper: f64,
     saturation_tol: f64,
@@ -59,11 +45,10 @@ pub fn select_dimension_cao(
     smoothing_window: usize,
     min_dim: usize,
     max_dim: Option<usize>,
-) -> PyResult<usize> {
-    let e1 = e1.as_slice()?;
+) -> usize {
     let min_dim = min_dim.max(1);
     if e1.is_empty() {
-        return Ok(min_dim);
+        return min_dim;
     }
 
     let mut lo = near_one_lower;
@@ -74,7 +59,7 @@ pub fn select_dimension_cao(
 
     let smoothed = smooth_series(e1, smoothing_window);
     if !smoothed.iter().any(|v| v.is_finite()) {
-        return Ok(min_dim);
+        return min_dim;
     }
 
     let span = plateau_span.max(2);
@@ -112,7 +97,7 @@ pub fn select_dimension_cao(
             }
         }
         if (w_max - w_min) <= 1.5 * saturation_tol || max_diff <= saturation_tol {
-            return Ok(clamp(dim));
+            return clamp(dim);
         }
     }
 
@@ -120,7 +105,7 @@ pub fn select_dimension_cao(
     for (idx, value) in smoothed.iter().enumerate() {
         let dim = idx + 1;
         if dim >= min_dim && value.is_finite() && *value >= lo {
-            return Ok(clamp(dim));
+            return clamp(dim);
         }
     }
 
@@ -139,8 +124,8 @@ pub fn select_dimension_cao(
         }
     }
     if let Some(dim) = best_dim {
-        return Ok(clamp(dim));
+        return clamp(dim);
     }
 
-    Ok(clamp(e1.len() + 1))
+    clamp(e1.len() + 1)
 }

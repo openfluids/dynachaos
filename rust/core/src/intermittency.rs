@@ -1,20 +1,17 @@
 //! Synthetic intermittency oracle kernels.
 
 use ndarray::Array2;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 
-#[pyfunction]
-#[pyo3(signature = (n, x0, eps, a, modulo))]
-pub fn pm_type_i_oracle<'py>(
-    py: Python<'py>,
+use crate::CoreError;
+
+/// Integrate the Pomeau–Manneville type-I map for `n` steps.
+pub fn pm_type_i_oracle(
     n: usize,
     x0: f64,
     eps: f64,
     a: f64,
     modulo: bool,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
+) -> Result<Vec<f64>, CoreError> {
     validate_n(n)?;
     validate_finite(&[x0, eps, a])?;
 
@@ -27,20 +24,18 @@ pub fn pm_type_i_oracle<'py>(
         }
         out.push(x);
     }
-    Ok(PyArray1::from_vec(py, out))
+    Ok(out)
 }
 
-#[pyfunction]
-#[pyo3(signature = (n, x0, y0, eps, a, theta))]
-pub fn pm_type_ii_oracle<'py>(
-    py: Python<'py>,
+/// Integrate the Pomeau–Manneville type-II map for `n` steps.
+pub fn pm_type_ii_oracle(
     n: usize,
     x0: f64,
     y0: f64,
     eps: f64,
     a: f64,
     theta: f64,
-) -> PyResult<Bound<'py, PyArray2<f64>>> {
+) -> Result<Array2<f64>, CoreError> {
     validate_n(n)?;
     validate_finite(&[x0, y0, eps, a, theta])?;
 
@@ -60,20 +55,12 @@ pub fn pm_type_ii_oracle<'py>(
         out.push(y);
     }
 
-    let arr = Array2::from_shape_vec((n, 2), out)
-        .map_err(|err| PyValueError::new_err(format!("shape error: {err}")))?;
-    Ok(PyArray2::from_owned_array(py, arr))
+    Array2::from_shape_vec((n, 2), out)
+        .map_err(|err| CoreError::invalid_argument(format!("shape error: {err}")))
 }
 
-#[pyfunction]
-#[pyo3(signature = (n, x0, eps, a))]
-pub fn pm_type_iii_oracle<'py>(
-    py: Python<'py>,
-    n: usize,
-    x0: f64,
-    eps: f64,
-    a: f64,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
+/// Integrate the Pomeau–Manneville type-III map for `n` steps.
+pub fn pm_type_iii_oracle(n: usize, x0: f64, eps: f64, a: f64) -> Result<Vec<f64>, CoreError> {
     validate_n(n)?;
     validate_finite(&[x0, eps, a])?;
 
@@ -83,29 +70,26 @@ pub fn pm_type_iii_oracle<'py>(
         x = -(1.0 + eps) * x - a * x * x * x;
         out.push(x);
     }
-    Ok(PyArray1::from_vec(py, out))
+    Ok(out)
 }
 
-#[pyfunction]
-#[pyo3(signature = (driver, x0, transverse_lyapunov, noise_scale))]
-pub fn on_off_oracle<'py>(
-    py: Python<'py>,
-    driver: PyReadonlyArray1<'py, f64>,
+/// Integrate the on-off intermittency map along a driver series.
+pub fn on_off_oracle(
+    driver: &[f64],
     x0: f64,
     transverse_lyapunov: f64,
     noise_scale: f64,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let driver_slice = driver.as_slice()?;
-    if driver_slice.is_empty() {
-        return Err(PyValueError::new_err("driver must be non-empty"));
+) -> Result<Vec<f64>, CoreError> {
+    if driver.is_empty() {
+        return Err(CoreError::invalid_argument("driver must be non-empty"));
     }
     validate_finite(&[x0, transverse_lyapunov, noise_scale])?;
 
     let mut x = x0;
-    let mut out = Vec::with_capacity(driver_slice.len());
-    for &eta in driver_slice {
+    let mut out = Vec::with_capacity(driver.len());
+    for &eta in driver {
         if !eta.is_finite() {
-            return Err(PyValueError::new_err(
+            return Err(CoreError::invalid_argument(
                 "driver must contain only finite values",
             ));
         }
@@ -113,18 +97,16 @@ pub fn on_off_oracle<'py>(
         x = multiplier * x / (1.0 + x * x);
         out.push(x);
     }
-    Ok(PyArray1::from_vec(py, out))
+    Ok(out)
 }
 
-#[pyfunction]
-#[pyo3(signature = (n, x0, y0, eps))]
-pub fn on_off_skew_logistic_oracle<'py>(
-    py: Python<'py>,
+/// Integrate the on-off skew-logistic map for `n` steps.
+pub fn on_off_skew_logistic_oracle(
     n: usize,
     x0: f64,
     y0: f64,
     eps: f64,
-) -> PyResult<Bound<'py, PyArray2<f64>>> {
+) -> Result<Array2<f64>, CoreError> {
     validate_n(n)?;
     validate_finite(&[x0, y0, eps])?;
 
@@ -140,19 +122,12 @@ pub fn on_off_skew_logistic_oracle<'py>(
         out.push(y);
     }
 
-    let arr = Array2::from_shape_vec((n, 2), out)
-        .map_err(|err| PyValueError::new_err(format!("shape error: {err}")))?;
-    Ok(PyArray2::from_owned_array(py, arr))
+    Array2::from_shape_vec((n, 2), out)
+        .map_err(|err| CoreError::invalid_argument(format!("shape error: {err}")))
 }
 
-#[pyfunction]
-#[pyo3(signature = (n, x0, r))]
-pub fn logistic_type_i_oracle<'py>(
-    py: Python<'py>,
-    n: usize,
-    x0: f64,
-    r: f64,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
+/// Integrate the logistic map for `n` steps.
+pub fn logistic_type_i_oracle(n: usize, x0: f64, r: f64) -> Result<Vec<f64>, CoreError> {
     validate_n(n)?;
     validate_finite(&[x0, r])?;
 
@@ -162,21 +137,21 @@ pub fn logistic_type_i_oracle<'py>(
         x = r * x * (1.0 - x);
         out.push(x);
     }
-    Ok(PyArray1::from_vec(py, out))
+    Ok(out)
 }
 
-fn validate_n(n: usize) -> PyResult<()> {
+fn validate_n(n: usize) -> Result<(), CoreError> {
     if n == 0 {
-        Err(PyValueError::new_err("n must be positive"))
+        Err(CoreError::invalid_argument("n must be positive"))
     } else {
         Ok(())
     }
 }
 
-fn validate_finite(values: &[f64]) -> PyResult<()> {
+fn validate_finite(values: &[f64]) -> Result<(), CoreError> {
     if values.iter().all(|value| value.is_finite()) {
         Ok(())
     } else {
-        Err(PyValueError::new_err("parameters must be finite"))
+        Err(CoreError::invalid_argument("parameters must be finite"))
     }
 }

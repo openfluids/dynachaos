@@ -1,11 +1,9 @@
 //! Ordinal pattern distribution for permutation entropy.
 //!
 //! Encodes each sliding window's ordinal pattern (argsort permutation) as a
-//! Lehmer-code integer and accumulates counts in a flat array.  This avoids
-//! Python-level loops and hash-map overhead entirely.
+//! Lehmer-code integer and accumulates counts in a flat array.
 
-use numpy::{PyArray1, PyReadonlyArray1};
-use pyo3::prelude::*;
+use crate::CoreError;
 
 /// Compute the argsort of a small window, then encode it as a Lehmer code.
 ///
@@ -58,50 +56,22 @@ fn factorial(n: usize) -> usize {
 
 /// Compute the ordinal pattern distribution of a time series.
 ///
-/// Parameters
-/// ----------
-/// x : numpy.ndarray of float64, shape (N,)
-///     Scalar time series.
-/// d : int
-///     Embedding dimension (pattern length), typically 3–7.
-/// tau : int
-///     Time delay between successive elements.
-///
-/// Returns
-/// -------
-/// counts : numpy.ndarray of int64, shape (d!,)
-///     Raw counts for each ordinal pattern (indexed by Lehmer code).
-/// n_windows : int
-///     Total number of windows analysed.
-#[pyfunction]
-#[pyo3(signature = (x, d = 5, tau = 1))]
-pub fn ordinal_distribution<'py>(
-    py: Python<'py>,
-    x: PyReadonlyArray1<'py, f64>,
-    d: usize,
-    tau: usize,
-) -> PyResult<(Bound<'py, PyArray1<i64>>, i64)> {
+/// Returns raw Lehmer-code counts of length d! and the number of windows.
+pub fn ordinal_distribution(x: &[f64], d: usize, tau: usize) -> Result<(Vec<i64>, i64), CoreError> {
     if d < 2 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "d must be >= 2",
-        ));
+        return Err(CoreError::invalid_argument("d must be >= 2"));
     }
     if d > 10 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "d must be <= 10",
-        ));
+        return Err(CoreError::invalid_argument("d must be <= 10"));
     }
     if tau < 1 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "tau must be >= 1",
-        ));
+        return Err(CoreError::invalid_argument("tau must be >= 1"));
     }
 
-    let arr = x.as_slice()?;
-    let n = arr.len();
+    let n = x.len();
     let n_windows = n.saturating_sub((d - 1) * tau);
     if n_windows == 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+        return Err(CoreError::invalid_argument(
             "time series is too short for the requested d and tau",
         ));
     }
@@ -113,11 +83,11 @@ pub fn ordinal_distribution<'py>(
     for i in 0..n_windows {
         // Gather the delayed window
         for j in 0..d {
-            window_buf[j] = arr[i + j * tau];
+            window_buf[j] = x[i + j * tau];
         }
         let idx = pattern_index(&window_buf);
         counts[idx] += 1;
     }
 
-    Ok((PyArray1::from_vec(py, counts), n_windows as i64))
+    Ok((counts, n_windows as i64))
 }

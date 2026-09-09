@@ -1,47 +1,33 @@
 //! Co-moving Lyapunov kernels for logistic coupled-map lattices.
 
-use numpy::{PyArray1, PyReadonlyArray1};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
+use crate::CoreError;
 
-/// Specialized co-moving Lyapunov spectrum for logistic CML with g=f.
+/// Compute the co-moving Lyapunov spectrum for a logistic CML with g=f.
 ///
-/// The Python caller owns RNG/initial-state construction so tests can compare
-/// exactly against the existing generic callable implementation.
-#[pyfunction]
-#[pyo3(signature = (x_init, v_values, a, eps, n_iter, n_transient))]
-pub fn comoving_lyapunov_logistic<'py>(
-    py: Python<'py>,
-    x_init: PyReadonlyArray1<'py, f64>,
-    v_values: PyReadonlyArray1<'py, f64>,
+/// The caller owns RNG and initial-state construction.
+pub fn comoving_lyapunov_logistic(
+    x_init: &[f64],
+    v_values: &[f64],
     a: f64,
     eps: f64,
     n_iter: usize,
     n_transient: usize,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let x_slice = x_init.as_slice()?;
-    let v_slice = v_values.as_slice()?;
-    if x_slice.is_empty() {
-        return Err(PyValueError::new_err(
+) -> Result<Vec<f64>, CoreError> {
+    if x_init.is_empty() {
+        return Err(CoreError::invalid_argument(
             "x_init must contain at least one site",
         ));
     }
     if n_iter == 0 {
-        return Err(PyValueError::new_err("n_iter must be positive"));
+        return Err(CoreError::invalid_argument("n_iter must be positive"));
     }
 
-    let x_owned = x_slice.to_vec();
-    let v_owned = v_slice.to_vec();
-    let x_attractor = py.detach(|| logistic_cml_after_transient(&x_owned, a, eps, n_transient));
-
-    let mut lambda_v = Vec::with_capacity(v_owned.len());
-    for &v in &v_owned {
-        py.check_signals()?;
-        lambda_v.push(py.detach(|| comoving_velocity(&x_attractor, v, a, eps, n_iter)));
+    let x_attractor = logistic_cml_after_transient(x_init, a, eps, n_transient);
+    let mut lambda_v = Vec::with_capacity(v_values.len());
+    for &v in v_values {
+        lambda_v.push(comoving_velocity(&x_attractor, v, a, eps, n_iter));
     }
-    py.check_signals()?;
-
-    Ok(PyArray1::from_vec(py, lambda_v))
+    Ok(lambda_v)
 }
 
 fn logistic_cml_after_transient(x_init: &[f64], a: f64, eps: f64, n_transient: usize) -> Vec<f64> {

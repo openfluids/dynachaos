@@ -1,6 +1,9 @@
+use dynachaos_core::CoreError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 mod ami;
+mod circle_map;
 mod cml;
 mod comoving;
 mod correlation_gp;
@@ -11,6 +14,13 @@ mod intermittency;
 mod multifractal;
 mod permutation;
 mod recurrence;
+
+pub(crate) fn core_to_py(err: CoreError) -> PyErr {
+    match err {
+        CoreError::InvalidArgument(message) => PyValueError::new_err(message),
+        CoreError::Runtime(message) => PyRuntimeError::new_err(message),
+    }
+}
 
 /// Rust-accelerated backends for dynachaos.
 ///
@@ -24,6 +34,7 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Cao/FNN nearest-neighbor statistics remain in Python/SciPy; cKDTree is faster.
     m.add_function(wrap_pyfunction!(embedding::select_dimension_cao, m)?)?;
     m.add_function(wrap_pyfunction!(correlation_gp::correlation_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(circle_map::rotation_number_tile, m)?)?;
     m.add_function(wrap_pyfunction!(cml::cml_jacobian_logistic, m)?)?;
     m.add_function(wrap_pyfunction!(comoving::comoving_lyapunov_logistic, m)?)?;
     m.add_function(wrap_pyfunction!(
