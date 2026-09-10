@@ -88,7 +88,3 @@ coverage.xml
 # bv (beads viewer) local config and caches
 .bv/
 
-# Supervisor loop state — goal briefs, ledger and dispatch scratch
-docs/goals.md
-docs/goals-ledger.md
-.sc/
