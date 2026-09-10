@@ -94,6 +94,33 @@ The service-worker route is real and documented, and it is the way in if a
 figure ever needs genuinely shared memory. It costs the visitor a page reload
 the first time they arrive, which is a poor trade for figures that tile cleanly.
 
+### Live JS runtime
+
+The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
+`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Three files:
+
+| file | job |
+|---|---|
+| `scheduler.js` | Pure function: state in, commands out. No DOM, no Worker, no timer. Node unit-tests this. |
+| `pool.js` | `N = min(navigator.hardwareConcurrency, 8)` workers, each with its own wasm instance. A pan or zoom bumps the generation; workers stay alive so the in-flight tile can finish, and a late result is dropped. `terminate()` runs only in `destroy()`. |
+| `tile-worker.js` | Loads `site/wasm/dynachaos_wasm.js`, calls `rotation_number_tile`, transfers the `Float64Array` back. Reads the 4-element header rather than trusting the request. |
+
+Tiles cover the viewport at a pyramid of levels. Level 0 is one tile over the
+whole view; each finer level splits 2×2. The scheduler issues every coarser
+tile before any finer one, and issues each visible tile exactly once per
+generation. A viewport change increments the generation; workers are not
+terminated, and results that carry an older generation are dropped, not painted.
+In-flight bookkeeping is `{ id, generation }`, so a late result cannot evict
+the current generation's entry for the same tile. Degenerate viewports
+(`omegaMax <= omegaMin` or `kMax <= kMin`) are rejected. An error reply, a
+worker-level failure, or a malformed worker message frees its tile and is
+counted as a drop, not left in flight. A failed worker is not handed more work.
+
+Debug telemetry (`?debug=1` or `localStorage.dynachaosDebug`) logs per-tile
+compute milliseconds, worker count, queue depth, dropped generations (viewport
+changes that abandoned work), and dropped tiles (stale or error results).
+There is no `SharedArrayBuffer` anywhere in this path.
+
 ## WebGPU is a fast path, never the baseline
 
 As of 2026-09: Chromium ships WebGPU (113+, and Android 121+), Safari turned it

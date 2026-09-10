@@ -48,6 +48,7 @@ BODY = WEB / "paper-body.html"
 META = WEB / "paper-meta.json"
 SITE = REPO / "site"
 FONTS_SRC = REPO / "assets" / "fonts"
+LIVE_SRC = REPO / "site-src" / "live"
 
 FIG_RE = re.compile(r"<figure\b.*?</figure>", re.S)
 PROGRAM_ARC_SLOT = "<!--PROGRAM-ARC-->"
@@ -1421,6 +1422,23 @@ def copy_and_subset_fonts(body: str, src_dir: Path, dst_dir: Path) -> int:
     return count
 
 
+def copy_live_runtime(src_dir: Path, dst_dir: Path) -> int:
+    """Copy the hand-written live-figure JS into the generated site.
+
+    These files stay as ESM and are not folded into app.js: a worker needs
+    its own URL, and the scheduler is imported by node tests. Missing source
+    is a no-op so a checkout without site-src still builds the paper page.
+    """
+    if not src_dir.is_dir():
+        return 0
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for path in sorted(src_dir.glob("*.js")):
+        shutil.copy2(path, dst_dir / path.name)
+        count += 1
+    return count
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manuscript", type=Path, help="LaTeX source to import (local only)")
@@ -1466,6 +1484,7 @@ def main() -> None:
         print(f"  removed {dropped} duplicate id attributes")
 
     copy_and_subset_fonts(body, FONTS_SRC, fonts_dst)
+    n_live = copy_live_runtime(LIVE_SRC, SITE / "live")
 
     index_units = build_search_index(body)
     index_json, index_truncated = search_index_json(index_units)
@@ -1483,6 +1502,7 @@ def main() -> None:
     print(f"  MathML nodes:    {page.count('<math')}")
     print(f"  references:      {body.count('csl-entry')}")
     print(f"  fonts copied:    {len(list(fonts_dst.glob('*.woff2')))}")
+    print(f"  live runtime:    {n_live} files")
     print(
         f"  search index:    {len(index_units)} units, "
         f"{len(index_json.encode('utf-8')):,} bytes"
