@@ -88,6 +88,47 @@ jobs:
         # script's docstring; do not loosen it to make a red run pass.
         run: uv run python scripts/check_wasm_parity.py
 
+  live-figure:
+    name: Live figure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable @ 2026-07-26
+        with:
+          targets: wasm32-unknown-unknown
+      - run: uv sync --all-extras
+      - name: Build the WebAssembly bundle
+        run: uv run python scripts/build_wasm.py
+      - name: Export this figure's chart JSON
+        run: |
+          uv run --extra viz python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "scripts")
+          from export_figure_data import export_arnold_tongues
+
+          out = Path("site/data/sec02_circle_map")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "arnold_tongues.json").write_text(
+              json.dumps(export_arnold_tongues(), separators=(",", ":"))
+          )
+          PY
+      - name: Build the paper page
+        run: uv run python scripts/build_paper.py
+      - name: Run the node unit tests
+        # Name each file. A bare directory made node skip one of the two files.
+        run: node --test tests/js/index.js tests/js/raster.js
+      - name: Run the live-figure end-to-end test
+        # Node and Chrome are already on the runner image, so this needs no
+        # setup-node step and no npm toolchain.
+        run: node tests/e2e/live_figure.mjs site
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
