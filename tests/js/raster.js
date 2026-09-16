@@ -101,13 +101,13 @@ test("tileWorld recovers the scheduler rectangle from an id", () => {
 test("tileCellsFor stays inside the kernel caps and the step budget", () => {
   const nIter = 2000;
   const nTransient = 200;
-  const cells = tileCellsFor(1600, 400, { levels: 3, nIter, nTransient });
-  assert.ok(cells >= 1);
-  assert.ok(cells <= 512);
+  const levels = 5;
+  const cells = tileCellsFor(1600, 400, { levels, nIter, nTransient });
+  assert.equal(cells, 100);
+  assert.equal(cells * 2 ** (levels - 1), 1600);
   assert.ok(cells * cells * (nTransient + nIter) <= 250_000_000);
-  const tiny = tileCellsFor(8, 8, { levels: 3, nIter, nTransient });
-  assert.equal(tiny, 2);
-  assert.equal(HEADER, 4);
+  const tiny = tileCellsFor(8, 8, { levels, nIter, nTransient });
+  assert.equal(tiny, 1);
 });
 
 test("liveTileColorKey ignores theme and changes with tile identity", () => {
@@ -130,5 +130,11 @@ test("liveTileColorKey ignores theme and changes with tile identity", () => {
   const other = new Float64Array(data);
   other[HEADER] = 0.5;
   assert.notEqual(liveTileColorKey({ ...tile, data: other }), key);
-  assert.equal(liveTileColorKey.length, 1);
+  const last = new Float64Array(data);
+  last[last.length - 1] = 0.3;
+  assert.notEqual(liveTileColorKey({ ...tile, data: last }), key);
+  const longer = new Float64Array(HEADER + 8);
+  longer.set(data);
+  assert.notEqual(liveTileColorKey({ ...tile, data: longer }), key);
+  assert.notEqual(liveTileColorKey({ ...tile, header: [4, 2, 200, 2000] }), key);
 });

@@ -123,6 +123,13 @@ function cellValue(tile, omega, K) {
  *
  * Live colour uses a fixed viridis ramp. The key does not include the page theme.
  *
+ * The fingerprint is generation, id, grid size, sample count, and the first
+ * and last samples. Two tiles that differ only in the middle samples would
+ * share a cached bitmap. That cannot happen today: the scheduler issues each
+ * tile id once per generation, so a new payload always carries a new
+ * generation or a new id. The key is allowed to skip a full-tile hash for
+ * that reason.
+ *
  * @param {object} tile
  * @returns {string}
  */

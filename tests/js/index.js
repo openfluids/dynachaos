@@ -83,9 +83,28 @@ test("coarser pyramid levels use fewer cells than the finest", () => {
   assert.equal(byLevel(0)[0].nK, 2);
   assert.equal(byLevel(3)[0].nOmega, 16);
   assert.equal(byLevel(3)[0].nK, 16);
-  assert.ok(byLevel(0)[0].nOmega * byLevel(0)[0].nOmega < byLevel(3)[0].nOmega * byLevel(3)[0].nOmega);
   assert.equal(tileCellsAtLevel(-1, options), 2);
   assert.equal(tileCellsAtLevel(99, options), 16);
+});
+
+test("the live five-level pyramid has a determined cell count at each level", () => {
+  const live = { levels: 5, tileCells: 100 };
+  assert.equal(tileCellsAtLevel(4, live), 100);
+  assert.equal(tileCellsAtLevel(3, live), 50);
+  assert.equal(tileCellsAtLevel(2, live), 25);
+  assert.equal(tileCellsAtLevel(1, live), 12);
+  assert.equal(tileCellsAtLevel(0, live), 6);
+  const tiles = visibleTiles(VIEWPORT, live);
+  const byLevel = (level) => tiles.filter((tile) => tile.level === level);
+  for (let level = 0; level < 5; level++) {
+    const n = tileCellsAtLevel(level, live);
+    assert.equal(byLevel(level)[0].nOmega, n);
+    assert.equal(byLevel(level)[0].nK, n);
+  }
+  const collapsed = { levels: 5, tileCells: 1 };
+  for (let level = 0; level < 5; level++) {
+    assert.equal(tileCellsAtLevel(level, collapsed), 1);
+  }
 });
 
 test("a generation counter drops stale results instead of painting them", () => {
