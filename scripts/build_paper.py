@@ -833,6 +833,9 @@ def figure_code_block(section: str, name: str) -> tuple[str, bool]:
     ), True
 
 
+LIVE_FIGURES = {"fig:arnold_tongues": "arnold_tongues"}
+
+
 def figure_block(
     fig_id: str, section: str, name: str, caption: str, dims: dict[str, tuple[int, int]]
 ) -> str:
@@ -840,7 +843,8 @@ def figure_block(
 
     The static image is always present and is what the reader sees first; the
     interactive chart is fetched only when asked for, so no reader pays for a
-    payload they never open.
+    payload they never open. A live-capable figure gets an interact button
+    even when its JSON is missing; live mode then computes the view in-browser.
     """
     thumb = SITE / "thumbs" / section / f"{name}.webp"
     data = SITE / "data" / section / f"{name}.json"
@@ -850,19 +854,24 @@ def figure_block(
         w, h = dims[(section, name)]
         size = f' width="{w}" height="{h}"'
     alt = html.escape(build_alt_text(caption), quote=True)
+    live_kind = LIVE_FIGURES.get(fig_id, "")
 
     acts = ['<button type="button" class="act-zoom">enlarge</button>']
     attrs = f' id="{fig_id}"'
     badge = ""
-    if data.exists():
+    if data.exists() or live_kind:
         acts.insert(0, '<button type="button" class="act-interact">interact</button>')
-        acts.insert(1, '<button type="button" class="act-copylink">copy link</button>')
-        attrs += f' data-src="data/{section}/{name}.json" data-state="static"'
-        badge = (
-            '<button type="button" class="fig-badge" hidden'
-            ' aria-label="Figure modified from published defaults — reset to published values">'
-            "modified — reset</button>"
-        )
+        attrs += ' data-state="static"'
+        if live_kind:
+            attrs += f' data-live="{html.escape(live_kind, quote=True)}"'
+        if data.exists():
+            acts.insert(1, '<button type="button" class="act-copylink">copy link</button>')
+            attrs += f' data-src="data/{section}/{name}.json"'
+            badge = (
+                '<button type="button" class="fig-badge" hidden'
+                ' aria-label="Figure modified from published defaults — reset to published values">'
+                "modified — reset</button>"
+            )
 
     code_html, has_snippet = figure_code_block(section, name)
     if has_snippet:

@@ -345,6 +345,7 @@ details.fig-code code.fig-snippet{font-family:var(--mono);font-size:0.72rem;line
 .plot-title{margin:0 0 0.15rem;text-align:center;font-family:var(--mono);font-size:0.62rem;
   letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-low);}
 canvas.plot{width:100%;display:block;touch-action:pan-y;}
+canvas.plot.live{touch-action:none;}
 .hint{margin:0;padding:0 0.8rem 0.6rem;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;color:var(--ink-low);}
 /* research-arc overview: a timeline, not a table */
 figure.arc{background:var(--raised);}
@@ -933,6 +934,7 @@ const LEGEND_ROWH=14;
 
 function Plot(canvas,panel,meta){
   const ctx=canvas.getContext("2d");
+  const live=meta.live||null;
   const multi=panel.traces&&panel.traces.length>1;
   const pad={l:58,r:12,t:multi?24:10,b:34};
   const wrap=canvas.parentElement;
@@ -945,6 +947,7 @@ function Plot(canvas,panel,meta){
   resetBtn.textContent="reset view";
   wrap.appendChild(resetBtn);
   let W=0,H=0,dom=null,base=null,drag=null,kx=null,dpr=1,legendLayout=null;
+  let liveColorCache=new Map(),liveColorGen=-1;
   const heat=meta.kind==="heatmap";
   // Offscreen cache for the heatmap raster: the per-cell fillRect loop below
   // is the ~150-900ms cost a drag used to re-pay on every pointermove. It is
@@ -957,14 +960,19 @@ function Plot(canvas,panel,meta){
   // Every place the visible domain actually changes funnels through here, so
   // the URL-state hook (meta.onDomainChange, wired in mountInteractive) fires
   // exactly once per real change instead of being sprinkled at each call site.
-  function resetDom(){kx=null;dom={...base};draw();if(meta.onDomainChange)meta.onDomainChange();}
-  function applyDom(d){dom=d;draw();if(meta.onDomainChange)meta.onDomainChange();}
+  function afterDomain(){
+    if(meta.onDomainChange)meta.onDomainChange();
+    if(live&&live.onView)live.onView(dom);
+  }
+  function resetDom(){kx=null;dom={...base};draw();afterDomain();}
+  function applyDom(d){dom=d;draw();afterDomain();}
   resetBtn.addEventListener("click",resetDom);
   function syncResetBtn(){
     resetBtn.hidden=!dom||!base||(dom.x0===base.x0&&dom.x1===base.x1&&dom.y0===base.y0&&dom.y1===base.y1);
   }
 
   function extent(){
+    if(live&&live.base) return {...live.base};
     if(heat) return {x0:Math.min(...panel.x),x1:Math.max(...panel.x),y0:Math.min(...panel.y),y1:Math.max(...panel.y)};
     let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
     for(const s of panel.traces) for(let i=0;i<s.x.length;i++){
@@ -991,7 +999,7 @@ function Plot(canvas,panel,meta){
   const ux=p=>dom.x0+(p-pad.l)/(W-pad.l-pad.r)*(dom.x1-dom.x0);
 
   let zmin=0,zmax=1;
-  if(heat){zmin=Infinity;zmax=-Infinity;
+  if(heat&&!live){zmin=Infinity;zmax=-Infinity;
     for(const row of panel.z) for(const v of row){
       if(v===null||Number.isNaN(v))continue;
       if(v<zmin)zmin=v;if(v>zmax)zmax=v;}}
@@ -1127,6 +1135,50 @@ function Plot(canvas,panel,meta){
     heatCacheKey=heatDomainKey();
   }
 
+  function renderLiveHeat(){
+    const tiles=live.tiles||[];
+    const gen=live.generation?live.generation():0;
+    const plot={x0:dom.x0,x1:dom.x1,y0:dom.y0,y1:dom.y1,left:pad.l,top:pad.t,width:W-pad.l-pad.r,height:H-pad.t-pad.b};
+    const rectOf=live.tilePixelRect;
+    if(!rectOf) return;
+    if(liveColorGen!==gen){liveColorCache.clear();liveColorGen=gen;}
+    const keyOf=live.tileColorKey;
+    const ordered=tiles.slice().filter(t=>t&&t.generation===gen).sort((a,b)=>a.level-b.level);
+    const prevSmooth=ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled=false;
+    for(const t of ordered){
+      const nOmega=Math.max(1,Math.floor(Number(t.header&&t.header[0])));
+      const nK=Math.max(1,Math.floor(Number(t.header&&t.header[1])));
+      const data=t.data;
+      if(!data||data.length<4+nOmega*nK) continue;
+      const rect=rectOf(t,plot);
+      if(!(rect.w>0&&rect.h>0)) continue;
+      const key=keyOf?keyOf(t):t.generation+"|"+t.id;
+      let sprite=liveColorCache.get(key);
+      if(!sprite){
+        sprite=document.createElement("canvas");
+        sprite.width=nOmega;sprite.height=nK;
+        const sctx=sprite.getContext("2d");
+        const img=sctx.createImageData(nOmega,nK);
+        const pix=img.data;
+        for(let iy=0;iy<nK;iy++){
+          const dstRow=nK-1-iy;
+          for(let ix=0;ix<nOmega;ix++){
+            const v=data[4+iy*nOmega+ix];
+            const p=(dstRow*nOmega+ix)*4;
+            if(v===null||Number.isNaN(v)){pix[p+3]=0;continue;}
+            const c=rampRGB(znorm(v));
+            pix[p]=c[0];pix[p+1]=c[1];pix[p+2]=c[2];pix[p+3]=255;
+          }
+        }
+        sctx.putImageData(img,0,0);
+        liveColorCache.set(key,sprite);
+      }
+      ctx.drawImage(sprite,rect.x,rect.y,rect.w,rect.h);
+    }
+    ctx.imageSmoothingEnabled=prevSmooth;
+  }
+
   // Reference lines the captions promise (critical lines, bifurcation
   // thresholds). Values come from the payload, never recomputed here.
   function drawMarks(){
@@ -1178,8 +1230,11 @@ function Plot(canvas,panel,meta){
 
     ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,W-pad.l-pad.r,H-pad.t-pad.b);ctx.clip();
     if(heat){
-      if(heatCacheKey!==heatDomainKey()) renderHeatRaster();
-      ctx.drawImage(heatCanvas,0,0,W,H);
+      if(live) renderLiveHeat();
+      else{
+        if(heatCacheKey!==heatDomainKey()) renderHeatRaster();
+        ctx.drawImage(heatCanvas,0,0,W,H);
+      }
     }else{
       panel.traces.forEach((s,k)=>{
         const c=css(s.color||PAL[k%PAL.length]);
@@ -1263,12 +1318,19 @@ function Plot(canvas,panel,meta){
     const xv=ux(px);const lines=[];
     if(heat){
       const yv=dom.y0+(H-pad.b-py)/(H-pad.t-pad.b)*(dom.y1-dom.y0);
-      const near=(arr,v)=>{let b=0,d=Infinity;
-        for(let i=0;i<arr.length;i++){const q=Math.abs(arr[i]-v);if(q<d){d=q;b=i;}}return b;};
-      const i=near(panel.x,xv),j=near(panel.y,yv);
-      lines.push((meta.xlabel||"x")+" = "+fmt(panel.x[i]));
-      lines.push((meta.ylabel||"y")+" = "+fmt(panel.y[j]));
-      lines.push((zlabel||"value")+" = "+fmt(panel.z[j][i]));
+      if(live){
+        lines.push((meta.xlabel||"x")+" = "+fmt(xv));
+        lines.push((meta.ylabel||"y")+" = "+fmt(yv));
+        const rho=live.sample?live.sample(xv,yv):null;
+        lines.push((zlabel||"value")+" = "+(rho===null?"…":fmt(rho)));
+      }else{
+        const near=(arr,v)=>{let b=0,d=Infinity;
+          for(let i=0;i<arr.length;i++){const q=Math.abs(arr[i]-v);if(q<d){d=q;b=i;}}return b;};
+        const i=near(panel.x,xv),j=near(panel.y,yv);
+        lines.push((meta.xlabel||"x")+" = "+fmt(panel.x[i]));
+        lines.push((meta.ylabel||"y")+" = "+fmt(panel.y[j]));
+        lines.push((zlabel||"value")+" = "+fmt(panel.z[j][i]));
+      }
     }else if(meta.kind==="scatter"){
       // A scatter cloud has no natural x-ordering, so "nearest in x" can
       // report a y value from a completely different part of the cloud.
@@ -1303,8 +1365,72 @@ function Plot(canvas,panel,meta){
   // uy() is renderReadout's heat y-pixel-to-value inverse, factored out so
   // the drag rectangle can convert its y edges the same way.
   function uy(py){return dom.y0+(H-pad.b-py)/(H-pad.t-pad.b)*(dom.y1-dom.y0);}
+  const pointers=new Map();
+  let pan=null,pinch=null;
+  function clampDom(d){
+    let {x0,x1,y0,y1}=d;
+    let xs=x1-x0,ys=y1-y0;
+    const bx=base.x1-base.x0,by=base.y1-base.y0;
+    if(xs<1e-9) xs=1e-9;
+    if(ys<1e-9) ys=1e-9;
+    if(xs>bx){x0=base.x0;x1=base.x1;} else {
+      if(x0<base.x0){x0=base.x0;x1=x0+xs;}
+      if(x1>base.x1){x1=base.x1;x0=x1-xs;}
+    }
+    if(ys>by){y0=base.y0;y1=base.y1;} else {
+      if(y0<base.y0){y0=base.y0;y1=y0+ys;}
+      if(y1>base.y1){y1=base.y1;y0=y1-ys;}
+    }
+    return {x0,x1,y0,y1};
+  }
+  function zoomAbout(px,py,factor){
+    return applyZoom(ux(px),uy(py),px,py,factor,dom);
+  }
+  // Place world (xv,yv) at screen (px,py) with the span of `from` times factor.
+  // Do not write `from` into `dom` first. A refused zoom must leave the view.
+  function applyZoom(xv,yv,px,py,factor,from){
+    let xs=(from.x1-from.x0)*factor,ys=(from.y1-from.y0)*factor;
+    if(factor<1&&(xs<1e-9||ys<1e-9)) return false;
+    xs=Math.max(1e-9,Math.min(base.x1-base.x0,xs));
+    ys=Math.max(1e-9,Math.min(base.y1-base.y0,ys));
+    const plotW=W-pad.l-pad.r,plotH=H-pad.t-pad.b;
+    const fx=(px-pad.l)/plotW,fy=(H-pad.b-py)/plotH;
+    let next={x0:xv-fx*xs,x1:xv-fx*xs+xs,y0:yv-fy*ys,y1:yv-fy*ys+ys};
+    next=clampDom(next);
+    if(next.x0===dom.x0&&next.x1===dom.x1&&next.y0===dom.y0&&next.y1===dom.y1) return false;
+    applyDom(next);
+    return true;
+  }
+  function pointerXY(e){
+    const r=canvas.getBoundingClientRect();
+    return {x:e.clientX-r.left,y:e.clientY-r.top};
+  }
+  function pinchNow(){
+    const pts=[...pointers.values()];
+    if(pts.length<2) return null;
+    const dx=pts[1].x-pts[0].x,dy=pts[1].y-pts[0].y;
+    return {cx:(pts[0].x+pts[1].x)/2,cy:(pts[0].y+pts[1].y)/2,dist:Math.hypot(dx,dy)||1};
+  }
   canvas.addEventListener("pointermove",e=>{
     const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+    if(live&&pointers.has(e.pointerId)){
+      pointers.set(e.pointerId,{x:px,y:py});
+      if(pointers.size>=2&&pinch){
+        const now=pinchNow();
+        if(now){
+          applyZoom(pinch.xv,pinch.yv,now.cx,now.cy,pinch.dist/now.dist,pinch.dom);
+        }
+        return;
+      }
+      if(pan&&pointers.size===1){
+        const plotW=W-pad.l-pad.r,plotH=H-pad.t-pad.b;
+        const xspan=pan.dom.x1-pan.dom.x0,yspan=pan.dom.y1-pan.dom.y0;
+        const dx=-(px-pan.x)/plotW*xspan;
+        const dy=(py-pan.y)/plotH*yspan;
+        applyDom(clampDom({x0:pan.dom.x0+dx,x1:pan.dom.x1+dx,y0:pan.dom.y0+dy,y1:pan.dom.y1+dy}));
+        return;
+      }
+    }
     if(drag){
       drag.cur=Math.max(pad.l,Math.min(W-pad.r,px));
       if(heat) drag.py=Math.max(pad.t,Math.min(H-pad.b,py));
@@ -1316,11 +1442,37 @@ function Plot(canvas,panel,meta){
   canvas.addEventListener("pointerdown",e=>{
     const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
     if(px<pad.l||px>W-pad.r)return;
+    if(live&&e.pointerType==="touch"){
+      pointers.set(e.pointerId,{x:px,y:py});
+      canvas.setPointerCapture(e.pointerId);tip.classList.remove("on");
+      if(pointers.size>=2){
+        const now=pinchNow();
+        if(now) pinch={...now,dom:{...dom},xv:ux(now.cx),yv:uy(now.cy)};
+        pan=null;drag=null;
+      }else{
+        pan={x:px,y:py,dom:{...dom}};
+      }
+      return;
+    }
     // Heatmaps rubber-band a full rectangle, so the drag needs a y anchor
     // too; line/scatter plots only ever read drag.start/drag.cur (x).
     drag={start:px,cur:null,py0:py,py:null};canvas.setPointerCapture(e.pointerId);tip.classList.remove("on");
   });
   canvas.addEventListener("pointerup",e=>{
+    if(live&&pointers.has(e.pointerId)){
+      pointers.delete(e.pointerId);
+      if(pointers.size>=2){
+        const now=pinchNow();
+        if(now) pinch={...now,dom:{...dom},xv:ux(now.cx),yv:uy(now.cy)};
+      }else if(pointers.size===1){
+        pinch=null;
+        const remaining=[...pointers.values()][0];
+        pan={x:remaining.x,y:remaining.y,dom:{...dom}};
+      }else{
+        pinch=null;pan=null;
+      }
+      return;
+    }
     let zoomed=false;
     if(drag&&drag.cur!==null&&Math.abs(drag.cur-drag.start)>10){
       const a=ux(Math.min(drag.start,drag.cur)),b=ux(Math.max(drag.start,drag.cur));
@@ -1331,7 +1483,7 @@ function Plot(canvas,panel,meta){
           const yA=uy(Math.min(drag.py0,drag.py)),yB=uy(Math.max(drag.py0,drag.py));
           y0=Math.min(yA,yB);y1=Math.max(yA,yB);
         }
-        next={...dom,x0:a,x1:b,y0,y1};
+        if(b-a>=1e-9&&y1-y0>=1e-9) next={...dom,x0:a,x1:b,y0,y1};
       }else{
         const ys=[];
         for(const s of panel.traces) for(let i=0;i<s.x.length;i++)
@@ -1348,14 +1500,35 @@ function Plot(canvas,panel,meta){
       renderReadout(e.clientX-r.left,e.clientY-r.top);
     }
     drag=null;draw();
-    if(zoomed&&meta.onDomainChange)meta.onDomainChange();
+    if(zoomed) afterDomain();
+  });
+  canvas.addEventListener("pointercancel",e=>{
+    if(!(live&&pointers.has(e.pointerId))) {pointers.delete(e.pointerId);return;}
+    pointers.delete(e.pointerId);
+    if(pointers.size>=2){
+      const now=pinchNow();
+      if(now) pinch={...now,dom:{...dom},xv:ux(now.cx),yv:uy(now.cy)};
+    }else if(pointers.size===1){
+      pinch=null;
+      const remaining=[...pointers.values()][0];
+      pan={x:remaining.x,y:remaining.y,dom:{...dom}};
+    }else{
+      pinch=null;pan=null;
+    }
   });
   canvas.addEventListener("dblclick",resetDom);
+  canvas.addEventListener("wheel",e=>{
+    if(!live) return;
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+    if(px<pad.l||px>W-pad.r||py<pad.t||py>H-pad.b) return;
+    zoomAbout(px,py,e.deltaY<0?0.8:1/0.8);
+  },{passive:false});
 
   // Keyboard path: arrow keys pan a stepped x-index cursor through the same
   // readout the pointer uses, +/- (or Up/Down) zoom around it, 0 or Escape
   // resets -- the same domain reset as dblclick.
-  function xValues(){return heat?panel.x:(panel.traces[0]?panel.traces[0].x:[]);}
+  function xValues(){return heat?(live?[]:panel.x):(panel.traces[0]?panel.traces[0].x:[]);}
   function nearestIndex(xs,v){
     let b=0,d=Infinity;
     for(let i=0;i<xs.length;i++){const q=Math.abs(xs[i]-v);if(q<d){d=q;b=i;}}
@@ -1372,6 +1545,7 @@ function Plot(canvas,panel,meta){
       // zoom, consistent with the drag-rectangle behaviour above.
       const ycenter=(dom.y0+dom.y1)/2,yhalf=(dom.y1-dom.y0)*factor/2;
       const c=Math.max(base.y0,ycenter-yhalf),d=Math.min(base.y1,ycenter+yhalf);
+      if(d-c<1e-9) return;
       dom={...dom,x0:a,x1:b,y0:c,y1:d};
     }
     else{
@@ -1383,7 +1557,7 @@ function Plot(canvas,panel,meta){
       else dom={...dom,x0:a,x1:b};
     }
     draw();
-    if(meta.onDomainChange)meta.onDomainChange();
+    afterDomain();
   }
   canvas.addEventListener("keydown",e=>{
     const xs=xValues();
@@ -1415,29 +1589,144 @@ function Plot(canvas,panel,meta){
     // that came from a shared link rather than a live drag or keypress.
     getDomain:()=>({...dom}),
     getBase:()=>({...base}),
-    setDomain:d=>{dom={...base,...d};draw();if(meta.onDomainChange)meta.onDomainChange();},
+    setDomain:d=>{dom={...base,...d};draw();afterDomain();},
     isModified:()=>!!dom&&!!base&&(dom.x0!==base.x0||dom.x1!==base.x1||dom.y0!==base.y0||dom.y1!==base.y1),
     reset:resetDom};
 }
 
 /* ---------------- figures: static by default, interaction on demand ---------------- */
+function unmountPlot(fig){
+  (fig._plots||[]).forEach(p=>{
+    p.destroy();
+    const i=MOUNTED.indexOf(p);
+    if(i>=0) MOUNTED.splice(i,1);
+  });
+  fig._plots=[];
+  if(fig._pool){fig._pool.destroy();fig._pool=null;}
+  fig._live=null;
+  const body=fig.querySelector(".fig-body");
+  body.querySelectorAll(".plot-wrap,.hint").forEach(n=>n.remove());
+}
+
+function liveModuleUrl(name){
+  return new URL("live/"+name, document.baseURI).href;
+}
+
+async function mountLive(fig){
+  const body=fig.querySelector(".fig-body");
+  const [poolMod, raster]=await Promise.all([
+    import(liveModuleUrl("pool.js")),
+    import(liveModuleUrl("raster.js")),
+  ]);
+  const fc=fig.querySelector("figcaption");
+  let capText=fc?fc.textContent.trim():"";
+  capText=capText.replace(/^Figure\s*\d+\.\s*/i,"");
+  const title="Rotation number over the circle-map parameter plane";
+  // Five levels keep the finest tile small. A zoom then waits on less in-flight work.
+  const liveLevels=5;
+  try{
+    body.querySelector("img").style.display="none";
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    c.setAttribute("aria-label",capText+" — "+title);
+    w.appendChild(c);body.appendChild(w);
+    const h=document.createElement("p");h.className="plot-title";
+    h.textContent=title;w.insertBefore(h,c);
+    const store={tiles:[],generation:0,painted:0,nIter:2000};
+    let pool=null,plot=null;
+    const live={
+      base:{x0:0,x1:1,y0:0,y1:0.3},
+      tiles:store.tiles,
+      generation:()=>store.generation,
+      tilePixelRect:raster.tilePixelRect,
+      tileColorKey:raster.liveTileColorKey,
+      sample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      onView(d){
+        if(!pool) return;
+        pool.setViewport({omegaMin:d.x0,omegaMax:d.x1,kMin:d.y0,kMax:d.y1});
+        const gen=pool.getState().generation;
+        if(gen!==store.generation){
+          store.generation=gen;
+          store.painted=0;
+          store.tiles.length=0;
+          if(plot) plot.redraw();
+        }
+      }
+    };
+    const panel={
+      title,
+      zlabel:"Rotation number \u03c1",
+      cmap:"viridis",
+      x:[0,1],y:[0,0.3],z:[[0]]
+    };
+    plot=Plot(c,panel,{
+      kind:"heatmap",
+      live,
+      marks:[{axis:"y",value:1/(2*Math.PI),label:"K_c = 1/2\u03c0"}],
+      xlabel:"Bare frequency \u03a9",
+      ylabel:"Nonlinearity K",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    const dpr=Math.min(devicePixelRatio||1,2);
+    const tileCells=raster.tileCellsFor((c.clientWidth||1)*dpr,(c.clientHeight||1)*dpr,{
+      levels:liveLevels,nIter:2000,nTransient:200
+    });
+    pool=poolMod.createPool({
+      workerUrl:new URL("live/tile-worker.js", document.baseURI),
+      scheduler:{levels:liveLevels,tileCells,nTransient:200,nIter:2000,theta0:0.1},
+      onPaint(cmd){
+        const state=pool.getState();
+        if(cmd.generation!==state.generation) return;
+        const world=raster.tileWorld(cmd.id,state.viewport);
+        if(!world) return;
+        const rec={...world,generation:cmd.generation,header:cmd.header,data:cmd.data};
+        const idx=store.tiles.findIndex(t=>t.id===rec.id);
+        if(idx>=0) store.tiles[idx]=rec; else store.tiles.push(rec);
+        store.generation=cmd.generation;
+        store.painted=store.tiles.filter(t=>t.generation===store.generation).length;
+        if(cmd.header&&Number.isFinite(cmd.header[3])) store.nIter=cmd.header[3];
+        plot.redraw();
+      }
+    });
+    fig._pool=pool;
+    const d0=plot.getDomain();
+    pool.setViewport({omegaMin:d0.x0,omegaMax:d0.x1,kMin:d0.y0,kMax:d0.y1});
+    store.generation=pool.getState().generation;
+    fig._live={
+      sample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      setView(v){
+        plot.setDomain({x0:v.omegaMin,x1:v.omegaMax,y0:v.kMin,y1:v.kMax});
+      },
+      stats:()=>({
+        generation:store.generation,
+        painted:store.painted,
+        workerCount:pool.workerCount,
+        liveWorkers:pool.liveWorkers,
+        nIter:store.nIter
+      })
+    };
+    const n=document.createElement("p");n.className="hint";
+    n.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    body.appendChild(n);
+    fig.dataset.state="live";
+  }catch(err){
+    // Unmount the live figure if this setup throws. Then the caller reports the error.
+    unmountPlot(fig);
+    body.querySelector("img").style.display="";
+    throw err;
+  }
+}
+
 async function mountInteractive(fig){
   const body=fig.querySelector(".fig-body");
   const src=fig.dataset.src;
   const btn=fig.querySelector(".act-interact");
   if(fig.dataset.state==="live"){                     // toggle back to the image
     fig.dataset.state="static";
-    // Retire every Plot mounted for this figure: drop it from the shared
-    // MOUNTED registry (repaint()/resize hooks iterate it) and disconnect its
-    // ResizeObserver, or a toggle-off/toggle-on cycle leaks one dead entry
-    // and one live observer per repeat.
-    (fig._plots||[]).forEach(p=>{
-      p.destroy();
-      const i=MOUNTED.indexOf(p);
-      if(i>=0) MOUNTED.splice(i,1);
-    });
-    fig._plots=[];
-    body.querySelectorAll(".plot-wrap,.hint").forEach(n=>n.remove());
+    unmountPlot(fig);
     body.querySelector("img").style.display="";
     btn.textContent="interact";
     return;
@@ -1446,6 +1735,15 @@ async function mountInteractive(fig){
   if(oldErr) oldErr.remove();
   btn.textContent="loading";btn.disabled=true;
   try{
+    if(fig.dataset.live&&!reducedData){
+      await mountLive(fig);
+      btn.textContent="image";
+      return;
+    }
+    if(!src){
+      btn.textContent="interact";
+      return;
+    }
     const res=await fetch(src);
     if(!res.ok) throw new Error("HTTP "+res.status);
     const spec=await res.json();
@@ -1490,7 +1788,7 @@ async function mountInteractive(fig){
   }finally{btn.disabled=false;}
 }
 
-document.querySelectorAll("figure[data-src]").forEach(fig=>{
+document.querySelectorAll("figure[data-src],figure[data-live]").forEach(fig=>{
   const btn=fig.querySelector(".act-interact");
   if(btn) btn.addEventListener("click",()=>mountInteractive(fig));
 });
