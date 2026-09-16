@@ -97,24 +97,39 @@ the first time they arrive, which is a poor trade for figures that tile cleanly.
 ### Live JS runtime
 
 The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
-`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Three files:
+`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Four files:
 
 | file | job |
 |---|---|
 | `scheduler.js` | Pure function: state in, commands out. No DOM, no Worker, no timer. Node unit-tests this. |
 | `pool.js` | `N = min(navigator.hardwareConcurrency, 8)` workers, each with its own wasm instance. A pan or zoom bumps the generation; workers stay alive so the in-flight tile can finish, and a late result is dropped. `terminate()` runs only in `destroy()`. |
 | `tile-worker.js` | Loads `site/wasm/dynachaos_wasm.js`, calls `rotation_number_tile`, transfers the `Float64Array` back. Reads the 4-element header rather than trusting the request. |
+| `raster.js` | Pure tile→pixel mapping, `liveTileColorKey`, and the lookup behind `fig._live.sample`. Row 0 of a tile is `kMin`, the bottom; the canvas y axis points down. Node unit-tests this. |
+
+The paper page loads `pool.js` from `app.js` with a dynamic `import()` when the
+reader presses interact on `figure#fig:arnold_tongues`. `Plot()` keeps axes,
+colourbar, the K_c line, readout, drag zoom, keyboard and reset; only the heatmap
+raster comes from the pool. Colour scale is fixed at ρ ∈ [0, 1]. Live mode
+replaces the JSON chart; it never fetches it. Under `prefers-reduced-data` the
+page does not create the pool or download the wasm module, and falls back to
+the JSON chart if present.
 
 Tiles cover the viewport at a pyramid of levels. Level 0 is one tile over the
-whole view; each finer level splits 2×2. The scheduler issues every coarser
-tile before any finer one, and issues each visible tile exactly once per
-generation. A viewport change increments the generation; workers are not
-terminated, and results that carry an older generation are dropped, not painted.
-In-flight bookkeeping is `{ id, generation }`, so a late result cannot evict
-the current generation's entry for the same tile. Degenerate viewports
+whole view; each finer level splits 2×2. Coarser levels use fewer cells: the
+finest level uses `tileCells`, and each coarser level halves that count, so
+the first paint is one cheap tile on one worker. The live Arnold-tongues
+figure uses five levels. The scheduler issues every coarser tile before any
+finer one, and issues each visible tile exactly once per generation. A
+viewport change increments the generation; workers are not terminated, and
+results that carry an older generation are dropped, not painted. In-flight
+bookkeeping is `{ id, generation }`, so a late result cannot evict the
+current generation's entry for the same tile. Degenerate viewports
 (`omegaMax <= omegaMin` or `kMax <= kMin`) are rejected. An error reply, a
 worker-level failure, or a malformed worker message frees its tile and is
 counted as a drop, not left in flight. A failed worker is not handed more work.
+Live tiles are coloured once; redraw blits the cached ImageData. The cache
+key is `liveTileColorKey` in `raster.js` and does not include the page theme,
+because live colour is a fixed viridis ramp.
 
 Debug telemetry (`?debug=1` or `localStorage.dynachaosDebug`) logs per-tile
 compute milliseconds, worker count, queue depth, dropped generations (viewport
