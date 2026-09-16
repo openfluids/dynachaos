@@ -1390,7 +1390,6 @@ function Plot(canvas,panel,meta){
   // Do not write `from` into `dom` first. A refused zoom must leave the view.
   function applyZoom(xv,yv,px,py,factor,from){
     let xs=(from.x1-from.x0)*factor,ys=(from.y1-from.y0)*factor;
-    if(factor<1&&(xs<1e-9||ys<1e-9)) return false;
     xs=Math.max(1e-9,Math.min(base.x1-base.x0,xs));
     ys=Math.max(1e-9,Math.min(base.y1-base.y0,ys));
     const plotW=W-pad.l-pad.r,plotH=H-pad.t-pad.b;
@@ -1715,7 +1714,8 @@ async function mountLive(fig){
   }catch(err){
     // Unmount the live figure if this setup throws. Then the caller reports the error.
     unmountPlot(fig);
-    body.querySelector("img").style.display="";
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
     throw err;
   }
 }
