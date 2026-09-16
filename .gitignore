@@ -76,10 +76,6 @@ site/
 # Matplotlib font/render cache (created during figure runs)
 .mpl-cache/
 
-# supervisor-coder AUTO-mode dispatch scratch
-.sc-dispatch.jsonc
-.sc-out.txt
-
 # Coverage artifacts (pytest-cov / coverage.py)
 .coverage
 .coverage.*
