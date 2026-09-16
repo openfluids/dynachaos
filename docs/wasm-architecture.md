@@ -220,6 +220,33 @@ published pixel values in the chaotic region. It shows the same system computed
 by the same code; it does not promise the same last digits where the system
 itself refuses to have any.
 
+## Checking the live figure in CI
+
+Parity of one tile is not the live path. The live path is: the paper page,
+the interact button, a pool of workers, the coarse-to-fine pyramid, a view
+change, the rotation numbers at the tongues, and `prefers-reduced-data`.
+That check lives at `tests/e2e/live_figure.mjs` and CI runs it.
+
+**Driver: node plus the Chrome DevTools protocol.** No npm, no `package.json`,
+no bundler, no playwright, no new dependency of any kind. The reasons, checked
+rather than assumed:
+
+- `ubuntu-latest` already carries node and Chrome. The `wasm-parity` job
+  already depends on node being on the image and says so in a comment.
+- A working driver of exactly this shape has caught real defects: it serves
+  the built site with `python3 -m http.server` and drives
+  `google-chrome --headless=new` over the DevTools protocol using only node
+  built-ins (`node:child_process`, `node:net`, `node:fs`) plus the global
+  `WebSocket` and `fetch` that node 22 provides.
+- playwright-python would add a dev dependency and a browser download to get
+  capabilities this repository does not need.
+
+The CI job builds the WebAssembly bundle, builds the page, exports this
+figure's chart JSON, then runs `node --test tests/js/index.js tests/js/raster.js`
+and the end-to-end script. A missing Chrome fails the job; the script prints
+the command it tried and exits non-zero. The job does not skip the browser
+check.
+
 ## Measuring performance honestly
 
 Kernel timings in this project are small (a Grassberger-Procaccia pass at
