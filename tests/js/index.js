@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   initialState,
   reduce,
+  tileCellsAtLevel,
   visibleTiles,
   tileId,
 } from "../../site-src/live/scheduler.js";
@@ -68,6 +69,23 @@ test("tiles are issued coarse-first", () => {
     issued.map((tile) => tile.id),
     expected.map((tile) => tile.id),
   );
+});
+
+test("coarser pyramid levels use fewer cells than the finest", () => {
+  const options = { levels: 4, tileCells: 16 };
+  assert.equal(tileCellsAtLevel(3, options), 16);
+  assert.equal(tileCellsAtLevel(2, options), 8);
+  assert.equal(tileCellsAtLevel(1, options), 4);
+  assert.equal(tileCellsAtLevel(0, options), 2);
+  const tiles = visibleTiles(VIEWPORT, options);
+  const byLevel = (level) => tiles.filter((tile) => tile.level === level);
+  assert.equal(byLevel(0)[0].nOmega, 2);
+  assert.equal(byLevel(0)[0].nK, 2);
+  assert.equal(byLevel(3)[0].nOmega, 16);
+  assert.equal(byLevel(3)[0].nK, 16);
+  assert.ok(byLevel(0)[0].nOmega * byLevel(0)[0].nOmega < byLevel(3)[0].nOmega * byLevel(3)[0].nOmega);
+  assert.equal(tileCellsAtLevel(-1, options), 2);
+  assert.equal(tileCellsAtLevel(99, options), 16);
 });
 
 test("a generation counter drops stale results instead of painting them", () => {

@@ -346,6 +346,63 @@ def test_appendix_letters_follow_document_order():
     ]
 
 
+def test_arnold_tongues_is_live_even_without_chart_json(tmp_path, monkeypatch):
+    """The live figure must offer interact without a JSON export; otherwise a
+    checkout that has not run export_figure_data.py ships a static PNG only."""
+    module = _load()
+    monkeypatch.setattr(module, "SITE", tmp_path)
+    html = module.figure_block(
+        "fig:arnold_tongues", "sec02_circle_map", "arnold_tongues", "Arnold tongues.", {}
+    )
+    assert 'id="fig:arnold_tongues"' in html
+    assert 'data-live="arnold_tongues"' in html
+    assert 'class="act-interact"' in html
+    assert "data-src" not in html
+    assert 'data-state="static"' in html
+
+
+def test_arnold_tongues_keeps_json_src_as_a_reduced_data_fallback(tmp_path, monkeypatch):
+    """prefers-reduced-data falls back to the JSON chart when it exists, so the
+    live figure still carries data-src; it must not grow a second interact button."""
+    module = _load()
+    monkeypatch.setattr(module, "SITE", tmp_path)
+    data = tmp_path / "data" / "sec02_circle_map"
+    data.mkdir(parents=True)
+    (data / "arnold_tongues.json").write_text("{}")
+    html = module.figure_block(
+        "fig:arnold_tongues", "sec02_circle_map", "arnold_tongues", "Arnold tongues.", {}
+    )
+    assert 'data-live="arnold_tongues"' in html
+    assert 'data-src="data/sec02_circle_map/arnold_tongues.json"' in html
+    assert html.count("act-interact") == 1
+
+
+def test_a_json_figure_that_is_not_live_is_unchanged(tmp_path, monkeypatch):
+    module = _load()
+    monkeypatch.setattr(module, "SITE", tmp_path)
+    data = tmp_path / "data" / "sec02_circle_map"
+    data.mkdir(parents=True)
+    (data / "devil_staircase.json").write_text("{}")
+    html = module.figure_block(
+        "fig:devil_staircase", "sec02_circle_map", "devil_staircase", "Devil's staircase.", {}
+    )
+    assert "data-live" not in html
+    assert 'data-src="data/sec02_circle_map/devil_staircase.json"' in html
+    assert 'class="act-interact"' in html
+
+
+def test_a_static_figure_still_has_no_interact_button(tmp_path, monkeypatch):
+    module = _load()
+    monkeypatch.setattr(module, "SITE", tmp_path)
+    html = module.figure_block(
+        "fig:attractors", "sec03_transition", "attractors", "Attractors.", {}
+    )
+    assert "data-live" not in html
+    assert "data-src" not in html
+    assert "act-interact" not in html
+    assert 'class="act-zoom"' in html
+
+
 def test_the_assembled_page_numbers_everything_the_way_the_manuscript_does():
     """The whole-page check the unit tests above cannot make.
 
