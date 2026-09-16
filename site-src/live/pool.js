@@ -180,6 +180,9 @@ export function createPool(options = {}) {
 
   return {
     workerCount: n,
+    get liveWorkers() {
+      return n - failed.size;
+    },
     setViewport(viewport) {
       const { state: next, commands } = reduce(state, { type: "viewport", viewport });
       state = next;

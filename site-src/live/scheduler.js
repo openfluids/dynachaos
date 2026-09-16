@@ -45,6 +45,26 @@ export function initialState(options = {}) {
 }
 
 /**
+ * Cell count on one side of a tile at `level`.
+ *
+ * The finest level uses `tileCells`. Each coarser level halves that count.
+ * A level-0 tile occupies one worker, so the coarse side must stay small.
+ *
+ * @param {number} level
+ * @param {{ levels?: number, tileCells?: number }} [options]
+ * @returns {number}
+ */
+export function tileCellsAtLevel(level, options = {}) {
+  const levels = optionInt(options.levels, DEFAULTS.levels, 1);
+  const tileCells = optionInt(options.tileCells, DEFAULTS.tileCells, 1);
+  const raw = Number(level);
+  const lv = Number.isFinite(raw) ? Math.floor(raw) : 0;
+  const clamped = Math.max(0, Math.min(levels - 1, lv));
+  const shifts = levels - 1 - clamped;
+  return Math.max(1, Math.floor(tileCells / 2 ** shifts));
+}
+
+/**
  * Tiles that cover `viewport`, coarse level first.
  *
  * @param {{ omegaMin: number, omegaMax: number, kMin: number, kMax: number }} viewport
@@ -64,6 +84,7 @@ export function visibleTiles(viewport, options = {}) {
     const n = 2 ** level;
     const dOmega = (omegaMax - omegaMin) / n;
     const dK = (kMax - kMin) / n;
+    const cells = tileCellsAtLevel(level, { levels, tileCells });
     for (let iy = 0; iy < n; iy++) {
       for (let ix = 0; ix < n; ix++) {
         tiles.push({
@@ -77,8 +98,8 @@ export function visibleTiles(viewport, options = {}) {
           omegaMax: omegaMin + (ix + 1) * dOmega,
           kMin: kMin + iy * dK,
           kMax: kMin + (iy + 1) * dK,
-          nOmega: tileCells,
-          nK: tileCells,
+          nOmega: cells,
+          nK: cells,
           nTransient,
           nIter,
           theta0,
