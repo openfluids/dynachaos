@@ -29,7 +29,13 @@ pub enum ExitKind {
 
 const LOCK_TOLERANCE: f64 = 1e-12;
 const MAX_LOCK_PERIOD: usize = 32;
+/// Periods up to this are tested at every step; longer ones are swept.
+const LOCK_SCAN_ALWAYS: usize = 1;
+/// One period in this many is tested per step above `LOCK_SCAN_ALWAYS`.
+const LOCK_SCAN_STRIDE: usize = 32;
 const MIN_BOUNDED_ERROR_STEPS: usize = 50;
+/// The bounded-error test is evaluated on every this-many-th step.
+const BOUNDED_CHECK_EVERY: usize = 8;
 /// Invertibility threshold: above this K the C/m tail is not a bound.
 const K_CRITICAL: f64 = 1.0 / std::f64::consts::TAU;
 /// Half the colour resolution (1/256): stop when dyadic windows agree below this.
@@ -74,13 +80,38 @@ fn linspace(start: f64, stop: f64, n: usize) -> Vec<f64> {
     values
 }
 
+/// Look for a closed orbit, testing a rotating subset of the possible periods.
+///
+/// Once an orbit is on a cycle of period `q`, `theta_n - theta_{n-q}` is the
+/// same integer at every step, so the closure test does not have to try every
+/// period every time. Testing one period in `LOCK_SCAN_STRIDE` costs a quarter
+/// of the work and finds the same lock at most `LOCK_SCAN_STRIDE - 1` steps
+/// later. Short periods carry most of the tongues, so they are tested every
+/// step and the stride applies only above `LOCK_SCAN_ALWAYS`.
 fn detect_lock(theta: f64, ring: &[f64; 32], step: usize) -> Option<(i64, usize)> {
-    for q in 1..=MAX_LOCK_PERIOD.min(step - 1) {
+    let max_q = MAX_LOCK_PERIOD.min(step - 1);
+    let mut q = 1;
+    while q <= max_q {
         let theta_n = ring[(step - q - 1) % 32];
         let delta = theta - theta_n;
         let p = delta.round() as i64;
         if (delta - p as f64).abs() < LOCK_TOLERANCE {
             return Some((p, q));
+        }
+        q += if q < LOCK_SCAN_ALWAYS { 1 } else { LOCK_SCAN_STRIDE };
+    }
+    // Sweep the strided periods across steps so every one is still reached.
+    let phase = step % LOCK_SCAN_STRIDE;
+    if phase != 0 {
+        let mut q = LOCK_SCAN_ALWAYS + phase;
+        while q <= max_q {
+            let theta_n = ring[(step - q - 1) % 32];
+            let delta = theta - theta_n;
+            let p = delta.round() as i64;
+            if (delta - p as f64).abs() < LOCK_TOLERANCE {
+                return Some((p, q));
+            }
+            q += LOCK_SCAN_STRIDE;
         }
     }
     None
@@ -190,7 +221,14 @@ fn rotation_number_compute(
         ring[(step - 1) % 32] = theta;
         // Above K_c the map is non-invertible; the running-mean tail is not a
         // trustworthy bound, so only lock detection can end the measure phase.
-        if allow_early_exit && k <= K_CRITICAL && m >= MIN_BOUNDED_ERROR_STEPS {
+        // The estimate moves like C/m, so testing it every step buys nothing and
+        // costs two divisions each time. Testing every BOUNDED_CHECK_EVERY steps
+        // delays a stop by at most that many steps out of several hundred.
+        if allow_early_exit
+            && k <= K_CRITICAL
+            && m >= MIN_BOUNDED_ERROR_STEPS
+            && m % BOUNDED_CHECK_EVERY == 0
+        {
             let rho_m = (theta - theta_start) / m as f64;
             let half_m = m / 2;
             let rho_half = (measure_thetas[half_m - 1] - theta_start) / half_m as f64;
