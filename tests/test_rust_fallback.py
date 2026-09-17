@@ -1177,6 +1177,11 @@ class TestCircleMapTileParity:
     N_TRANSIENT = 200
     N_ITER = 500
     THETA0 = 0.1
+    # Closure search: periods up to Q_MAX, over the first SEARCH_STEPS angles.
+    Q_MAX = 32
+    SEARCH_STEPS = 96
+    CLOSURE_EPS = 1e-12
+    K_CRITICAL = 1.0 / (2.0 * np.pi)
 
     def _numpy_reference(self):
         two_pi = 2.0 * np.pi
@@ -1214,10 +1219,80 @@ class TestCircleMapTileParity:
         reference = self._numpy_reference()
 
         assert rust_tile.shape == (self.N_K, self.N_OMEGA)
-        # On Linux x86-64 the two agree bit for bit. The tolerance covers a
-        # possible one-unit-in-last-place difference between the platform sin
-        # used by Rust and the one NumPy uses on macOS and Windows.
-        np.testing.assert_allclose(rust_tile, reference, rtol=1e-13, atol=1e-15)
+        # The Rust kernel stops early once the orbit locks or the running
+        # estimate is within half a colour step (1/256). NumPy here always runs
+        # the full stretch, so this bound covers the cells that stopped on the
+        # estimate. It is deliberately loose, and on its own it would hide an
+        # error of up to one colour step inside a locked tongue, where the two
+        # must agree exactly. test_locked_cells_return_the_exact_rational is
+        # what holds that population; do not delete one and keep the other.
+        display_tol = 1.0 / 256.0
+        np.testing.assert_allclose(rust_tile, reference, rtol=0.0, atol=display_tol)
+
+    def _locked_rationals(self):
+        """Per cell, the (p, q) an orbit closes on, or None if it does not close.
+
+        The orbit is advanced exactly as _numpy_reference advances it. That
+        matters: `theta += omega + k sin(...)` sums the increment before adding,
+        and a different association changes the last bit. Above K_c that one bit
+        grows into a different trajectory.
+        """
+        two_pi = 2.0 * np.pi
+        omega_values = np.linspace(0.0, 1.0, self.N_OMEGA)
+        k_values = np.linspace(0.0, 0.3, self.N_K)
+        omega_grid, k_grid = np.meshgrid(omega_values, k_values)
+        omega_flat = omega_grid.ravel()
+        k_flat = k_grid.ravel()
+
+        theta = np.full(omega_flat.size, self.THETA0)
+        for _ in range(self.N_TRANSIENT):
+            theta += omega_flat + k_flat * np.sin(two_pi * theta)
+        history = []
+        for _ in range(self.SEARCH_STEPS):
+            history.append(theta.copy())
+            theta += omega_flat + k_flat * np.sin(two_pi * theta)
+        angles = np.asarray(history)
+
+        rationals = [None] * omega_flat.size
+        for cell in range(omega_flat.size):
+            column = angles[:, cell]
+            for start in range(self.SEARCH_STEPS - self.Q_MAX):
+                for q in range(1, self.Q_MAX + 1):
+                    drift = column[start + q] - column[start]
+                    if abs(drift - round(drift)) < self.CLOSURE_EPS:
+                        rationals[cell] = (int(round(drift)), q)
+                        break
+                if rationals[cell] is not None:
+                    break
+        return k_flat, rationals
+
+    def test_locked_cells_return_the_exact_rational(self):
+        """A closed orbit has an exactly rational rotation number, and the kernel returns it.
+
+        Below K_c the map is a diffeomorphism, so the closure found here is the
+        closure the kernel finds and p / q is exact: the two must agree to
+        machine precision, not to the displayed colour. Above K_c the map is not
+        invertible and a last-bit difference changes the trajectory, so a closure
+        detected here need not be the one the kernel took; those cells are left
+        to the display bound in the test above.
+        """
+        rust_tile = self._rust_tile().ravel()
+        k_flat, rationals = self._locked_rationals()
+
+        checked = 0
+        for cell, rational in enumerate(rationals):
+            if rational is None or k_flat[cell] > self.K_CRITICAL:
+                continue
+            p, q = rational
+            assert abs(rust_tile[cell] - p / q) <= 1e-12, (
+                f"cell {cell} (K = {k_flat[cell]:.4f}) closes on {p}/{q}, "
+                f"but the kernel returned {rust_tile[cell]!r}"
+            )
+            checked += 1
+        assert checked >= 5, (
+            f"only {checked} locked cells below K_c were checked; "
+            "this assertion would prove almost nothing"
+        )
 
     def test_zero_coupling_row_returns_omega(self):
         """The K = 0 row is a known analytic case: the drift per step is Omega."""
