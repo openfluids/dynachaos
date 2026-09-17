@@ -79,6 +79,10 @@ jobs:
       - run: uv sync --all-extras
       - name: Build the WebAssembly bundle
         run: uv run python scripts/build_wasm.py
+      - name: Run the binding's own tests
+        # rust/wasm is its own workspace, so the root `cargo test` never reaches
+        # it. These tests cover the clamping the browser depends on.
+        run: cargo test --manifest-path rust/wasm/Cargo.toml
       - name: Check the browser build against the native build
         # Node is already on the runner image, so this needs no setup-node step.
         # wasmtime would have to be installed first, which is why node wins.
@@ -123,7 +127,7 @@ jobs:
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
         # Name each file. A bare directory made node skip one of the two files.
-        run: node --test tests/js/index.js tests/js/raster.js
+        run: node --test tests/js/index.js tests/js/raster.js tests/js/point.js
       - name: Run the live-figure end-to-end test
         # Node and Chrome are already on the runner image, so this needs no
         # setup-node step and no npm toolchain.
