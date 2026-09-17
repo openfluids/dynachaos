@@ -98,7 +98,11 @@ fn detect_lock(theta: f64, ring: &[f64; 32], step: usize) -> Option<(i64, usize)
         if (delta - p as f64).abs() < LOCK_TOLERANCE {
             return Some((p, q));
         }
-        q += if q < LOCK_SCAN_ALWAYS { 1 } else { LOCK_SCAN_STRIDE };
+        q += if q < LOCK_SCAN_ALWAYS {
+            1
+        } else {
+            LOCK_SCAN_STRIDE
+        };
     }
     // Sweep the strided periods across steps so every one is still reached.
     let phase = step % LOCK_SCAN_STRIDE;
@@ -163,8 +167,6 @@ fn update_pending_lock(
     None
 }
 
-
-
 /// Core iteration with optional early exit. Returns rotation number, exit kind,
 /// and the number of map steps (sine evaluations) performed.
 fn rotation_number_compute(
@@ -192,7 +194,6 @@ fn rotation_number_compute(
         ring[(step - 1) % 32] = theta;
     }
 
-
     let theta_start = theta;
     let mut measure_thetas: Vec<f64> = Vec::with_capacity(n_iter);
 
@@ -208,9 +209,7 @@ fn rotation_number_compute(
                 let rho_mean = (theta - theta_start) / m as f64;
                 let exact = p as f64 / q as f64;
                 let lock_mean_tol = (1.0 / n_iter as f64).min(HALF_DISPLAY_TOLERANCE);
-                if m >= MIN_BOUNDED_ERROR_STEPS
-                    && (rho_mean - exact).abs() < lock_mean_tol
-                {
+                if m >= MIN_BOUNDED_ERROR_STEPS && (rho_mean - exact).abs() < lock_mean_tol {
                     return (exact, ExitKind::Locked { p, q }, map_steps);
                 }
                 pending_lock = None;
@@ -259,8 +258,6 @@ fn rotation_number_compute(
             }
         }
     }
-
-
 
     let rho = (theta - theta_start) / n_iter as f64;
     (rho, ExitKind::Exhausted, map_steps)
@@ -417,8 +414,7 @@ mod tests {
         assert!((single(0.5, 0.2) - 0.5).abs() < 1e-12);
         assert!((single(0.5, 0.05) - 0.5).abs() < 1e-12);
 
-        let (rho, kind, _) =
-            rotation_number_with_exit(0.5, 0.2, N_TRANSIENT, N_ITER, THETA0);
+        let (rho, kind, _) = rotation_number_with_exit(0.5, 0.2, N_TRANSIENT, N_ITER, THETA0);
         assert!((rho - 0.5).abs() < 1e-12);
         match kind {
             ExitKind::Locked { p, q } => assert!(same_rational((p, q), (1, 2))),
@@ -432,10 +428,7 @@ mod tests {
             ExitKind::Locked { p, q } => assert!(same_rational((p, q), (1, 3))),
             other => panic!("expected Locked 1/3, got {other:?}"),
         }
-
-
     }
-
 
     #[test]
     fn tile_layout_is_row_major_with_k_down_the_rows() {
@@ -481,20 +474,10 @@ mod tests {
 
         for &k in &k_values {
             for &omega in &omega_values {
-                let (rho_early, kind, _) = rotation_number_with_exit(
-                    omega,
-                    k,
-                    N_TRANSIENT_GRID,
-                    N_ITER_GRID,
-                    THETA0_GRID,
-                );
-                let rho_full = rotation_number_full(
-                    omega,
-                    k,
-                    N_TRANSIENT_GRID,
-                    N_ITER_GRID,
-                    THETA0_GRID,
-                );
+                let (rho_early, kind, _) =
+                    rotation_number_with_exit(omega, k, N_TRANSIENT_GRID, N_ITER_GRID, THETA0_GRID);
+                let rho_full =
+                    rotation_number_full(omega, k, N_TRANSIENT_GRID, N_ITER_GRID, THETA0_GRID);
                 let diff = (rho_early - rho_full).abs();
                 worst_all = worst_all.max(diff);
 
@@ -508,7 +491,6 @@ mod tests {
                     diff <= DISPLAY_TOLERANCE,
                     "omega={omega}, k={k}: |early-full|={diff} > {DISPLAY_TOLERANCE}"
                 );
-
             }
         }
 
@@ -522,7 +504,6 @@ mod tests {
         eprintln!("WORST_LOCKED={worst_locked:.6e}");
         eprintln!("WORST_LOCKED_CORRECTION={worst_locked_correction:.6e}");
     }
-
 
     #[test]
     fn iteration_gain_on_base_view() {
@@ -542,21 +523,11 @@ mod tests {
 
         for &k in &k_values {
             for &omega in &omega_values {
-                let (rho_early, kind, steps) = rotation_number_with_exit(
-                    omega,
-                    k,
-                    N_TRANSIENT_VIEW,
-                    N_ITER_VIEW,
-                    THETA0_VIEW,
-                );
+                let (rho_early, kind, steps) =
+                    rotation_number_with_exit(omega, k, N_TRANSIENT_VIEW, N_ITER_VIEW, THETA0_VIEW);
                 iterations_after += steps;
-                let rho_full = rotation_number_full(
-                    omega,
-                    k,
-                    N_TRANSIENT_VIEW,
-                    N_ITER_VIEW,
-                    THETA0_VIEW,
-                );
+                let rho_full =
+                    rotation_number_full(omega, k, N_TRANSIENT_VIEW, N_ITER_VIEW, THETA0_VIEW);
                 let diff = (rho_early - rho_full).abs();
                 worst_all = worst_all.max(diff);
                 if let ExitKind::Locked { .. } = kind {
