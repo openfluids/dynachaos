@@ -26,7 +26,7 @@ The split landed in Phase 0 (2026-09).
 |---|---|---|
 | `rust/core` | every kernel; slices in, plain Rust out; no pyo3, no numpy | ndarray, rayon (optional) |
 | `rust/py` | `#[pyfunction]` wrappers, numpy conversion, `py.detach` around core calls | `dynachaos-core`, pyo3, numpy |
-| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; one export so far, `rotation_number_tile` | `dynachaos-core` with `--no-default-features` |
+| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; `rotation_number_tile` for the picture, `rotation_number_point` for the quoted readout | `dynachaos-core` with `--no-default-features` |
 
 `rust/core` carries 1491 lines of kernel code; `rust/py` carries 629 lines of
 binding with no arithmetic in it. Keeping the arithmetic in exactly one place is
@@ -97,14 +97,15 @@ the first time they arrive, which is a poor trade for figures that tile cleanly.
 ### Live JS runtime
 
 The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
-`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Four files:
+`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Five files:
 
 | file | job |
 |---|---|
 | `scheduler.js` | Pure function: state in, commands out. No DOM, no Worker, no timer. Node unit-tests this. |
 | `pool.js` | `N = min(navigator.hardwareConcurrency, 8)` workers, each with its own wasm instance. A pan or zoom bumps the generation; workers stay alive so the in-flight tile can finish, and a late result is dropped. `terminate()` runs only in `destroy()`. |
 | `tile-worker.js` | Loads `site/wasm/dynachaos_wasm.js`, calls `rotation_number_tile`, transfers the `Float64Array` back. Reads the 4-element header rather than trusting the request. |
-| `raster.js` | Pure tile→pixel mapping, `liveTileColorKey`, and the lookup behind `fig._live.sample`. Row 0 of a tile is `kMin`, the bottom; the canvas y axis points down. Node unit-tests this. |
+| `raster.js` | Pure tile→pixel mapping, `liveTileColorKey`, and the tile lookup used as the readout fallback. Row 0 of a tile is `kMin`, the bottom; the canvas y axis points down. Node unit-tests this. |
+| `point.js` | Main-thread lazy load of the wasm glue; synchronous `sample()` of one (Omega, K) point with lock detection on and the display stop off. Hover and keyboard readout share this path. |
 
 The paper page loads `pool.js` from `app.js` with a dynamic `import()` when the
 reader presses interact on `figure#fig:arnold_tongues`. `Plot()` keeps axes,
@@ -206,10 +207,14 @@ numbers":
   the rational `p / q` as soon as the unwrapped orbit closes. Those regions
   are the subject of the figure; the tongues are exactly where the reader is
   looking.
-- **Elsewhere the value is accurate to the displayed colour resolution**
-  (one step in 256). The kernel stops once its running estimate is provably
-  within half that tolerance; the live figure never promises more precision
-  than a reader can see.
+- **The picture is accurate to the displayed colour resolution** (one step in
+  256). The tile kernel stops once its running estimate is provably within
+  half that tolerance. The colour a reader sees never promises more.
+- **The quoted readout does not carry that display tolerance.** Hover and
+  keyboard sample one (Omega, K) point with lock detection on and the display
+  stop off: the exact rational when the orbit locks, the full `n_iter`
+  average otherwise. Until that main-thread module is ready, the readout
+  falls back to the tile sample.
 - **In the chaotic sea, a single pixel is still not reproducible** across sine
   implementations. It is not reproducible across compilers or CPUs either.
   That is a property of the system, not of this port, and a figure that showed
