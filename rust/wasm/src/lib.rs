@@ -10,6 +10,8 @@
 //!
 //! The kernels themselves live in `dynachaos-core` and are the same code the
 //! published figures were computed with. This crate only converts and guards.
+//! Two exports: `rotation_number_tile` for the picture, `rotation_number_point`
+//! for the quoted readout.
 
 use wasm_bindgen::prelude::*;
 
@@ -113,6 +115,46 @@ pub fn rotation_number_tile(
     out
 }
 
+/// Rotation number of one (Omega, K) point, lock detection on, display stop off.
+///
+/// This is the value the live figure quotes on hover. Locked orbits return the
+/// exact rational; unlocked orbits run the full `n_iter` average. The tile
+/// export keeps the display-tolerance stop; this one does not.
+///
+/// # Returned layout
+///
+/// One `f64`: `[0]` is the rotation number after clamping.
+///
+/// # Clamping
+///
+/// - `n_transient`: 0 to 20000 steps.
+/// - `n_iter`: 1 to 200000 steps, reduced further to respect the step budget
+///   for a single cell.
+/// - `omega`, `k`, `theta0`: a non-finite value falls back to the published
+///   figure's defaults (0, 0, 0.1).
+#[wasm_bindgen]
+pub fn rotation_number_point(
+    omega: f64,
+    k: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+) -> Vec<f64> {
+    let omega = finite_or(omega, 0.0);
+    let k = finite_or(k, 0.0);
+    let theta0 = finite_or(theta0, 0.1);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(1, 1, n_transient, n_iter);
+    vec![dynachaos_core::rotation_number_point(
+        omega,
+        k,
+        n_transient,
+        n_iter,
+        theta0,
+    )]
+}
+
 /// Return `value` when it is finite, otherwise `fallback`.
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
@@ -182,5 +224,19 @@ mod tests {
         for (value, expected) in tile.iter().zip([0.0, 0.25, 0.5]) {
             assert!((value - expected).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn a_locked_point_returns_the_exact_rational() {
+        let out = rotation_number_point(0.05, 0.12, 200, 2000, 0.1);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], 0.0);
+    }
+
+    #[test]
+    fn a_non_finite_point_still_returns_a_number() {
+        let out = rotation_number_point(f64::NAN, f64::NAN, 10, 10, f64::NAN);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].is_finite());
     }
 }
