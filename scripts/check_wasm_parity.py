@@ -131,7 +131,6 @@ def k_of_row(row: int, n_k: int) -> float:
     return K_MIN + row * (K_MAX - K_MIN) / (n_k - 1)
 
 
-
 def native_exit_kinds() -> list[tuple[str, tuple]]:
     """Return per-cell exit kinds from the native kernel helper."""
     env = {**os.environ, "RUSTFLAGS": ""}
@@ -255,6 +254,7 @@ def self_check_perturbation() -> bool:
     failed_perturbed, _ = compare_tiles(perturbed, wasm_values, exit_kinds, n_omega, n_k)
     return failed_perturbed
 
+
 def main() -> int:
     """Compare the two tiles region by region and report."""
     if not (SITE_WASM / "dynachaos_wasm.js").exists():
@@ -292,8 +292,7 @@ def main() -> int:
     exit_kinds = native_exit_kinds()
     if len(exit_kinds) != len(native_values):
         print(
-            f"FAIL: exit-kind helper returned {len(exit_kinds)} rows, "
-            f"expected {len(native_values)}"
+            f"FAIL: exit-kind helper returned {len(exit_kinds)} rows, expected {len(native_values)}"
         )
         return 1
 
