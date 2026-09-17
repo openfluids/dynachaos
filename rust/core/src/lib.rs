@@ -18,7 +18,8 @@ pub mod recurrence;
 
 pub use ami::ami_histogram;
 pub use circle_map::{
-    ExitKind, rotation_number_full, rotation_number_tile, rotation_number_with_exit,
+    ExitKind, rotation_number_full, rotation_number_point, rotation_number_tile,
+    rotation_number_with_exit,
 };
 pub use cml::cml_jacobian_logistic;
 pub use comoving::comoving_lyapunov_logistic;

@@ -167,15 +167,20 @@ fn update_pending_lock(
     None
 }
 
-/// Core iteration with optional early exit. Returns rotation number, exit kind,
-/// and the number of map steps (sine evaluations) performed.
+/// Core iteration with independently switchable lock and display-stop exits.
+///
+/// Returns rotation number, exit kind, and the number of map steps (sine
+/// evaluations) performed. The tile path turns both exits on. The quoted
+/// single-point path keeps lock detection and turns the display stop off.
+/// [`rotation_number_full`] turns both off.
 fn rotation_number_compute(
     omega: f64,
     k: f64,
     n_transient: usize,
     n_iter: usize,
     theta0: f64,
-    allow_early_exit: bool,
+    allow_lock: bool,
+    allow_display_stop: bool,
 ) -> (f64, ExitKind, usize) {
     const TWO_PI: f64 = std::f64::consts::TAU;
     let mut theta = theta0;
@@ -195,13 +200,17 @@ fn rotation_number_compute(
     }
 
     let theta_start = theta;
-    let mut measure_thetas: Vec<f64> = Vec::with_capacity(n_iter);
+    let mut measure_thetas: Vec<f64> = if allow_display_stop {
+        Vec::with_capacity(n_iter)
+    } else {
+        Vec::new()
+    };
 
     for m in 1..=n_iter {
         advance(&mut theta);
         step += 1;
 
-        if allow_early_exit {
+        if allow_lock {
             let detected = detect_lock(theta, &ring, step);
             if let Some((p, q)) =
                 update_pending_lock(&mut pending_lock, step, theta, &ring, detected)
@@ -216,14 +225,16 @@ fn rotation_number_compute(
             }
         }
 
-        measure_thetas.push(theta);
+        if allow_display_stop {
+            measure_thetas.push(theta);
+        }
         ring[(step - 1) % 32] = theta;
         // Above K_c the map is non-invertible; the running-mean tail is not a
         // trustworthy bound, so only lock detection can end the measure phase.
         // The estimate moves like C/m, so testing it every step buys nothing and
         // costs two divisions each time. Testing every BOUNDED_CHECK_EVERY steps
         // delays a stop by at most that many steps out of several hundred.
-        if allow_early_exit
+        if allow_display_stop
             && k <= K_CRITICAL
             && m >= MIN_BOUNDED_ERROR_STEPS
             && m % BOUNDED_CHECK_EVERY == 0
@@ -269,7 +280,7 @@ fn rotation_number_compute(
 /// `n_iter` more steps unless the orbit locks or the estimate stabilises.
 #[inline]
 fn rotation_number(omega: f64, k: f64, n_transient: usize, n_iter: usize, theta0: f64) -> f64 {
-    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true).0
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true, true).0
 }
 
 /// Same as [`rotation_number`] but also reports how the iteration ended and how
@@ -281,7 +292,7 @@ pub fn rotation_number_with_exit(
     n_iter: usize,
     theta0: f64,
 ) -> (f64, ExitKind, usize) {
-    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true)
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true, true)
 }
 
 /// Full fixed-count rotation number with no early exit.
@@ -292,7 +303,22 @@ pub fn rotation_number_full(
     n_iter: usize,
     theta0: f64,
 ) -> f64 {
-    rotation_number_compute(omega, k, n_transient, n_iter, theta0, false).0
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, false, false).0
+}
+
+/// Rotation number of one (Omega, K) point with lock detection and no display stop.
+///
+/// Locked orbits return the exact rational `p / q`. Unlocked orbits run the
+/// full `n_iter` average, matching [`rotation_number_full`]. The tile path
+/// keeps the display-tolerance stop; this is the value a reader can quote.
+pub fn rotation_number_point(
+    omega: f64,
+    k: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+) -> f64 {
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true, false).0
 }
 
 /// Rotation numbers over a rectangular tile of the (Omega, K) plane.
@@ -545,6 +571,40 @@ mod tests {
             "ITERATION_FRACTION={:.4} ({:.1}%)",
             fraction,
             fraction * 100.0
+        );
+    }
+
+    #[test]
+    fn point_kernel_locked_cell_is_exact_rational() {
+        const N_TRANSIENT_LIVE: usize = 200;
+        const N_ITER_LIVE: usize = 2000;
+        let rho = rotation_number_point(0.05, 0.12, N_TRANSIENT_LIVE, N_ITER_LIVE, THETA0);
+        assert_eq!(rho, 0.0);
+        assert_eq!((rho - 0.0).abs(), 0.0);
+
+        let half = rotation_number_point(0.5, 0.2, N_TRANSIENT, N_ITER, THETA0);
+        assert_eq!(half, 0.5);
+        assert_eq!((half - 0.5).abs(), 0.0);
+    }
+
+    #[test]
+    fn point_kernel_unlocked_cell_matches_full() {
+        const N_TRANSIENT_LIVE: usize = 200;
+        const N_ITER_LIVE: usize = 2000;
+        let omega = 0.08;
+        let k = 0.03;
+        let (_, kind, _) =
+            rotation_number_with_exit(omega, k, N_TRANSIENT_LIVE, N_ITER_LIVE, THETA0);
+        assert!(
+            !matches!(kind, ExitKind::Locked { .. }),
+            "expected an unlocked cell at (0.08, 0.03), got {kind:?}"
+        );
+        let point = rotation_number_point(omega, k, N_TRANSIENT_LIVE, N_ITER_LIVE, THETA0);
+        let full = rotation_number_full(omega, k, N_TRANSIENT_LIVE, N_ITER_LIVE, THETA0);
+        let diff = (point - full).abs();
+        assert!(
+            diff <= 1e-12,
+            "unlocked point vs full: |{point} - {full}| = {diff} > 1e-12"
         );
     }
 }
