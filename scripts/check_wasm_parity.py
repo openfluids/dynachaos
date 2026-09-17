@@ -18,12 +18,12 @@ rather than a defect. Measured on 2026-09-08 over a 64 x 64 tile:
   13 of them by more than the ``1e-12`` floor below, by up to 2.9e-2. That 13
   is the number this script prints.
 
-This check therefore asserts what is true in each region. Below the critical
-line the rotation number is well conditioned and the two builds must agree to a
-tight bound, so a port defect shows up at once. Above it the value of a single
-cell is not reproducible across sine implementations, and demanding that it
-were would only invite someone to widen the bound until the check meant
-nothing. What is asserted there instead is that divergence stays rare.
+The check classifies each native cell by how the kernel stopped (locked,
+display-stop, or exhausted) and applies a separate bound per population. Locked
+cells stay on the subcritical limit at any K. Display-stop cells are held to one
+colour step (1/256) at any K. Exhausted cells below the critical line stay on
+the subcritical limit; exhausted cells above it keep the chaotic noise floor
+and share limit.
 
 Do not loosen the subcritical bound to make this pass. A difference there means
 the browser computes something the paper did not.
@@ -81,6 +81,11 @@ CHAOTIC_NOISE_FLOOR = 1e-12
 # that is a defect, not chaos.
 CHAOTIC_SHARE_LIMIT = 0.05
 
+# Colour resolution for bounded-error early exit.
+DISPLAY_TOLERANCE = 1.0 / 256.0
+
+CORE_CRATE = PROJECT_ROOT / "rust" / "core"
+
 
 def native_tile() -> list[int]:
     """Return the tile from the native build, as f64 bit patterns."""
@@ -126,6 +131,130 @@ def k_of_row(row: int, n_k: int) -> float:
     return K_MIN + row * (K_MAX - K_MIN) / (n_k - 1)
 
 
+
+def native_exit_kinds() -> list[tuple[str, tuple]]:
+    """Return per-cell exit kinds from the native kernel helper."""
+    env = {**os.environ, "RUSTFLAGS": ""}
+    result = subprocess.run(
+        [
+            "cargo",
+            "run",
+            "--quiet",
+            "--manifest-path",
+            str(CORE_CRATE / "Cargo.toml"),
+            "--example",
+            "tile_exit_kinds",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    kinds: list[tuple[str, tuple]] = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if parts[0] == "0":
+            kinds.append(("locked", (int(parts[1]), int(parts[2]))))
+        elif parts[0] == "1":
+            kinds.append(("bounded", ()))
+        elif parts[0] == "2":
+            kinds.append(("exhausted", ()))
+        else:
+            raise ValueError(f"unexpected exit kind line: {line!r}")
+    return kinds
+
+
+def compare_tiles(
+    native_values: list[float],
+    wasm_values: list[float],
+    exit_kinds: list[tuple[str, tuple]],
+    n_omega: int,
+    n_k: int,
+) -> tuple[bool, str]:
+    """Compare tiles with per-population bounds. Return (failed, report)."""
+    locked_worst = 0.0
+    bounded_worst = 0.0
+    subcritical_worst = 0.0
+    chaotic_cells = 0
+    chaotic_diverged = 0
+    chaotic_worst = 0.0
+
+    for index, (left, right) in enumerate(zip(native_values, wasm_values, strict=True)):
+        if not (isfinite(left) and isfinite(right)):
+            return True, f"FAIL: cell {index} is not finite (native {left!r}, wasm {right!r})"
+        difference = abs(left - right)
+        kind, _ = exit_kinds[index]
+        k_value = k_of_row(index // n_omega, n_k)
+
+        if kind == "locked":
+            locked_worst = max(locked_worst, difference)
+            if difference > SUBCRITICAL_LIMIT:
+                return (
+                    True,
+                    f"FAIL: locked cell {index} differs by {difference:.3e}, above "
+                    f"{SUBCRITICAL_LIMIT:.1e}",
+                )
+        elif kind == "bounded":
+            bounded_worst = max(bounded_worst, difference)
+            if difference > DISPLAY_TOLERANCE:
+                return (
+                    True,
+                    f"FAIL: display-stop cell {index} differs by {difference:.3e}, above "
+                    f"{DISPLAY_TOLERANCE:.3e}",
+                )
+        elif k_value <= K_CRITICAL:
+            subcritical_worst = max(subcritical_worst, difference)
+            if difference > SUBCRITICAL_LIMIT:
+                return (
+                    True,
+                    f"FAIL: subcritical exhausted cell {index} differs by {difference:.3e}, "
+                    f"above {SUBCRITICAL_LIMIT:.1e}",
+                )
+        else:
+            chaotic_cells += 1
+            chaotic_worst = max(chaotic_worst, difference)
+            if difference > CHAOTIC_NOISE_FLOOR:
+                chaotic_diverged += 1
+
+    share = chaotic_diverged / max(chaotic_cells, 1)
+    report = (
+        f"compared {len(native_values)} cells ({n_k} x {n_omega})\n"
+        f"  locked: worst difference {locked_worst:.3e}\n"
+        f"  display-stop: worst difference {bounded_worst:.3e}\n"
+        f"  below K = {K_CRITICAL:.4f} (exhausted): worst difference {subcritical_worst:.3e}\n"
+        f"  above K = {K_CRITICAL:.4f}: {chaotic_diverged} of {chaotic_cells} cells diverged "
+        f"({share:.1%}), worst {chaotic_worst:.3e}"
+    )
+    failed = False
+    if share > CHAOTIC_SHARE_LIMIT:
+        report += (
+            f"\nFAIL: {share:.1%} of the chaotic cells diverged, above the "
+            f"{CHAOTIC_SHARE_LIMIT:.0%} guide."
+        )
+        failed = True
+    return failed, report
+
+
+def self_check_perturbation() -> bool:
+    """Return True when a 1e-7 perturbation trips the population-specific bounds."""
+    native = native_tile()
+    wasm = wasm_tile()
+    if native[:HEADER] != wasm[:HEADER]:
+        return False
+    n_omega = int(as_float(native[0]))
+    n_k = int(as_float(native[1]))
+    native_values = [as_float(bits) for bits in native[HEADER:]]
+    wasm_values = [as_float(bits) for bits in wasm[HEADER:]]
+    exit_kinds = native_exit_kinds()
+    failed_real, _ = compare_tiles(native_values, wasm_values, exit_kinds, n_omega, n_k)
+    if failed_real:
+        return False
+
+    perturbed = list(native_values)
+    perturbed[0] += 1e-7
+    failed_perturbed, _ = compare_tiles(perturbed, wasm_values, exit_kinds, n_omega, n_k)
+    return failed_perturbed
+
 def main() -> int:
     """Compare the two tiles region by region and report."""
     if not (SITE_WASM / "dynachaos_wasm.js").exists():
@@ -160,49 +289,28 @@ def main() -> int:
         )
         return 1
 
-    subcritical_worst = 0.0
-    chaotic_cells = 0
-    chaotic_diverged = 0
-    chaotic_worst = 0.0
-
-    for index, (left, right) in enumerate(zip(native_values, wasm_values, strict=True)):
-        if not (isfinite(left) and isfinite(right)):
-            print(f"FAIL: cell {index} is not finite (native {left!r}, wasm {right!r})")
-            return 1
-        difference = abs(left - right)
-        if k_of_row(index // n_omega, n_k) <= K_CRITICAL:
-            subcritical_worst = max(subcritical_worst, difference)
-        else:
-            chaotic_cells += 1
-            chaotic_worst = max(chaotic_worst, difference)
-            if difference > CHAOTIC_NOISE_FLOOR:
-                chaotic_diverged += 1
-
-    share = chaotic_diverged / max(chaotic_cells, 1)
-    print(f"compared {len(native_values)} cells ({n_k} x {n_omega})")
-    print(f"  below K = {K_CRITICAL:.4f}: worst difference {subcritical_worst:.3e}")
-    print(
-        f"  above K = {K_CRITICAL:.4f}: {chaotic_diverged} of {chaotic_cells} cells diverged "
-        f"({share:.1%}), worst {chaotic_worst:.3e}"
-    )
-
-    failed = False
-    if subcritical_worst > SUBCRITICAL_LIMIT:
+    exit_kinds = native_exit_kinds()
+    if len(exit_kinds) != len(native_values):
         print(
-            f"FAIL: below the critical line the builds must agree to {SUBCRITICAL_LIMIT:.1e}, "
-            f"got {subcritical_worst:.3e}. That region is well conditioned, so this is a defect."
+            f"FAIL: exit-kind helper returned {len(exit_kinds)} rows, "
+            f"expected {len(native_values)}"
         )
-        failed = True
-    if share > CHAOTIC_SHARE_LIMIT:
-        print(
-            f"FAIL: {share:.1%} of the chaotic cells diverged, above the "
-            f"{CHAOTIC_SHARE_LIMIT:.0%} guide. Sensitivity explains a few, not this many."
-        )
-        failed = True
+        return 1
 
+    failed, report = compare_tiles(native_values, wasm_values, exit_kinds, n_omega, n_k)
+    print(report)
     if failed:
         print("\nInvestigate before changing this check. Read the module docstring first.")
         return 1
+
+    if not self_check_perturbation():
+        print(
+            "FAIL: 1e-7 perturbation self-check did not trip the bounds; "
+            "the assertions may be too weak"
+        )
+        return 1
+    else:
+        print("self-check: 1e-7 perturbation trips the population-specific bounds")
 
     print("PASS")
     return 0
