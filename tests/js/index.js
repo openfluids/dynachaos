@@ -515,3 +515,178 @@ test("a message from a worker no longer in the pool is ignored", () => {
   assert.equal(worker.posted.length, posted);
   assert.deepEqual(pool.getState().inFlight, inFlight);
 });
+
+test("the pool announces once when the last live worker is retired", () => {
+  const FakeWorker = makeFakeWorkerClass();
+  const calls = [];
+  const pool = createPool({
+    Worker: FakeWorker,
+    hardwareConcurrency: 2,
+    workerUrl: "fake",
+    scheduler: { levels: 1, tileCells: 8 },
+    onCapacityLost: (info) => calls.push(info),
+  });
+  pool.setViewport(VIEWPORT);
+  const [w0, w1] = FakeWorker.instances;
+  failWorker(w0);
+  // One worker is still alive: the freed tile is re-issued, no alarm yet.
+  assert.equal(calls.length, 0);
+  assert.equal(w1.posted.length, 1);
+  failWorker(w1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].workerCount, 2);
+  assert.equal(calls[0].liveWorkers, 0);
+  // One signal per pool, not one per failure.
+  failWorker(w0);
+  failWorker(w1);
+  assert.equal(calls.length, 1);
+  pool.destroy();
+});
+
+test("a reply whose identity disagrees with the remembered tile is never painted", () => {
+  const FakeWorker = makeFakeWorkerClass();
+  const paints = [];
+  const drops = [];
+  const pool = createPool({
+    Worker: FakeWorker,
+    hardwareConcurrency: 1,
+    workerUrl: "fake",
+    scheduler: { levels: 2, tileCells: 4 },
+    onPaint: (cmd) => paints.push(cmd),
+    onDrop: (cmd) => drops.push(cmd),
+  });
+  const worker = FakeWorker.instances[0];
+  // A reply nobody asked for is ignored, not painted.
+  worker.deliver({ type: "result", id: "0:0:0", generation: 1, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 0);
+  assert.equal(drops.length, 0);
+  assert.equal(worker.posted.length, 0);
+  pool.setViewport(VIEWPORT);
+  const tile = worker.posted[0];
+  // A well-typed result with a wrong id frees the remembered slot and is not
+  // painted; the lost tile is re-issued once.
+  worker.deliver({ type: "result", id: "9:9:9", generation: tile.generation, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 0);
+  assert.equal(drops.length, 0);
+  assert.equal(worker.posted.length, 2);
+  assert.equal(worker.posted[1].id, tile.id);
+  assert.deepEqual(pool.getState().inFlight, [
+    { id: tile.id, generation: tile.generation },
+  ]);
+  // A wrong generation is treated the same; the tile was already retried, so
+  // this time it is dropped and the worker moves to the next tile.
+  worker.deliver({ type: "result", id: tile.id, generation: tile.generation + 9, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 0);
+  assert.equal(drops.length, 1);
+  assert.equal(drops[0].reason, "worker");
+  assert.equal(drops[0].id, tile.id);
+  assert.equal(worker.posted.length, 3);
+  assert.notEqual(worker.posted[2].id, tile.id);
+  pool.destroy();
+});
+
+test("a tile lost to a worker failure is re-issued once per generation", () => {
+  const FakeWorker = makeFakeWorkerClass();
+  const paints = [];
+  const drops = [];
+  const pool = createPool({
+    Worker: FakeWorker,
+    hardwareConcurrency: 2,
+    workerUrl: "fake",
+    scheduler: { levels: 2, tileCells: 4 },
+    onPaint: (cmd) => paints.push(cmd),
+    onDrop: (cmd) => drops.push(cmd),
+  });
+  pool.setViewport(VIEWPORT);
+  const [w0, w1] = FakeWorker.instances;
+  const lost = w0.posted[0];
+  const own = w1.posted[0];
+  failWorker(w0);
+  // The freed tile is requeued, not dropped; w1 is still busy with its own.
+  assert.equal(drops.length, 0);
+  assert.equal(w1.posted.length, 1);
+  w1.deliver({ type: "result", id: own.id, generation: own.generation, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 1);
+  assert.equal(w1.posted.length, 2);
+  assert.equal(w1.posted[1].id, lost.id);
+  assert.equal(w1.posted[1].generation, lost.generation);
+  // A second loss of the same tile in the same generation drops it for good.
+  failWorker(w1);
+  assert.equal(drops.length, 1);
+  assert.equal(drops[0].reason, "worker");
+  assert.equal(drops[0].id, lost.id);
+  assert.equal(w1.posted.length, 2);
+  pool.destroy();
+
+  // A generation bump cancels a requeued tile before it is re-issued.
+  const FakeWorker2 = makeFakeWorkerClass();
+  const pool2 = createPool({
+    Worker: FakeWorker2,
+    hardwareConcurrency: 2,
+    workerUrl: "fake",
+    scheduler: { levels: 2, tileCells: 4 },
+  });
+  pool2.setViewport(VIEWPORT);
+  const [a0, a1] = FakeWorker2.instances;
+  failWorker(a0);
+  pool2.setViewport({ ...VIEWPORT, omegaMax: 0.5 });
+  a1.deliver({
+    type: "result",
+    id: a1.posted[0].id,
+    generation: a1.posted[0].generation,
+    data: [1],
+    computeMs: 1,
+  });
+  assert.equal(a1.posted.length, 2);
+  assert.equal(a1.posted[1].generation, 2);
+  assert.equal(a1.posted.filter((m) => m.generation === 1).length, 1);
+  pool2.destroy();
+
+  // With no live worker left nothing is re-issued.
+  const FakeWorker3 = makeFakeWorkerClass();
+  const drops3 = [];
+  const pool3 = createPool({
+    Worker: FakeWorker3,
+    hardwareConcurrency: 1,
+    workerUrl: "fake",
+    scheduler: { levels: 1, tileCells: 8 },
+    onDrop: (cmd) => drops3.push(cmd),
+  });
+  pool3.setViewport(VIEWPORT);
+  const solo = FakeWorker3.instances[0];
+  failWorker(solo);
+  assert.equal(solo.posted.length, 1);
+  assert.equal(drops3.length, 1);
+  assert.equal(drops3[0].reason, "worker");
+  assert.equal(pool3.getState().pending.length, 0);
+  assert.equal(pool3.liveWorkers, 0);
+  pool3.destroy();
+});
+
+test("a spawn failure terminates the workers already created", () => {
+  const instances = [];
+  class ThrowingWorker {
+    constructor() {
+      this.terminated = false;
+      instances.push(this);
+      if (instances.length === 3) throw new Error("spawn boom");
+    }
+    postMessage() {}
+    terminate() {
+      this.terminated = true;
+    }
+  }
+  assert.throws(
+    () =>
+      createPool({
+        Worker: ThrowingWorker,
+        hardwareConcurrency: 4,
+        workerUrl: "fake",
+        scheduler: { levels: 1, tileCells: 8 },
+      }),
+    /spawn boom/,
+  );
+  assert.equal(instances.length, 3);
+  assert.ok(instances[0].terminated);
+  assert.ok(instances[1].terminated);
+});

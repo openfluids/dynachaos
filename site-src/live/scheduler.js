@@ -10,6 +10,8 @@
  * splits every parent 2x2. Every coarser tile is issued before any finer
  * one. A generation counter rides on each request; after the viewport
  * changes, results carrying an older generation are dropped, not painted.
+ * A tile lost to a worker failure is re-issued once per generation, then
+ * dropped for good; a tile-level error reply is never retried.
  */
 
 const DEFAULTS = {
@@ -41,6 +43,7 @@ export function initialState(options = {}) {
     droppedGenerations: 0,
     droppedTiles: 0,
     queueDepth: 0,
+    retried: [],
   };
 }
 
@@ -132,6 +135,8 @@ export function reduce(state, event) {
       return applyResult(state, event);
     case "error":
       return applyError(state, event);
+    case "workerError":
+      return applyWorkerError(state, event);
     default:
       return { state, commands: [] };
   }
@@ -154,6 +159,7 @@ function applyViewport(state, viewport) {
     pending,
     inFlight: [],
     issued: [],
+    retried: [],
     droppedGenerations: state.droppedGenerations + (hadWork ? 1 : 0),
     queueDepth: pending.length,
   };
@@ -242,6 +248,57 @@ function applyError(state, event) {
         id,
         generation,
         reason: "error",
+        message: event.message,
+        computeMs: event.computeMs,
+      },
+    ],
+  };
+}
+
+/**
+ * A worker died or returned a reply that could not be trusted. The tile it
+ * held is freed and re-issued at most once within its generation; a second
+ * loss drops it for good. `event.tile` is the full issued tile the pool
+ * remembered, `event.liveWorkers` the workers still alive after the failure.
+ * With no live worker nothing is re-issued: the capacity signal is what the
+ * reader gets, not a queue that never drains.
+ */
+function applyWorkerError(state, event) {
+  const id = event.id;
+  const generation = event.generation;
+  const wasInFlight = state.inFlight.some((item) => sameFlight(item, id, generation));
+  const inFlight = state.inFlight.filter((item) => !sameFlight(item, id, generation));
+  const canRetry =
+    wasInFlight &&
+    generation === state.generation &&
+    event.liveWorkers > 0 &&
+    event.tile != null &&
+    !state.retried.includes(id);
+  if (canRetry) {
+    const pending = [{ ...event.tile, generation }].concat(state.pending);
+    return {
+      state: {
+        ...state,
+        inFlight,
+        pending,
+        retried: state.retried.concat(id),
+        queueDepth: pending.length,
+      },
+      commands: [],
+    };
+  }
+  return {
+    state: {
+      ...state,
+      inFlight,
+      droppedTiles: state.droppedTiles + 1,
+    },
+    commands: [
+      {
+        type: "drop",
+        id,
+        generation,
+        reason: "worker",
         message: event.message,
         computeMs: event.computeMs,
       },

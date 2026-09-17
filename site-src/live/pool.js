@@ -56,6 +56,7 @@ export function debugEnabled(env = globalThis) {
  * @param {URL|string} [options.workerUrl]
  * @param {(cmd: object) => void} [options.onPaint]
  * @param {(cmd: object) => void} [options.onDrop]
+ * @param {(info: object) => void} [options.onCapacityLost]
  * @param {object} [options.scheduler]
  * @returns {object}
  */
@@ -73,6 +74,7 @@ export function createPool(options = {}) {
   let workers = [];
   const busy = new Map();
   const failed = new Set();
+  let capacityAnnounced = false;
 
   function telemetry(extra) {
     return {
@@ -120,9 +122,28 @@ export function createPool(options = {}) {
   }
 
   function spawnAll() {
-    workers = Array.from({ length: n }, spawn);
+    // Build incrementally: if spawn throws partway, the workers already
+    // created are terminated here. Nothing else holds a reference to them,
+    // so without this they would run until the page goes away.
+    const spawned = [];
+    try {
+      for (let i = 0; i < n; i++) {
+        spawned.push(spawn());
+      }
+    } catch (err) {
+      for (const worker of spawned) {
+        try {
+          worker.terminate();
+        } catch {
+          // A half-dead worker must not mask the original spawn error.
+        }
+      }
+      throw err;
+    }
+    workers = spawned;
     busy.clear();
     failed.clear();
+    capacityAnnounced = false;
   }
 
   function feed(worker) {
@@ -131,7 +152,7 @@ export function createPool(options = {}) {
     state = next;
     const issue = commands.find((cmd) => cmd.type === "issue");
     if (!issue) return;
-    busy.set(worker, { id: issue.tile.id, generation: issue.tile.generation });
+    busy.set(worker, issue.tile);
     worker.postMessage({ type: "tile", ...issue.tile });
     log({ event: "issue", tile: issue.tile.id, computeMs: undefined });
   }
@@ -148,28 +169,58 @@ export function createPool(options = {}) {
     busy.delete(worker);
     failed.add(worker);
     log({ event: "error" });
-    if (!tile) return;
-    reduceEvent({
-      type: "error",
-      id: tile.id,
-      generation: tile.generation,
-    });
+    if (tile) {
+      reduceEvent({
+        type: "workerError",
+        id: tile.id,
+        generation: tile.generation,
+        tile,
+        liveWorkers: n - failed.size,
+      });
+      // The failure may have requeued the tile; hand it to an idle worker.
+      pump();
+    }
+    if (!capacityAnnounced && failed.size === workers.length) {
+      capacityAnnounced = true;
+      if (options.onCapacityLost) options.onCapacityLost(telemetry());
+    }
   }
 
   function onMessage(worker, event) {
     if (!workers.includes(worker) || failed.has(worker)) return;
     const msg = event && event.data;
     if (msg && (msg.type === "result" || msg.type === "error")) {
+      const remembered = busy.get(worker);
       busy.delete(worker);
-      reduceEvent({
-        type: msg.type,
-        id: msg.id,
-        generation: msg.generation,
-        data: msg.data,
-        header: msg.header,
-        computeMs: msg.computeMs,
-        message: msg.message,
-      });
+      if (
+        remembered &&
+        msg.id === remembered.id &&
+        msg.generation === remembered.generation
+      ) {
+        reduceEvent({
+          type: msg.type,
+          id: remembered.id,
+          generation: remembered.generation,
+          data: msg.data,
+          header: msg.header,
+          computeMs: msg.computeMs,
+          message: msg.message,
+        });
+      } else {
+        // The reply's identity disagrees with what this worker was given.
+        // It is never painted; the remembered tile is freed and lost, so it
+        // goes through the same once-per-generation retry as a dead worker.
+        log({ event: "mismatch", tile: remembered ? remembered.id : undefined });
+        if (remembered) {
+          reduceEvent({
+            type: "workerError",
+            id: remembered.id,
+            generation: remembered.generation,
+            tile: remembered,
+            liveWorkers: n - failed.size,
+          });
+        }
+      }
       feed(worker);
       return;
     }

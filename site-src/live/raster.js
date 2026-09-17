@@ -123,12 +123,12 @@ function cellValue(tile, omega, K) {
  *
  * Live colour uses a fixed viridis ramp. The key does not include the page theme.
  *
- * The fingerprint is generation, id, grid size, sample count, and the first
- * and last samples. Two tiles that differ only in the middle samples would
- * share a cached bitmap. That cannot happen today: the scheduler issues each
- * tile id once per generation, so a new payload always carries a new
- * generation or a new id. The key is allowed to skip a full-tile hash for
- * that reason.
+ * The fingerprint is generation, id, the record's paint sequence, grid size,
+ * sample count, and the first and last samples. The paint sequence is a
+ * per-record counter stamped when the figure stores a painted tile: a record
+ * that replaces another inside one generation keys differently, so a repaint
+ * always misses the cache while an unchanged record still hits it. Hashing
+ * the samples instead would cost a full-tile pass on the paint path.
  *
  * @param {object} tile
  * @returns {string}
@@ -146,7 +146,7 @@ export function liveTileColorKey(tile) {
     first = data[HEADER];
     last = data[n - 1];
   }
-  return `${tile.generation}|${tile.id}|${nOmega}|${nK}|${n}|${first}|${last}`;
+  return `${tile.generation}|${tile.id}|${tile.paintSeq == null ? "" : tile.paintSeq}|${nOmega}|${nK}|${n}|${first}|${last}`;
 }
 
 /**

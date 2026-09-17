@@ -1635,7 +1635,7 @@ async function mountLive(fig){
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=title;w.insertBefore(h,c);
     const store={tiles:[],generation:0,painted:0,nIter:2000};
-    let pool=null,plot=null;
+    let pool=null,plot=null,paintSeq=0;
     point.ensureLoaded();
     const sampleReadout=(omega,K)=>{
       if(point.isReady()){
@@ -1684,15 +1684,21 @@ async function mountLive(fig){
     const tileCells=raster.tileCellsFor((c.clientWidth||1)*dpr,(c.clientHeight||1)*dpr,{
       levels:liveLevels,nIter:2000,nTransient:200
     });
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    body.appendChild(hint);
     pool=poolMod.createPool({
       workerUrl:new URL("live/tile-worker.js", document.baseURI),
       scheduler:{levels:liveLevels,tileCells,nTransient:200,nIter:2000,theta0:0.1},
+      onCapacityLost(){
+        hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
+      },
       onPaint(cmd){
         const state=pool.getState();
         if(cmd.generation!==state.generation) return;
         const world=raster.tileWorld(cmd.id,state.viewport);
         if(!world) return;
-        const rec={...world,generation:cmd.generation,header:cmd.header,data:cmd.data};
+        const rec={...world,generation:cmd.generation,header:cmd.header,data:cmd.data,paintSeq:++paintSeq};
         const idx=store.tiles.findIndex(t=>t.id===rec.id);
         if(idx>=0) store.tiles[idx]=rec; else store.tiles.push(rec);
         store.generation=cmd.generation;
@@ -1720,9 +1726,6 @@ async function mountLive(fig){
         nIter:store.nIter
       })
     };
-    const n=document.createElement("p");n.className="hint";
-    n.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
-    body.appendChild(n);
     fig.dataset.state="live";
   }catch(err){
     // Unmount the live figure if this setup throws. Then the caller reports the error.

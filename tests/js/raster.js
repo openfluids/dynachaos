@@ -138,3 +138,28 @@ test("liveTileColorKey ignores theme and changes with tile identity", () => {
   assert.notEqual(liveTileColorKey({ ...tile, data: longer }), key);
   assert.notEqual(liveTileColorKey({ ...tile, header: [4, 2, 200, 2000] }), key);
 });
+
+test("liveTileColorKey misses on a replaced record and hits an unchanged one", () => {
+  const data = new Float64Array(HEADER + 4);
+  data[0] = 2;
+  data[1] = 2;
+  data[HEADER] = 0.1;
+  data[HEADER + 3] = 0.9;
+  const tile = {
+    id: "0:0:0",
+    generation: 3,
+    header: [2, 2, 200, 2000],
+    data,
+    paintSeq: 7,
+  };
+  const key = liveTileColorKey(tile);
+  // The same record keeps its key: the bitmap cache still hits.
+  assert.equal(liveTileColorKey(tile), key);
+  // A record that replaces it inside the same generation — identical id,
+  // header, and samples — must key differently or the stale bitmap shows.
+  const replaced = { ...tile, paintSeq: 8 };
+  assert.notEqual(liveTileColorKey(replaced), key);
+  // A record with no paint sequence still keys on the old fingerprint.
+  const { paintSeq, ...unstamped } = tile;
+  assert.equal(liveTileColorKey(unstamped), liveTileColorKey({ ...unstamped }));
+});
