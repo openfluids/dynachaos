@@ -199,21 +199,30 @@ stays a one-bit difference. Above it the map is not invertible, the orbit is
 chaotic, and the same one bit grows by fourteen orders of magnitude over 700
 iterations.
 
-So the honest claim is narrower than "the browser returns the paper's numbers":
+So the honest claim is narrower than "the browser returns the paper's
+numbers":
 
-- **Where the dynamics are locked, it does** — and those regions are the
-  subject of the figure. The tongues are exactly where the reader is looking.
-- **In the chaotic sea, a single pixel is not reproducible** across sine
-  implementations. It is not reproducible across compilers or CPUs either. That
-  is a property of the system, not of this port, and a figure that showed
+- **Where the orbit locks, the rotation number is exact** — the kernel returns
+  the rational `p / q` as soon as the unwrapped orbit closes. Those regions
+  are the subject of the figure; the tongues are exactly where the reader is
+  looking.
+- **Elsewhere the value is accurate to the displayed colour resolution**
+  (one step in 256). The kernel stops once its running estimate is provably
+  within half that tolerance; the live figure never promises more precision
+  than a reader can see.
+- **In the chaotic sea, a single pixel is still not reproducible** across sine
+  implementations. It is not reproducible across compilers or CPUs either.
+  That is a property of the system, not of this port, and a figure that showed
   otherwise would be hiding it.
 
-The check asserts each of those separately: a tight bound below the critical
-line, and only that divergence stays rare above it. Never loosen the
-subcritical bound to make a red run pass. A difference there is well
-conditioned, which means it is a defect, not sensitivity. A deliberate `1e-7`
-perturbation of the starting angle trips both halves, so the check is known to
-work rather than assumed to.
+`scripts/check_wasm_parity.py` asserts each population separately: locked cells
+are held to the existing subcritical bound at any `K`; display-stop cells are
+held to `1 / 256`; exhausted cells below the critical line stay on the
+subcritical bound; exhausted cells above it keep the chaotic share limit.
+Never loosen the subcritical bound to make a red run pass — it still binds
+every locked cell. A deliberate `1e-7` perturbation of a tile value trips the
+assertions; the script prints a self-check line so that trip is known to work
+rather than assumed to.
 
 This is also why a live figure must not be presented as a re-derivation of the
 published pixel values in the chaotic region. It shows the same system computed
