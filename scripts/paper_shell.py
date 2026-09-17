@@ -1613,9 +1613,10 @@ function liveModuleUrl(name){
 
 async function mountLive(fig){
   const body=fig.querySelector(".fig-body");
-  const [poolMod, raster]=await Promise.all([
+  const [poolMod, raster, point]=await Promise.all([
     import(liveModuleUrl("pool.js")),
     import(liveModuleUrl("raster.js")),
+    import(liveModuleUrl("point.js")),
   ]);
   const fc=fig.querySelector("figcaption");
   let capText=fc?fc.textContent.trim():"";
@@ -1635,13 +1636,23 @@ async function mountLive(fig){
     h.textContent=title;w.insertBefore(h,c);
     const store={tiles:[],generation:0,painted:0,nIter:2000};
     let pool=null,plot=null;
+    point.ensureLoaded();
+    const sampleReadout=(omega,K)=>{
+      if(point.isReady()){
+        try{
+          const rho=point.sample(omega,K,200,2000,0.1);
+          if(typeof rho==="number"&&Number.isFinite(rho)) return rho;
+        }catch(_){}
+      }
+      return raster.sampleAt(store.tiles,store.generation,omega,K);
+    };
     const live={
       base:{x0:0,x1:1,y0:0,y1:0.3},
       tiles:store.tiles,
       generation:()=>store.generation,
       tilePixelRect:raster.tilePixelRect,
       tileColorKey:raster.liveTileColorKey,
-      sample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      sample:sampleReadout,
       onView(d){
         if(!pool) return;
         pool.setViewport({omegaMin:d.x0,omegaMax:d.x1,kMin:d.y0,kMax:d.y1});
@@ -1695,7 +1706,9 @@ async function mountLive(fig){
     pool.setViewport({omegaMin:d0.x0,omegaMax:d0.x1,kMin:d0.y0,kMax:d0.y1});
     store.generation=pool.getState().generation;
     fig._live={
-      sample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      sample:sampleReadout,
+      rasterSample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      pointReady:()=>point.isReady(),
       setView(v){
         plot.setDomain({x0:v.omegaMin,x1:v.omegaMax,y0:v.kMin,y1:v.kMax});
       },

@@ -455,6 +455,63 @@ try {
   check("rho = 0 at (Omega 0.08, K 0.12)", c !== null && Math.abs(c) <= tol, c);
   const d = await sampleWhenReady(0.08, 0.03);
   check("rho ~ 0.0743 at (Omega 0.08, K 0.03)", d !== null && Math.abs(d - 0.0743) < 0.03, d);
+  check(
+    "readout at locked (Omega 0.05, K 0.12) is 0 to 1e-12",
+    a !== null && Math.abs(a) <= 1e-12,
+    a,
+  );
+  const displayTol = 1 / 256;
+  const readoutPairs = [
+    [0.05, 0.12, a],
+    [0.95, 0.12, b],
+    [0.08, 0.12, c],
+    [0.08, 0.03, d],
+  ];
+  const vsRaster = [];
+  for (const [omega, K, value] of readoutPairs) {
+    if (value == null) {
+      vsRaster.push({ omega, K, value, raster: null, ok: false });
+      continue;
+    }
+    await waitFor(
+      `${F}._live && typeof ${F}._live.rasterSample === "function" && ${F}._live.rasterSample(${omega}, ${K}) !== null`,
+      sampleMs,
+    );
+    const rasterVal = await ev(
+      `${F}._live && typeof ${F}._live.rasterSample === "function" ? ${F}._live.rasterSample(${omega}, ${K}) : null`,
+    );
+    const ok =
+      rasterVal !== null &&
+      Number.isFinite(rasterVal) &&
+      Math.abs(value - rasterVal) <= displayTol;
+    vsRaster.push({ omega, K, value, raster: rasterVal, ok });
+  }
+  check(
+    "readout never differs from the raster sample by more than the display tolerance",
+    vsRaster.length > 0 && vsRaster.every((row) => row.ok),
+    JSON.stringify(vsRaster),
+  );
+
+  // Every check above passes on the raster value alone, because a locked cell
+  // reads the same either way. This one does not: it imports the same module
+  // instance the page imported and demands the readout return that value, at
+  // an unlocked point where the two paths differ.
+  await waitFor(`${F}._live && ${F}._live.pointReady && ${F}._live.pointReady()`, sampleMs);
+  const wired = await ev(`(async () => {
+    const m = await import(new URL("live/point.js", document.baseURI).href);
+    const direct = m.sample(0.08, 0.03, 200, 2000, 0.1);
+    return {
+      ready: m.isReady(),
+      direct,
+      readout: ${F}._live.sample(0.08, 0.03),
+      raster: ${F}._live.rasterSample(0.08, 0.03),
+    };
+  })()`);
+  check(
+    "the readout is the point kernel, not the tile lookup",
+    wired != null && wired.ready === true && wired.direct !== null && wired.readout === wired.direct,
+    JSON.stringify(wired),
+  );
 
   const sBeforeView = await stats();
   if (sBeforeView && (await ev(`!!${F}._live && typeof ${F}._live.setView === "function"`))) {
