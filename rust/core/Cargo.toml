@@ -15,3 +15,7 @@ rayon = { version = "1.12", optional = true }
 [features]
 default = ["parallel"]
 parallel = ["dep:rayon"]
+
+[[example]]
+name = "tile_exit_kinds"
+path = "examples/tile_exit_kinds.rs"

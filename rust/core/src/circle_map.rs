@@ -16,6 +16,46 @@
 
 use crate::CoreError;
 
+/// How a single-cell rotation-number computation ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitKind {
+    /// The unwrapped orbit closed with winding `p` over period `q`.
+    Locked { p: i64, q: usize },
+    /// The running estimate stabilised within half the display tolerance.
+    BoundedError,
+    /// The configured iteration budget was used.
+    Exhausted,
+}
+
+const LOCK_TOLERANCE: f64 = 1e-12;
+const MAX_LOCK_PERIOD: usize = 32;
+const MIN_BOUNDED_ERROR_STEPS: usize = 50;
+/// Invertibility threshold: above this K the C/m tail is not a bound.
+const K_CRITICAL: f64 = 1.0 / std::f64::consts::TAU;
+/// Half the colour resolution (1/256): stop when dyadic windows agree below this.
+const HALF_DISPLAY_TOLERANCE: f64 = 0.5 / 256.0;
+
+struct PendingLock {
+    p: i64,
+    q: usize,
+    detect_step: usize,
+}
+
+#[cfg(test)]
+fn same_rational(a: (i64, usize), b: (i64, usize)) -> bool {
+    a.0 * b.1 as i64 == b.0 * a.1 as i64
+}
+fn gcd_usize(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd_usize(b, a % b) }
+}
+
+fn reduce_rational(p: i64, q: usize) -> (i64, usize) {
+    let g = gcd_usize(p.unsigned_abs() as usize, q);
+    let p = p / g as i64;
+    let q = q / g;
+    (p, q)
+}
+
 /// Values equally spaced from `start` to `stop`, `stop` included.
 ///
 /// This reproduces `numpy.linspace`: each value is `start + i * step`, and the
@@ -34,23 +74,190 @@ fn linspace(start: f64, stop: f64, n: usize) -> Vec<f64> {
     values
 }
 
-/// Rotation number of one (Omega, K) cell.
-///
-/// `theta` runs `n_transient` steps to settle onto the attractor, then
-/// `n_iter` more steps. The rotation number is the mean drift per step over
-/// the second stretch.
-#[inline]
-fn rotation_number(omega: f64, k: f64, n_transient: usize, n_iter: usize, theta0: f64) -> f64 {
+fn detect_lock(theta: f64, ring: &[f64; 32], step: usize) -> Option<(i64, usize)> {
+    for q in 1..=MAX_LOCK_PERIOD.min(step - 1) {
+        let theta_n = ring[(step - q - 1) % 32];
+        let delta = theta - theta_n;
+        let p = delta.round() as i64;
+        if (delta - p as f64).abs() < LOCK_TOLERANCE {
+            return Some((p, q));
+        }
+    }
+    None
+}
+
+/// Advance pending-lock state. While waiting for confirmation (`step <
+/// detect_step + q`), ignore intermediate detections. At the confirmation
+/// step, require `theta - theta_{step-q}` to match the stored winding `p`.
+/// Store the raw `(p, q)` from [`detect_lock`]; reduce only on return.
+fn update_pending_lock(
+    pending_lock: &mut Option<PendingLock>,
+    step: usize,
+    theta: f64,
+    ring: &[f64; 32],
+    detected: Option<(i64, usize)>,
+) -> Option<(i64, usize)> {
+    if let Some(pending) = pending_lock.as_ref() {
+        if step < pending.detect_step + pending.q {
+            return None;
+        }
+        if step == pending.detect_step + pending.q {
+            let theta_n = ring[(step - pending.q - 1) % 32];
+            let delta = theta - theta_n;
+            if (delta - pending.p as f64).abs() < LOCK_TOLERANCE {
+                let confirmed = reduce_rational(pending.p, pending.q);
+                *pending_lock = None;
+                return Some(confirmed);
+            }
+            *pending_lock = None;
+            if let Some((p, q)) = detected {
+                *pending_lock = Some(PendingLock {
+                    p,
+                    q,
+                    detect_step: step,
+                });
+            }
+            return None;
+        }
+        *pending_lock = None;
+    }
+
+    if let Some((p, q)) = detected {
+        *pending_lock = Some(PendingLock {
+            p,
+            q,
+            detect_step: step,
+        });
+    }
+    None
+}
+
+
+
+/// Core iteration with optional early exit. Returns rotation number, exit kind,
+/// and the number of map steps (sine evaluations) performed.
+fn rotation_number_compute(
+    omega: f64,
+    k: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+    allow_early_exit: bool,
+) -> (f64, ExitKind, usize) {
     const TWO_PI: f64 = std::f64::consts::TAU;
     let mut theta = theta0;
+    let mut ring = [0.0_f64; 32];
+    let mut step = 0usize;
+    let mut map_steps = 0usize;
+    let mut pending_lock: Option<PendingLock> = None;
+
+    let mut advance = |theta: &mut f64| {
+        *theta += omega + k * (TWO_PI * *theta).sin();
+        map_steps += 1;
+    };
     for _ in 0..n_transient {
-        theta += omega + k * (TWO_PI * theta).sin();
+        advance(&mut theta);
+        step += 1;
+        ring[(step - 1) % 32] = theta;
     }
+
+
     let theta_start = theta;
-    for _ in 0..n_iter {
-        theta += omega + k * (TWO_PI * theta).sin();
+    let mut measure_thetas: Vec<f64> = Vec::with_capacity(n_iter);
+
+    for m in 1..=n_iter {
+        advance(&mut theta);
+        step += 1;
+
+        if allow_early_exit {
+            let detected = detect_lock(theta, &ring, step);
+            if let Some((p, q)) =
+                update_pending_lock(&mut pending_lock, step, theta, &ring, detected)
+            {
+                let rho_mean = (theta - theta_start) / m as f64;
+                let exact = p as f64 / q as f64;
+                let lock_mean_tol = (1.0 / n_iter as f64).min(HALF_DISPLAY_TOLERANCE);
+                if m >= MIN_BOUNDED_ERROR_STEPS
+                    && (rho_mean - exact).abs() < lock_mean_tol
+                {
+                    return (exact, ExitKind::Locked { p, q }, map_steps);
+                }
+                pending_lock = None;
+            }
+        }
+
+        measure_thetas.push(theta);
+        ring[(step - 1) % 32] = theta;
+        // Above K_c the map is non-invertible; the running-mean tail is not a
+        // trustworthy bound, so only lock detection can end the measure phase.
+        if allow_early_exit && k <= K_CRITICAL && m >= MIN_BOUNDED_ERROR_STEPS {
+            let rho_m = (theta - theta_start) / m as f64;
+            let half_m = m / 2;
+            let rho_half = (measure_thetas[half_m - 1] - theta_start) / half_m as f64;
+            if (rho_m - rho_half).abs() < HALF_DISPLAY_TOLERANCE {
+                let mut estimates = [rho_m, rho_half, 0.0, 0.0, 0.0];
+                let mut count = 2usize;
+                for divisor in [4usize, 8, 16] {
+                    let window = m / divisor;
+                    if window >= MIN_BOUNDED_ERROR_STEPS {
+                        estimates[count] =
+                            (measure_thetas[window - 1] - theta_start) / window as f64;
+                        count += 1;
+                    }
+                }
+                // m and m/2 alone can agree while the mean is still biased; four
+                // dyadic windows must agree (worst |early-full|=4.0e-3 with m/2 only).
+                if count >= 4 {
+                    let mut worst = 0.0_f64;
+                    for i in 0..count {
+                        for j in (i + 1)..count {
+                            worst = worst.max((estimates[i] - estimates[j]).abs());
+                        }
+                    }
+                    if worst < HALF_DISPLAY_TOLERANCE {
+                        return (rho_m, ExitKind::BoundedError, map_steps);
+                    }
+                }
+            }
+        }
     }
-    (theta - theta_start) / n_iter as f64
+
+
+
+    let rho = (theta - theta_start) / n_iter as f64;
+    (rho, ExitKind::Exhausted, map_steps)
+}
+
+/// Rotation number of one (Omega, K) cell with early exit.
+///
+/// `theta` runs `n_transient` steps to settle onto the attractor, then
+/// `n_iter` more steps unless the orbit locks or the estimate stabilises.
+#[inline]
+fn rotation_number(omega: f64, k: f64, n_transient: usize, n_iter: usize, theta0: f64) -> f64 {
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true).0
+}
+
+/// Same as [`rotation_number`] but also reports how the iteration ended and how
+/// many map steps were taken. Exposed for tests and the wasm parity helper.
+pub fn rotation_number_with_exit(
+    omega: f64,
+    k: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+) -> (f64, ExitKind, usize) {
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, true)
+}
+
+/// Full fixed-count rotation number with no early exit.
+pub fn rotation_number_full(
+    omega: f64,
+    k: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+) -> f64 {
+    rotation_number_compute(omega, k, n_transient, n_iter, theta0, false).0
 }
 
 /// Rotation numbers over a rectangular tile of the (Omega, K) plane.
@@ -143,6 +350,8 @@ mod tests {
     const N_ITER: usize = 5000;
     const THETA0: f64 = 0.1;
 
+    const DISPLAY_TOLERANCE: f64 = 1.0 / 256.0;
+
     fn single(omega: f64, k: f64) -> f64 {
         let tile =
             rotation_number_tile(omega, omega, 1, k, k, 1, N_TRANSIENT, N_ITER, THETA0).unwrap();
@@ -169,7 +378,26 @@ mod tests {
         // The 1/2 tongue: a period-2 cycle advancing half a turn per step.
         assert!((single(0.5, 0.2) - 0.5).abs() < 1e-12);
         assert!((single(0.5, 0.05) - 0.5).abs() < 1e-12);
+
+        let (rho, kind, _) =
+            rotation_number_with_exit(0.5, 0.2, N_TRANSIENT, N_ITER, THETA0);
+        assert!((rho - 0.5).abs() < 1e-12);
+        match kind {
+            ExitKind::Locked { p, q } => assert!(same_rational((p, q), (1, 2))),
+            other => panic!("expected Locked 1/2, got {other:?}"),
+        }
+
+        let (rho_third, kind_third, _) =
+            rotation_number_with_exit(1.0 / 3.0, 0.2, N_TRANSIENT, N_ITER, THETA0);
+        assert!((rho_third - 1.0 / 3.0).abs() < 1e-12);
+        match kind_third {
+            ExitKind::Locked { p, q } => assert!(same_rational((p, q), (1, 3))),
+            other => panic!("expected Locked 1/3, got {other:?}"),
+        }
+
+
     }
+
 
     #[test]
     fn tile_layout_is_row_major_with_k_down_the_rows() {
@@ -196,5 +424,118 @@ mod tests {
         // The endpoint is exact even when the step does not divide evenly.
         let values = linspace(0.0, 0.3, 1000);
         assert_eq!(values[999], 0.3);
+    }
+
+    #[test]
+    fn early_exit_matches_full_within_display_tolerance() {
+        const N_OMEGA: usize = 48;
+        const N_K: usize = 24;
+        const N_TRANSIENT_GRID: usize = 200;
+        const N_ITER_GRID: usize = 2000;
+        const THETA0_GRID: f64 = 0.1;
+
+        let omega_values = linspace(0.0, 1.0, N_OMEGA);
+        let k_values = linspace(0.0, 0.3, N_K);
+
+        let mut worst_all = 0.0_f64;
+        let mut worst_locked = 0.0_f64;
+        let mut worst_locked_correction = 0.0_f64;
+
+        for &k in &k_values {
+            for &omega in &omega_values {
+                let (rho_early, kind, _) = rotation_number_with_exit(
+                    omega,
+                    k,
+                    N_TRANSIENT_GRID,
+                    N_ITER_GRID,
+                    THETA0_GRID,
+                );
+                let rho_full = rotation_number_full(
+                    omega,
+                    k,
+                    N_TRANSIENT_GRID,
+                    N_ITER_GRID,
+                    THETA0_GRID,
+                );
+                let diff = (rho_early - rho_full).abs();
+                worst_all = worst_all.max(diff);
+
+                if let ExitKind::Locked { p, q } = kind {
+                    worst_locked = worst_locked.max(diff);
+                    let exact = p as f64 / q as f64;
+                    worst_locked_correction = worst_locked_correction.max((exact - rho_full).abs());
+                }
+
+                assert!(
+                    diff <= DISPLAY_TOLERANCE,
+                    "omega={omega}, k={k}: |early-full|={diff} > {DISPLAY_TOLERANCE}"
+                );
+
+            }
+        }
+
+        let locked_o1m_bound = 1.0 / N_ITER_GRID as f64;
+        assert!(
+            worst_locked <= locked_o1m_bound,
+            "worst locked early-vs-full error {worst_locked} exceeds O(1/m) bound {locked_o1m_bound}"
+        );
+
+        eprintln!("WORST_ALL={worst_all:.6e}");
+        eprintln!("WORST_LOCKED={worst_locked:.6e}");
+        eprintln!("WORST_LOCKED_CORRECTION={worst_locked_correction:.6e}");
+    }
+
+
+    #[test]
+    fn iteration_gain_on_base_view() {
+        const N_OMEGA: usize = 240;
+        const N_K: usize = 72;
+        const N_TRANSIENT_VIEW: usize = 200;
+        const N_ITER_VIEW: usize = 2000;
+        const THETA0_VIEW: f64 = 0.1;
+
+        let omega_values = linspace(0.0, 1.0, N_OMEGA);
+        let k_values = linspace(0.0, 0.3, N_K);
+        let cells = N_OMEGA * N_K;
+        let iterations_before = cells * (N_TRANSIENT_VIEW + N_ITER_VIEW);
+        let mut iterations_after = 0usize;
+        let mut worst_all = 0.0_f64;
+        let mut worst_locked = 0.0_f64;
+
+        for &k in &k_values {
+            for &omega in &omega_values {
+                let (rho_early, kind, steps) = rotation_number_with_exit(
+                    omega,
+                    k,
+                    N_TRANSIENT_VIEW,
+                    N_ITER_VIEW,
+                    THETA0_VIEW,
+                );
+                iterations_after += steps;
+                let rho_full = rotation_number_full(
+                    omega,
+                    k,
+                    N_TRANSIENT_VIEW,
+                    N_ITER_VIEW,
+                    THETA0_VIEW,
+                );
+                let diff = (rho_early - rho_full).abs();
+                worst_all = worst_all.max(diff);
+                if let ExitKind::Locked { .. } = kind {
+                    worst_locked = worst_locked.max(diff);
+                }
+            }
+        }
+
+        let fraction = iterations_after as f64 / iterations_before as f64;
+        eprintln!("ITERATIONS_BEFORE={iterations_before}");
+        eprintln!("ITERATIONS_AFTER={iterations_after}");
+        eprintln!("WORST_ALL={worst_all:.6e}");
+        eprintln!("WORST_LOCKED={worst_locked:.6e}");
+        eprintln!(
+            "ITERATION_FRACTION={:.4} ({:.1}%)",
+            fraction,
+            fraction * 100.0
+        );
     }
 }
