@@ -206,22 +206,37 @@ export function createPool(options = {}) {
           computeMs: msg.computeMs,
           message: msg.message,
         });
-      } else {
-        // The reply's identity disagrees with what this worker was given.
-        // It is never painted; the remembered tile is freed and lost, so it
-        // goes through the same once-per-generation retry as a dead worker.
-        log({ event: "mismatch", tile: remembered ? remembered.id : undefined });
-        if (remembered) {
-          reduceEvent({
-            type: "workerError",
-            id: remembered.id,
-            generation: remembered.generation,
-            tile: remembered,
-            liveWorkers: n - failed.size,
-          });
-        }
+        feed(worker);
+        return;
       }
-      feed(worker);
+      if (!remembered) {
+        // An unsolicited reply — a duplicate, or one that arrived after the
+        // slot was already freed — says nothing about the next tile. Ignore
+        // it and keep the worker.
+        feed(worker);
+        return;
+      }
+      // The reply's identity disagrees with what this worker was given. The
+      // shipped worker echoes the id and generation it was handed, so one
+      // disagreement means it is broken: retire it. The remembered tile is
+      // lost and goes through the same once-per-generation retry as a dead
+      // worker, and retiring makes the capacity signal reachable when this
+      // was the last one.
+      failed.add(worker);
+      log({ event: "mismatch", tile: remembered.id });
+      reduceEvent({
+        type: "workerError",
+        id: remembered.id,
+        generation: remembered.generation,
+        tile: remembered,
+        liveWorkers: n - failed.size,
+      });
+      // The failure may have requeued the tile; hand it to an idle worker.
+      pump();
+      if (!capacityAnnounced && failed.size === workers.length) {
+        capacityAnnounced = true;
+        if (options.onCapacityLost) options.onCapacityLost(telemetry());
+      }
       return;
     }
     onWorkerFailure(worker);
