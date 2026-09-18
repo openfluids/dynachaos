@@ -29,7 +29,19 @@ Usage
     K = zero_one_statistic(time_series, n_c=100)
 """
 
+import os
+
 import numpy as np
+
+try:
+    if os.environ.get("DYNACHAOS_NO_RUST"):
+        raise ImportError("Rust disabled by DYNACHAOS_NO_RUST")
+    from dynachaos._rust import zero_one_k as _zero_one_k_rs
+
+    _RUST_AVAILABLE = True
+except ImportError:
+    _RUST_AVAILABLE = False
+    _zero_one_k_rs = None
 
 
 def _validate_zero_one_inputs(phi, n_c, n_cut):
@@ -99,6 +111,26 @@ def _msd_regression(p, q, n_cut):
     return K
 
 
+def _k_per_c_python(phi, c_values, n_cut):
+    """Pure-Python per-c K values (reference implementation)."""
+    N = len(phi)
+    K_values = np.empty(len(c_values))
+    for ic, c in enumerate(c_values):
+        # Build the 2D extension
+        js = np.arange(1, N + 1, dtype=np.float64)
+        p = np.cumsum(phi * np.cos(js * c))
+        q = np.cumsum(phi * np.sin(js * c))
+        K_values[ic] = _msd_regression(p, q, n_cut)
+    return K_values
+
+
+def _k_per_c(phi, c_values, n_cut):
+    """Per-c K values, using the Rust kernel when it is available."""
+    if _RUST_AVAILABLE:
+        return np.asarray(_zero_one_k_rs(phi, c_values, n_cut))
+    return _k_per_c_python(phi, c_values, n_cut)
+
+
 def zero_one_statistic(phi, n_c=100, n_cut=None, rng=None):
     """Perform the 0-1 test for chaos on a scalar time series.
 
@@ -121,7 +153,6 @@ def zero_one_statistic(phi, n_c=100, n_cut=None, rng=None):
         The 0-1 test statistic.  K ≈ 0 for regular, K ≈ 1 for chaotic.
     """
     phi, n_c, n_cut = _validate_zero_one_inputs(phi, n_c, n_cut)
-    N = len(phi)
 
     if rng is None:
         rng = np.random.default_rng(42)
@@ -130,14 +161,7 @@ def zero_one_statistic(phi, n_c=100, n_cut=None, rng=None):
     # with the driving frequency (G&M 2009 recommendation)
     c_values = rng.uniform(np.pi / 5, 4 * np.pi / 5, n_c)
 
-    K_values = np.empty(n_c)
-    for ic, c in enumerate(c_values):
-        # Build the 2D extension
-        js = np.arange(1, N + 1, dtype=np.float64)
-        p = np.cumsum(phi * np.cos(js * c))
-        q = np.cumsum(phi * np.sin(js * c))
-
-        K_values[ic] = _msd_regression(p, q, n_cut)
+    K_values = _k_per_c(phi, c_values, n_cut)
 
     # Median is more robust than mean to outlier c values
     return float(np.median(K_values))
@@ -150,18 +174,12 @@ def zero_one_series(phi, n_c=100, n_cut=None, rng=None):
     of the median, useful for checking consistency.
     """
     phi, n_c, n_cut = _validate_zero_one_inputs(phi, n_c, n_cut)
-    N = len(phi)
 
     if rng is None:
         rng = np.random.default_rng(42)
 
     c_values = rng.uniform(np.pi / 5, 4 * np.pi / 5, n_c)
 
-    K_values = np.empty(n_c)
-    for ic, c in enumerate(c_values):
-        js = np.arange(1, N + 1, dtype=np.float64)
-        p = np.cumsum(phi * np.cos(js * c))
-        q = np.cumsum(phi * np.sin(js * c))
-        K_values[ic] = _msd_regression(p, q, n_cut)
+    K_values = _k_per_c(phi, c_values, n_cut)
 
     return c_values, K_values

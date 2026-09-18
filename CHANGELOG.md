@@ -3,6 +3,15 @@
 Versions before 0.4.0 were private and unpublished; their entries were
 reconstructed from git history. 0.4.0 is the first public release.
 
+## Unreleased
+
+### Changed
+
+- `zero_one_statistic` and `zero_one_series` run on the Rust core when the
+  compiled extension is available. The results agree with the Python path to
+  within 1e-9 for each random frequency. The Python path is still there, and
+  `DYNACHAOS_NO_RUST=1` still selects it.
+
 ## 0.4.1 — 2026-07-28
 
 Packaging and documentation only. No functional change to the library.

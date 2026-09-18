@@ -14,6 +14,7 @@ mod intermittency;
 mod multifractal;
 mod permutation;
 mod recurrence;
+mod zero_one;
 
 pub(crate) fn core_to_py(err: CoreError) -> PyErr {
     match err {
@@ -54,5 +55,6 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     m.add_function(wrap_pyfunction!(intermittency::logistic_type_i_oracle, m)?)?;
+    m.add_function(wrap_pyfunction!(zero_one::zero_one_k, m)?)?;
     Ok(())
 }

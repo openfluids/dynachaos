@@ -1307,3 +1307,108 @@ class TestCircleMapTileParity:
 
         with pytest.raises(ValueError, match="n_omega and n_k must be >= 1"):
             rotation_number_tile(0.0, 1.0, 0, 0.0, 0.3, 4, 10, 10, 0.1)
+
+
+@rust_extension
+class TestZeroOneParity:
+    """Verify the Rust 0-1 kernel matches the Python estimator per c value.
+
+    The kernel takes the c values as input, so both backends see the same
+    frequencies and can be compared element by element. The bound is 1e-9:
+    the Rust kernel sums the autocovariance directly where Python uses an
+    FFT, so the two differ only by rounding, not by method.
+    """
+
+    N_C = 15
+    N_CUT = 200
+    ATOL = 1e-9
+
+    def _series(self):
+        n = 2000
+        t = np.arange(n, dtype=np.float64)
+        regular = np.sin(2.0 * np.pi * 0.071 * t) + 0.2 * np.sin(2.0 * np.pi * 0.113 * t)
+        chaotic = logistic_series(n=n, a=1.99, burn=2000)
+        return {"regular": regular, "chaotic": chaotic}
+
+    def _c_values(self):
+        return np.random.default_rng(2026).uniform(np.pi / 5, 4 * np.pi / 5, self.N_C)
+
+    def test_per_c_k_matches_python(self):
+        from dynachaos._rust import zero_one_k
+        from dynachaos.diagnostics import zero_one_test as zo_mod
+
+        c_values = self._c_values()
+        for name, phi in self._series().items():
+            k_python = zo_mod._k_per_c_python(phi, c_values, self.N_CUT)
+            k_rust = np.asarray(zero_one_k(phi, c_values, self.N_CUT))
+
+            worst = float(np.max(np.abs(k_rust - k_python)))
+            np.testing.assert_allclose(k_rust, k_python, rtol=0.0, atol=self.ATOL)
+            assert worst <= self.ATOL, f"{name}: worst per-c difference {worst:.3e}"
+
+    def test_median_matches_python(self):
+        from dynachaos._rust import zero_one_k
+        from dynachaos.diagnostics import zero_one_test as zo_mod
+
+        c_values = self._c_values()
+        for name, phi in self._series().items():
+            k_python = zo_mod._k_per_c_python(phi, c_values, self.N_CUT)
+            k_rust = np.asarray(zero_one_k(phi, c_values, self.N_CUT))
+
+            med_python = float(np.median(k_python))
+            med_rust = float(np.median(k_rust))
+            assert abs(med_rust - med_python) <= self.ATOL, (
+                f"{name}: medians differ by {abs(med_rust - med_python):.3e}"
+            )
+
+    def test_public_dispatch_uses_rust_when_available(self, monkeypatch):
+        from dynachaos.diagnostics import zero_one_test as zo_mod
+
+        phi = self._series()["chaotic"]
+        c_values = self._c_values()
+        sentinel = np.full(self.N_C, -7.0)
+
+        calls = []
+
+        def stub(phi_arg, c_arg, n_cut_arg):
+            calls.append((phi_arg, c_arg, n_cut_arg))
+            return sentinel
+
+        monkeypatch.setattr(zo_mod, "_zero_one_k_rs", stub)
+        old_flag = zo_mod._RUST_AVAILABLE
+        try:
+            zo_mod._RUST_AVAILABLE = True
+            dispatched = zo_mod._k_per_c(phi, c_values, self.N_CUT)
+            # The public functions must reach the kernel too, not only the helper.
+            statistic = zo_mod.zero_one_statistic(phi, n_c=self.N_C, n_cut=self.N_CUT)
+            _, series_k = zo_mod.zero_one_series(phi, n_c=self.N_C, n_cut=self.N_CUT)
+        finally:
+            zo_mod._RUST_AVAILABLE = old_flag
+
+        assert len(calls) == 3, "the Rust kernel was not called on every path"
+        np.testing.assert_array_equal(dispatched, sentinel)
+        assert statistic == -7.0
+        np.testing.assert_array_equal(series_k, sentinel)
+
+    def test_direct_rust_rejects_invalid_inputs(self):
+        from dynachaos._rust import zero_one_k
+
+        phi = np.array([0.1, 0.2, 0.3, 0.4])
+        c = np.array([0.5, 0.7])
+        with pytest.raises(ValueError, match="finite values"):
+            zero_one_k(np.array([0.1, np.nan, 0.3]), c, 2)
+        with pytest.raises(ValueError, match="finite values"):
+            zero_one_k(phi, np.array([np.nan]), 2)
+        with pytest.raises(ValueError, match="at least one"):
+            zero_one_k(phi, np.array([]), 2)
+        with pytest.raises(ValueError, match="n_cut"):
+            zero_one_k(phi, c, 1)
+        with pytest.raises(ValueError, match="n_cut"):
+            zero_one_k(phi, c, 5)
+
+    def test_direct_rust_zero_series_returns_zero(self):
+        from dynachaos._rust import zero_one_k
+
+        ks = zero_one_k(np.zeros(100), self._c_values()[:5], 10)
+
+        np.testing.assert_array_equal(ks, np.zeros(5))
