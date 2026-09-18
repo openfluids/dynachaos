@@ -258,6 +258,76 @@ test("an error reply frees its tile and does not retry", () => {
   assert.equal(extra.commands.filter((cmd) => cmd.type === "issue").length, 0);
 });
 
+test("a workerError requeues once and drops on a second loss in one generation", () => {
+  let { state } = reduce(initialState(OPTIONS), viewportEvent());
+  const first = drain(state, 1);
+  state = first.state;
+  const tile = first.issued[0];
+  // A live worker remains, so the freed tile is requeued, not dropped.
+  let out = reduce(state, {
+    type: "workerError",
+    id: tile.id,
+    generation: tile.generation,
+    tile,
+    liveWorkers: 1,
+  });
+  assert.equal(out.commands.length, 0);
+  assert.equal(out.state.droppedTiles, 0);
+  assert.equal(out.state.pending[0].id, tile.id);
+  assert.equal(out.state.pending[0].generation, tile.generation);
+  assert.deepEqual(out.state.retried, [tile.id]);
+  // Re-issue it and lose it again: the once-per-generation cap drops it.
+  const second = drain(out.state, 1);
+  assert.equal(second.issued[0].id, tile.id);
+  out = reduce(second.state, {
+    type: "workerError",
+    id: tile.id,
+    generation: tile.generation,
+    tile,
+    liveWorkers: 1,
+  });
+  assert.equal(out.state.droppedTiles, 1);
+  assert.equal(out.commands.length, 1);
+  assert.equal(out.commands[0].type, "drop");
+  assert.equal(out.commands[0].reason, "worker");
+  assert.equal(out.commands[0].id, tile.id);
+});
+
+test("a tile retried in one generation may be retried again after a pan", () => {
+  let { state } = reduce(initialState(OPTIONS), viewportEvent());
+  const first = drain(state, 1);
+  state = first.state;
+  const tile = first.issued[0];
+  // Lose the tile once in generation 1: it is requeued and spent its retry.
+  let out = reduce(state, {
+    type: "workerError",
+    id: tile.id,
+    generation: tile.generation,
+    tile,
+    liveWorkers: 1,
+  });
+  assert.equal(out.commands.length, 0);
+  assert.deepEqual(out.state.retried, [tile.id]);
+  // Pan: the same tile id is issued again in generation 2.
+  ({ state } = reduce(out.state, viewportEvent({ ...VIEWPORT, omegaMax: 0.5 })));
+  const second = drain(state, 1);
+  assert.equal(second.issued[0].id, tile.id);
+  assert.equal(second.issued[0].generation, 2);
+  // Without the per-generation reset of `retried` this second loss drops the
+  // tile instead of requeueing it.
+  out = reduce(second.state, {
+    type: "workerError",
+    id: tile.id,
+    generation: 2,
+    tile: second.issued[0],
+    liveWorkers: 1,
+  });
+  assert.equal(out.commands.length, 0);
+  assert.equal(out.state.droppedTiles, 0);
+  assert.equal(out.state.pending[0].id, tile.id);
+  assert.equal(out.state.pending[0].generation, 2);
+});
+
 function makeFakeWorkerClass() {
   const instances = [];
   class FakeWorker {
@@ -543,45 +613,87 @@ test("the pool announces once when the last live worker is retired", () => {
   pool.destroy();
 });
 
-test("a reply whose identity disagrees with the remembered tile is never painted", () => {
+test("a reply the pool remembers nothing for is ignored and keeps the worker", () => {
   const FakeWorker = makeFakeWorkerClass();
   const paints = [];
   const drops = [];
+  const calls = [];
   const pool = createPool({
     Worker: FakeWorker,
     hardwareConcurrency: 1,
     workerUrl: "fake",
-    scheduler: { levels: 2, tileCells: 4 },
+    scheduler: { levels: 1, tileCells: 8 },
     onPaint: (cmd) => paints.push(cmd),
     onDrop: (cmd) => drops.push(cmd),
+    onCapacityLost: (info) => calls.push(info),
   });
   const worker = FakeWorker.instances[0];
-  // A reply nobody asked for is ignored, not painted.
+  // A reply nobody asked for is ignored, not painted, and does not retire.
   worker.deliver({ type: "result", id: "0:0:0", generation: 1, data: [1], computeMs: 1 });
   assert.equal(paints.length, 0);
   assert.equal(drops.length, 0);
   assert.equal(worker.posted.length, 0);
+  assert.equal(pool.liveWorkers, 1);
   pool.setViewport(VIEWPORT);
   const tile = worker.posted[0];
-  // A well-typed result with a wrong id frees the remembered slot and is not
-  // painted; the lost tile is re-issued once.
-  worker.deliver({ type: "result", id: "9:9:9", generation: tile.generation, data: [1], computeMs: 1 });
+  // A duplicate of a result already collected arrives after the slot was
+  // freed: still nothing remembered, still ignored.
+  worker.deliver({ type: "result", id: tile.id, generation: tile.generation, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 1);
+  worker.deliver({ type: "result", id: tile.id, generation: tile.generation, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 1);
+  assert.equal(drops.length, 0);
+  assert.equal(pool.liveWorkers, 1);
+  assert.equal(calls.length, 0);
+  pool.destroy();
+});
+
+test("a reply whose identity disagrees with the remembered tile retires the worker", () => {
+  const FakeWorker = makeFakeWorkerClass();
+  const paints = [];
+  const drops = [];
+  const calls = [];
+  const pool = createPool({
+    Worker: FakeWorker,
+    hardwareConcurrency: 2,
+    workerUrl: "fake",
+    scheduler: { levels: 2, tileCells: 4 },
+    onPaint: (cmd) => paints.push(cmd),
+    onDrop: (cmd) => drops.push(cmd),
+    onCapacityLost: (info) => calls.push(info),
+  });
+  pool.setViewport(VIEWPORT);
+  const [w0, w1] = FakeWorker.instances;
+  const lost = w0.posted[0];
+  const own = w1.posted[0];
+  // w0 answers about a tile it was not given: the shipped worker echoes what
+  // it was handed, so one disagreement means it is broken. It is retired —
+  // no more work, liveWorkers drops — and the lost tile is requeued.
+  w0.deliver({ type: "result", id: "9:9:9", generation: lost.generation, data: [1], computeMs: 1 });
   assert.equal(paints.length, 0);
   assert.equal(drops.length, 0);
-  assert.equal(worker.posted.length, 2);
-  assert.equal(worker.posted[1].id, tile.id);
-  assert.deepEqual(pool.getState().inFlight, [
-    { id: tile.id, generation: tile.generation },
-  ]);
-  // A wrong generation is treated the same; the tile was already retried, so
-  // this time it is dropped and the worker moves to the next tile.
-  worker.deliver({ type: "result", id: tile.id, generation: tile.generation + 9, data: [1], computeMs: 1 });
-  assert.equal(paints.length, 0);
+  assert.equal(pool.liveWorkers, 1);
+  assert.equal(w0.posted.length, 1);
+  assert.equal(pool.getState().pending[0].id, lost.id);
+  assert.equal(calls.length, 0);
+  // The live worker picks the requeued tile up after finishing its own.
+  w1.deliver({ type: "result", id: own.id, generation: own.generation, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 1);
+  assert.equal(w1.posted.length, 2);
+  assert.equal(w1.posted[1].id, lost.id);
+  assert.equal(w1.posted[1].generation, lost.generation);
+  // A wrong generation disagrees the same way; w1 was the last worker, so
+  // retiring it makes the capacity signal reachable.
+  w1.deliver({ type: "result", id: lost.id, generation: lost.generation + 9, data: [1], computeMs: 1 });
+  assert.equal(paints.length, 1);
   assert.equal(drops.length, 1);
   assert.equal(drops[0].reason, "worker");
-  assert.equal(drops[0].id, tile.id);
-  assert.equal(worker.posted.length, 3);
-  assert.notEqual(worker.posted[2].id, tile.id);
+  assert.equal(drops[0].id, lost.id);
+  assert.equal(pool.liveWorkers, 0);
+  assert.equal(w1.posted.length, 2);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].workerCount, 2);
+  assert.equal(calls[0].liveWorkers, 0);
   pool.destroy();
 });
 
@@ -591,31 +703,37 @@ test("a tile lost to a worker failure is re-issued once per generation", () => {
   const drops = [];
   const pool = createPool({
     Worker: FakeWorker,
-    hardwareConcurrency: 2,
+    hardwareConcurrency: 3,
     workerUrl: "fake",
     scheduler: { levels: 2, tileCells: 4 },
     onPaint: (cmd) => paints.push(cmd),
     onDrop: (cmd) => drops.push(cmd),
   });
   pool.setViewport(VIEWPORT);
-  const [w0, w1] = FakeWorker.instances;
+  const [w0, w1, w2] = FakeWorker.instances;
   const lost = w0.posted[0];
   const own = w1.posted[0];
   failWorker(w0);
-  // The freed tile is requeued, not dropped; w1 is still busy with its own.
+  // The freed tile is requeued, not dropped; every other worker is busy.
   assert.equal(drops.length, 0);
   assert.equal(w1.posted.length, 1);
+  assert.equal(w2.posted.length, 1);
+  assert.equal(pool.getState().pending[0].id, lost.id);
   w1.deliver({ type: "result", id: own.id, generation: own.generation, data: [1], computeMs: 1 });
   assert.equal(paints.length, 1);
   assert.equal(w1.posted.length, 2);
   assert.equal(w1.posted[1].id, lost.id);
   assert.equal(w1.posted[1].generation, lost.generation);
   // A second loss of the same tile in the same generation drops it for good.
+  // w2 is still alive, so liveWorkers > 0 and the drop can only come from
+  // the once-per-generation cap, not from running out of workers.
   failWorker(w1);
+  assert.equal(pool.liveWorkers, 1);
   assert.equal(drops.length, 1);
   assert.equal(drops[0].reason, "worker");
   assert.equal(drops[0].id, lost.id);
   assert.equal(w1.posted.length, 2);
+  assert.equal(w2.posted.length, 1);
   pool.destroy();
 
   // A generation bump cancels a requeued tile before it is re-issued.
@@ -628,8 +746,19 @@ test("a tile lost to a worker failure is re-issued once per generation", () => {
   });
   pool2.setViewport(VIEWPORT);
   const [a0, a1] = FakeWorker2.instances;
+  const lostA = a0.posted[0];
   failWorker(a0);
+  // The lost tile was requeued at the head of the queue — it was retried,
+  // not dropped — but a1 is still busy, so no worker has been handed it.
+  assert.equal(pool2.getState().pending[0].id, lostA.id);
+  assert.equal(pool2.getState().pending[0].generation, lostA.generation);
+  assert.equal(a0.posted.length, 1);
+  assert.equal(a1.posted.length, 1);
   pool2.setViewport({ ...VIEWPORT, omegaMax: 0.5 });
+  // The bump cancelled the requeued tile: it was never handed to a worker.
+  assert.equal(a0.posted.length, 1);
+  assert.equal(a1.posted.length, 1);
+  assert.equal(pool2.getState().pending.some((t) => t.generation === 1), false);
   a1.deliver({
     type: "result",
     id: a1.posted[0].id,
