@@ -91,6 +91,10 @@ jobs:
         # stays rare where the orbit is chaotic. The reasoning is in the
         # script's docstring; do not loosen it to make a red run pass.
         run: uv run python scripts/check_wasm_parity.py
+      - name: Check the diagnostics exports against the native build
+        # Counts must match exactly; the fuzzy-entropy sum has a stated
+        # tolerance, justified in the script's docstring.
+        run: uv run python scripts/check_wasm_diagnostics.py
 
   live-figure:
     name: Live figure
