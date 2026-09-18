@@ -15,6 +15,7 @@ pub mod intermittency;
 pub mod multifractal;
 pub mod permutation;
 pub mod recurrence;
+pub mod zero_one;
 
 pub use ami::ami_histogram;
 pub use circle_map::{
@@ -34,6 +35,7 @@ pub use intermittency::{
 pub use multifractal::{MultifractalMoments, multifractal_moments};
 pub use permutation::ordinal_distribution;
 pub use recurrence::{count_line_lengths, diagonal_lines, vertical_lines};
+pub use zero_one::zero_one_k;
 
 use std::fmt;
 
