@@ -1527,7 +1527,17 @@ function Plot(canvas,panel,meta){
   // Keyboard path: arrow keys pan a stepped x-index cursor through the same
   // readout the pointer uses, +/- (or Up/Down) zoom around it, 0 or Escape
   // resets -- the same domain reset as dblclick.
-  function xValues(){return heat?(live?[]:panel.x):(panel.traces[0]?panel.traces[0].x:[]);}
+  function xValues(){
+    if(heat&&live){
+      if(!dom) return [];
+      const n=32;
+      const xs=new Array(n);
+      const span=dom.x1-dom.x0;
+      for(let i=0;i<n;i++) xs[i]=dom.x0+(i/(n-1))*span;
+      return xs;
+    }
+    return heat?panel.x:(panel.traces[0]?panel.traces[0].x:[]);
+  }
   function nearestIndex(xs,v){
     let b=0,d=Infinity;
     for(let i=0;i<xs.length;i++){const q=Math.abs(xs[i]-v);if(q<d){d=q;b=i;}}
