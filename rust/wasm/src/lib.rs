@@ -38,14 +38,6 @@ const HEADER: usize = 4;
 const MAX_ZERO_ONE_N: usize = 20_000;
 /// Largest c ensemble the browser may ask for.
 const MAX_ZERO_ONE_C: usize = 100;
-/// Largest regression window the browser may ask for, in lags.
-const MAX_ZERO_ONE_CUT: usize = 2_000;
-/// Total work budget for one `zero_one_k` call: n_c x n_cut x N pair terms.
-///
-/// Each lag sum costs one multiply-add per pair, so this is the ceiling on how
-/// long a single call may take. `n_cut` is reduced to fit, and the value
-/// actually used is reported in the returned header.
-const MAX_ZERO_ONE_PAIRS: u64 = 200_000_000;
 /// Number of leading `f64` values that describe a `zero_one_k` result.
 const ZERO_ONE_HEADER: usize = 3;
 
@@ -220,12 +212,11 @@ pub fn rotation_number_point(
 ///
 /// - `[0]` = `N` actually used, after truncation.
 /// - `[1]` = `n_c` actually used, after truncation.
-/// - `[2]` = `n_cut` actually used, which may be lower than requested when
-///   the work budget binds.
+/// - `[2]` = `n_cut` actually used, after clamping to `[2, N]`.
 /// - `[3 ..]` = one K per c value kept, in the order they were passed.
 /// Read the header rather than assuming the values you passed were honoured.
 /// An oversized request is cut, not refused. A request that cannot produce a
-/// statistic at all — a non-finite sample or frequency, fewer than two
+/// statistic at all — a non-finite sample or frequency, fewer than three
 /// samples, or no frequencies — returns an empty array, never a trap.
 ///
 /// # Clamping
@@ -234,13 +225,14 @@ pub fn rotation_number_point(
 ///   kept prefix returns an empty array.
 /// - `c_values`: truncated to 100 frequencies; a non-finite frequency
 ///   anywhere in the kept prefix returns an empty array.
-/// - `n_cut`: clamped to `[2, N]` and to 2000, then reduced further until
-///   `n_c x n_cut x N` fits the 2e8 pair budget.
+/// - `n_cut`: clamped to `[2, N]`. The kernel forms the autocovariance by
+///   FFT, so a call costs `n_c` transforms of a power-of-two length below
+///   `4N` and needs no further work budget.
 #[wasm_bindgen]
 pub fn zero_one_k(phi: &[f64], c_values: &[f64], n_cut: usize) -> Vec<f64> {
     let n = phi.len().min(MAX_ZERO_ONE_N);
     let n_c = c_values.len().min(MAX_ZERO_ONE_C);
-    if n < 2 || n_c == 0 {
+    if n < 3 || n_c == 0 {
         return Vec::new();
     }
     let phi = &phi[..n];
@@ -249,8 +241,7 @@ pub fn zero_one_k(phi: &[f64], c_values: &[f64], n_cut: usize) -> Vec<f64> {
         return Vec::new();
     }
 
-    let n_cut = n_cut.clamp(2, n).min(MAX_ZERO_ONE_CUT);
-    let n_cut = fit_zero_one_budget(n, n_c, n_cut);
+    let n_cut = n_cut.clamp(2, n);
 
     // The kernel only fails on arguments this function has already ruled out,
     // so an error here would be a bug in the clamping above. Report it as an
@@ -633,20 +624,6 @@ fn tolerance_or_default(r: f64, traj: &[f64]) -> Option<f64> {
     }
 }
 
-/// Reduce `n_cut` until `n_c x n_cut x N` fits the pair budget.
-///
-/// The result is at least 2, the smallest window the estimator accepts: a
-/// regression over two lags is poor but honest, and the header reports what
-/// was used.
-fn fit_zero_one_budget(n: usize, n_c: usize, n_cut: usize) -> usize {
-    let per_lag = (n_c as u64).saturating_mul(n as u64);
-    if per_lag.saturating_mul(n_cut as u64) <= MAX_ZERO_ONE_PAIRS {
-        return n_cut;
-    }
-    let affordable = MAX_ZERO_ONE_PAIRS / per_lag.max(1);
-    (affordable as usize).max(2)
-}
-
 /// Return `value` when it is finite, otherwise `fallback`.
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
@@ -759,25 +736,23 @@ mod tests {
     fn zero_one_oversized_requests_are_cut_not_refused() {
         let phi = zero_one_phi(MAX_ZERO_ONE_N + 5000);
         let c = vec![0.9; MAX_ZERO_ONE_C + 50];
-        let out = zero_one_k(&phi, &c, MAX_ZERO_ONE_CUT + 500);
+        let out = zero_one_k(&phi, &c, MAX_ZERO_ONE_N + 5000);
         assert_eq!(out[0], MAX_ZERO_ONE_N as f64);
         assert_eq!(out[1], MAX_ZERO_ONE_C as f64);
-        // The pair budget binds below the n_cut ceiling at this size:
-        // 100 c x 20000 N leaves room for 100 lags, not 2000.
-        assert_eq!(out[2], 100.0);
+        // n_cut clamps to [2, N] only: the FFT cost is n_c transforms, so
+        // the full window at the N cap is kept, not cut.
+        assert_eq!(out[2], MAX_ZERO_ONE_N as f64);
     }
 
     #[test]
-    fn zero_one_n_cut_is_cut_to_the_pair_budget() {
-        // n_c x n_cut x N = 100 x 2000 x 20000 = 4e9 pairs, over the 2e8
-        // budget, so n_cut must come back reduced.
-        let phi = zero_one_phi(MAX_ZERO_ONE_N);
-        let c = vec![0.9; MAX_ZERO_ONE_C];
-        let out = zero_one_k(&phi, &c, MAX_ZERO_ONE_CUT);
-        let used = out[2] as u64;
-        assert!(used >= 2);
-        assert!(used < MAX_ZERO_ONE_CUT as u64);
-        assert!((MAX_ZERO_ONE_C as u64) * used * (MAX_ZERO_ONE_N as u64) <= MAX_ZERO_ONE_PAIRS);
+    fn zero_one_n_cut_below_two_reports_two() {
+        let phi = zero_one_phi(100);
+        let c = [0.9];
+        for n_cut in [0usize, 1] {
+            let out = zero_one_k(&phi, &c, n_cut);
+            assert_eq!(out[2], 2.0, "n_cut {n_cut} should clamp up to 2");
+            assert_eq!(out.len(), ZERO_ONE_HEADER + 1);
+        }
     }
 
     #[test]
@@ -803,6 +778,7 @@ mod tests {
     fn zero_one_unusable_requests_return_an_empty_result() {
         let phi = zero_one_phi(100);
         assert!(zero_one_k(&phi, &[], 10).is_empty());
+        assert!(zero_one_k(&phi[..2], &[0.9], 10).is_empty());
         assert!(zero_one_k(&phi[..1], &[0.9], 10).is_empty());
     }
 

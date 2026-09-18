@@ -71,6 +71,14 @@ its arguments come from a URL, a slider, or a stranger.
 4. **No allocation surprises.** Size the output from the clamped inputs so the
    caller can predict the buffer.
 
+`zero_one_k` is the exception to "cap every loop": its cost is `n_c` FFTs of
+a power-of-two length below `4N`, so the `N <= 20000` and `n_c <= 100`
+truncations bound the work on their own and no pair budget is needed. Its
+clamps are `phi` to 20000 samples, `c_values` to 100 frequencies, and
+`n_cut` to `[2, N]` — a request below 2 or above `N` comes back clamped,
+never refused, and the header reports the value used. A series shorter than
+three samples cannot produce a statistic and returns an empty array.
+
 ## Threads: worker tiling, not SharedArrayBuffer
 
 WebAssembly threads put the linear memory in a `SharedArrayBuffer`, which

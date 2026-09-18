@@ -11,6 +11,7 @@ pub mod correlation_gp;
 pub mod coupled_logistic;
 pub mod embedding;
 pub mod entropy;
+mod fft;
 pub mod intermittency;
 pub mod multifractal;
 pub mod permutation;

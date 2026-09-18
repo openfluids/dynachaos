@@ -5,9 +5,10 @@
 //! correlation estimator of Gottwald & Melbourne (2009, Eq. 8) as that file
 //! implements it, with the mean-square displacement formed from the
 //! stationary-process identity `D(k) = 2[C_p(0) + C_q(0)] - 2[C_p(k) + C_q(k)]`
-//! and no oscillatory `V_osc` correction. The Python file computes the
-//! autocovariance by FFT; this kernel uses direct sums over the lags actually
-//! used, which differs only by rounding.
+//! and no oscillatory `V_osc` correction. The autocovariance is computed by
+//! an in-house radix-2 FFT (`crate::fft`) on the centred series zero-padded
+//! to the next power of two >= 2N, the same method as the Python file, so
+//! the two differ only by rounding.
 //!
 //! Per frequency `c` the estimator is:
 //!
@@ -22,6 +23,7 @@
 //! `(π/5, 4π/5)`); the kernel only evaluates them.
 
 use crate::CoreError;
+use crate::fft::Roots;
 
 /// Absolute tolerance under which `D` counts as constant and `K_c` is 0.
 ///
@@ -63,25 +65,39 @@ pub fn zero_one_k(phi: &[f64], c_values: &[f64], n_cut: usize) -> Result<Vec<f64
         ));
     }
 
+    // The transform length and its twiddle table depend only on N, so they
+    // are built once and shared by every frequency.
+    let roots = Roots::of_len(autocovariance_len(n));
+
     #[cfg(feature = "parallel")]
     {
         use rayon::prelude::*;
         Ok(c_values
             .par_iter()
-            .map(|&c| k_for_c(phi, c, n_cut))
+            .map(|&c| k_for_c(phi, c, n_cut, &roots))
             .collect())
     }
     #[cfg(not(feature = "parallel"))]
     {
-        Ok(c_values.iter().map(|&c| k_for_c(phi, c, n_cut)).collect())
+        Ok(c_values
+            .iter()
+            .map(|&c| k_for_c(phi, c, n_cut, &roots))
+            .collect())
     }
 }
 
-/// The 0-1 statistic for one frequency `c`.
-fn k_for_c(phi: &[f64], c: f64, n_cut: usize) -> f64 {
-    let n = phi.len();
+/// Transform length for the autocovariance: the smallest power of two that
+/// is at least `2n`, so no lag below `n` sees a circular wrap.
+fn autocovariance_len(n: usize) -> usize {
+    (2 * n).next_power_of_two()
+}
 
-    // Translation variables: cumulative sums of φ_j cos(jc), φ_j sin(jc).
+/// The centred translation variables `p` and `q` for one frequency `c`:
+/// cumulative sums of `φ_j cos(jc)` and `φ_j sin(jc)` for `j = 1..N`, each
+/// shifted by its global mean as the Python reference does before the
+/// autocovariance.
+fn translation_variables(phi: &[f64], c: f64) -> (Vec<f64>, Vec<f64>) {
+    let n = phi.len();
     let mut p = Vec::with_capacity(n);
     let mut q = Vec::with_capacity(n);
     let mut p_acc = 0.0f64;
@@ -94,8 +110,6 @@ fn k_for_c(phi: &[f64], c: f64, n_cut: usize) -> f64 {
         q.push(q_acc);
     }
 
-    // Centre on the global means, as the Python reference does before the
-    // autocovariance.
     let mean_p = p.iter().sum::<f64>() / n as f64;
     let mean_q = q.iter().sum::<f64>() / n as f64;
     for v in &mut p {
@@ -104,20 +118,46 @@ fn k_for_c(phi: &[f64], c: f64, n_cut: usize) -> f64 {
     for v in &mut q {
         *v -= mean_q;
     }
+    (p, q)
+}
 
-    // Autocovariance at lags 0..n_cut-1, normalised by (N − k): direct sums
-    // over the lags used, replacing the FFT of the Python reference.
-    let mut d = Vec::with_capacity(n_cut);
-    for k in 0..n_cut {
-        let mut c_p = 0.0f64;
-        let mut c_q = 0.0f64;
-        for j in 0..(n - k) {
-            c_p += p[j] * p[j + k];
-            c_q += q[j] * q[j + k];
-        }
-        let norm = (n - k) as f64;
-        d.push(-2.0 * (c_p + c_q) / norm);
+/// Unnormalised autocovariance sums `C_p(k) + C_q(k)` at lags `0..n_cut`,
+/// computed by FFT.
+///
+/// With `z = p + i q`, `Re(Σ_j z_{j+k} conj(z_j)) = C_p(k) + C_q(k)` exactly,
+/// so one complex transform pair replaces two real ones. The series is
+/// zero-padded to `roots`' length `M >= 2N`, which keeps every lag below `N`
+/// free of circular wrap; `F^-1(|F(z)|²)` is the autocorrelation.
+fn autocovariance_sums(p: &[f64], q: &[f64], n_cut: usize, roots: &Roots) -> Vec<f64> {
+    let m = roots.len();
+    let mut re = vec![0.0f64; m];
+    let mut im = vec![0.0f64; m];
+    re[..p.len()].copy_from_slice(p);
+    im[..q.len()].copy_from_slice(q);
+
+    crate::fft::fft(&mut re, &mut im, roots, false);
+    for i in 0..m {
+        re[i] = re[i] * re[i] + im[i] * im[i];
+        im[i] = 0.0;
     }
+    crate::fft::fft(&mut re, &mut im, roots, true);
+
+    re[..n_cut].to_vec()
+}
+
+/// The 0-1 statistic for one frequency `c`.
+fn k_for_c(phi: &[f64], c: f64, n_cut: usize, roots: &Roots) -> f64 {
+    let n = phi.len();
+    let (p, q) = translation_variables(phi, c);
+
+    // Autocovariance at lags 0..n_cut-1, normalised by (N − k), from the
+    // FFT of the centred series as in the Python reference.
+    let sums = autocovariance_sums(&p, &q, n_cut, roots);
+    let mut d: Vec<f64> = sums
+        .iter()
+        .enumerate()
+        .map(|(k, &s)| -2.0 * s / (n - k) as f64)
+        .collect();
     // D(k) = 2[C_p(0) + C_q(0)] − 2[C_p(k) + C_q(k)]; the first term is
     // folded in here so `d` holds the negated autocovariance sums above.
     let var_sum = -d[0] / 2.0;
@@ -224,6 +264,46 @@ mod tests {
         let phi = regular_series(5000);
         let k = median(zero_one_k(&phi, &c_values(20), 500).unwrap());
         assert!(k < 0.4, "regular series gave K = {k}");
+    }
+
+    #[test]
+    fn fft_autocovariance_matches_direct_sums() {
+        // The FFT path must return the same C_p(k) + C_q(k) the direct lag
+        // sums it replaced computed, to rounding. The direct sums are written
+        // out here so the check does not depend on the code under test.
+        //
+        // The bound is relative to the largest sum — the lag-0 energy, which
+        // bounds every lag by Cauchy–Schwarz — not to each lag's own value:
+        // at large N the centred translation variables are O(sqrt N) random
+        // walks, so individual lags cancel the term scale by orders of
+        // magnitude and no summation order can do better than ~eps·energy.
+        for n in [2usize, 3, 7, 64, 1000, 4097] {
+            let phi = logistic_r4(n, 200);
+            let (p, q) = translation_variables(&phi, 0.9);
+            let n_cut = n;
+            let roots = Roots::of_len(autocovariance_len(n));
+            let sums = autocovariance_sums(&p, &q, n_cut, &roots);
+
+            // The lag-0 sum is the energy of the centred variables and the
+            // largest of the lags, so it sets the rounding scale.
+            let mut energy = 0.0f64;
+            for j in 0..n {
+                energy += p[j] * p[j] + q[j] * q[j];
+            }
+            let tol = 1e-12 * energy.max(1.0);
+
+            for (k, &fft_sum) in sums.iter().enumerate() {
+                let mut direct = 0.0f64;
+                for j in 0..(n - k) {
+                    direct += p[j] * p[j + k] + q[j] * q[j + k];
+                }
+                let error = (fft_sum - direct).abs();
+                assert!(
+                    error <= tol,
+                    "n = {n}, lag {k}: FFT {fft_sum} vs direct {direct} (error {error:.3e})"
+                );
+            }
+        }
     }
 
     #[test]

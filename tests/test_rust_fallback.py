@@ -6,6 +6,7 @@ acceleration is a transparent drop-in.
 
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -1315,8 +1316,8 @@ class TestZeroOneParity:
 
     The kernel takes the c values as input, so both backends see the same
     frequencies and can be compared element by element. The bound is 1e-9:
-    the Rust kernel sums the autocovariance directly where Python uses an
-    FFT, so the two differ only by rounding, not by method.
+    both backends form the autocovariance by FFT, so the two differ only by
+    rounding, not by method.
     """
 
     N_C = 15
@@ -1345,6 +1346,22 @@ class TestZeroOneParity:
             worst = float(np.max(np.abs(k_rust - k_python)))
             np.testing.assert_allclose(k_rust, k_python, rtol=0.0, atol=self.ATOL)
             assert worst <= self.ATOL, f"{name}: worst per-c difference {worst:.3e}"
+
+    def test_per_c_k_matches_python_at_long_n(self):
+        """Same per-c bound at N = 30001, where the FFT path must not drift."""
+        from dynachaos._rust import zero_one_k
+        from dynachaos.diagnostics import zero_one_test as zo_mod
+
+        phi = logistic_series(n=30_001, a=1.99, burn=2000)
+        c_values = np.random.default_rng(2026).uniform(np.pi / 5, 4 * np.pi / 5, 5)
+        n_cut = 3000
+
+        k_python = zo_mod._k_per_c_python(phi, c_values, n_cut)
+        k_rust = np.asarray(zero_one_k(phi, c_values, n_cut))
+
+        worst = float(np.max(np.abs(k_rust - k_python)))
+        np.testing.assert_allclose(k_rust, k_python, rtol=0.0, atol=self.ATOL)
+        assert worst <= self.ATOL, f"N = 30001: worst per-c difference {worst:.3e}"
 
     def test_median_matches_python(self):
         from dynachaos._rust import zero_one_k
@@ -1412,3 +1429,45 @@ class TestZeroOneParity:
         ks = zero_one_k(np.zeros(100), self._c_values()[:5], 10)
 
         np.testing.assert_array_equal(ks, np.zeros(5))
+
+
+@rust_extension
+class TestZeroOneScaling:
+    """The Rust 0-1 kernel must not scale as N^2.
+
+    The kernel it replaced summed the autocovariance directly: n_c x n_cut x N
+    multiply-adds, which at the default n_cut = N/10 grows as N^2. From N to
+    4N an N^2 kernel takes 16x longer (the old one measured 33x, with cache
+    misses), the FFT kernel about 4.5x. The bound of 8 catches a return to
+    N^2 with room for noise; it does not prove N log N.
+    """
+
+    N_C = 8
+    ROUNDS = 5
+
+    def test_rust_kernel_scales_below_n_squared(self):
+        from dynachaos._rust import zero_one_k
+
+        c_values = np.random.default_rng(7).uniform(np.pi / 5, 4 * np.pi / 5, self.N_C)
+        cases = {n: logistic_series(n=n, a=1.99, burn=2000) for n in (25_000, 100_000)}
+        repeats = {25_000: 10, 100_000: 5}
+        best = dict.fromkeys(cases, float("inf"))
+
+        for n, phi in cases.items():
+            zero_one_k(phi, c_values, n // 10)  # warm up: first call pays pool spin-up
+        # Interleave the two sizes so a busy interval (other test workers,
+        # the rayon pool) slows both, not one; keep the fastest burst of each.
+        # A single call is a few ms, so each timing is a burst divided by count.
+        for _ in range(self.ROUNDS):
+            for n, phi in cases.items():
+                start = time.perf_counter()
+                for _ in range(repeats[n]):
+                    zero_one_k(phi, c_values, n // 10)
+                best[n] = min(best[n], (time.perf_counter() - start) / repeats[n])
+
+        ratio = best[100_000] / best[25_000]
+        assert ratio < 8.0, (
+            f"zero_one_k took {best[25_000]:.3f}s at N = 25000 and "
+            f"{best[100_000]:.3f}s at N = 100000: ratio {ratio:.2f} "
+            "approaches the 16x of an N^2 kernel"
+        )
