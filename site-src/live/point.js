@@ -9,34 +9,52 @@
  * cells run the full n_iter average.
  *
  * This file is copied to site/live/, so ../wasm/ is site/wasm/.
+ *
+ * The glue is imported dynamically so a module without
+ * rotation_number_point cannot take the live figure down with it. A failed
+ * load is not cached forever: the next ensureLoaded() retries once.
  */
-
-import init, { initSync, rotation_number_point } from "../wasm/dynachaos_wasm.js";
 
 let ready = false;
 let loading = null;
+let loadFailed = false;
+let pointFn = null;
+let glueHref = new URL("../wasm/dynachaos_wasm.js", import.meta.url).href;
 
 export function isReady() {
   return ready;
 }
 
-export function ensureLoaded() {
+export function ensureLoaded(glueUrl) {
+  if (glueUrl) glueHref = glueUrl;
   if (loading == null) loading = loadWasm();
   return loading;
 }
 
 async function loadWasm() {
-  // The browser glue fetches the .wasm next to itself. Node cannot fetch a
-  // file:// URL, so a smoke run reads the bytes and instantiates them.
-  const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
-  if (!isNode) {
-    await init();
-  } else {
-    const { readFile } = await import("node:fs/promises");
-    const bytes = await readFile(new URL("../wasm/dynachaos_wasm_bg.wasm", import.meta.url));
-    initSync({ module: bytes });
+  try {
+    const glue = await import(glueHref);
+    if (typeof glue.rotation_number_point !== "function") {
+      throw new Error("wasm glue is missing rotation_number_point");
+    }
+    const isNode =
+      typeof process !== "undefined" && process.versions && process.versions.node;
+    if (!isNode) {
+      await glue.default();
+    } else {
+      const { readFile } = await import("node:fs/promises");
+      const bytes = await readFile(new URL("dynachaos_wasm_bg.wasm", glueHref));
+      glue.initSync({ module: bytes });
+    }
+    pointFn = glue.rotation_number_point;
+    ready = true;
+  } catch (err) {
+    if (!loadFailed) {
+      loadFailed = true;
+      loading = null;
+    }
+    throw err;
   }
-  ready = true;
 }
 
 /**
@@ -51,15 +69,15 @@ async function loadWasm() {
  * @returns {number | null}
  */
 export function sample(omega, K, nTransient, nIter, theta0) {
-  if (!ready) {
-    ensureLoaded();
+  if (!ready || typeof pointFn !== "function") {
+    ensureLoaded().catch(() => {});
     return null;
   }
   if (!Number.isFinite(omega) || !Number.isFinite(K)) return null;
   const transient = Number.isFinite(nTransient) ? nTransient : 200;
   const iter = Number.isFinite(nIter) ? nIter : 2000;
   const theta = Number.isFinite(theta0) ? theta0 : 0.1;
-  const out = rotation_number_point(omega, K, transient, iter, theta);
+  const out = pointFn(omega, K, transient, iter, theta);
   if (out == null || out.length < 1) return null;
   const value = out[0];
   return typeof value === "number" && Number.isFinite(value) ? value : null;

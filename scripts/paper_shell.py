@@ -1636,7 +1636,7 @@ async function mountLive(fig){
     h.textContent=title;w.insertBefore(h,c);
     const store={tiles:[],generation:0,painted:0,nIter:2000};
     let pool=null,plot=null,paintSeq=0;
-    point.ensureLoaded();
+    point.ensureLoaded().catch(()=>{});
     const sampleReadout=(omega,K)=>{
       if(point.isReady()){
         try{
