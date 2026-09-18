@@ -31,7 +31,7 @@ const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
   FIRST_PAINT_MS +
   REFINE_MS +
-  4 * SAMPLE_MS +
+  6 * SAMPLE_MS +
   VIEW_MS +
   REDUCED_WAIT_MS;
 const WATCHDOG_MS = DEADLINE_SUM_MS + 90_000;
@@ -511,6 +511,75 @@ try {
     "the readout is the point kernel, not the tile lookup",
     wired != null && wired.ready === true && wired.direct !== null && wired.readout === wired.direct,
     JSON.stringify(wired),
+  );
+
+  // The raster check above cannot see the display stop: rasterSample() reads
+  // the tile cell at its grid coordinate, so it differs from the readout
+  // whatever the point kernel does. This one computes a 1 x 1 tile at the
+  // SAME exact point through the page's own glue module -- the instance
+  // point.js already initialised -- so the only difference left is the
+  // kernel's early stop. At an unlocked point the tile's display stop returns
+  // a truncated average; the readout must run the full n_iter and differ.
+  // A locked cell legitimately matches (exact rational either way), so the
+  // demand is that at least one point differs.
+  const tilePairs = [
+    [0.08, 0.03],
+    [0.13, 0.04],
+    [0.55, 0.07],
+    [0.62, 0.1],
+    [0.91, 0.04],
+  ];
+  const vsTile = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    return ${JSON.stringify(tilePairs)}.map(([o, K]) => {
+      const readout = ${F}._live.sample(o, K);
+      const tile = glue.rotation_number_tile(o, o, 1, K, K, 1, 200, 2000, 0.1)[4];
+      return { omega: o, K, readout, tile, differ: Number.isFinite(readout) && readout !== tile };
+    });
+  })()`);
+  check(
+    "the readout runs every step the tile's display stop would skip",
+    Array.isArray(vsTile) && vsTile.length === tilePairs.length && vsTile.some((row) => row.differ),
+    JSON.stringify(vsTile),
+  );
+
+  // Keyboard cursor: focus the live canvas and press ArrowRight. The keydown
+  // handler steps a stepped x-index cursor through xValues() and shows the
+  // same readout the pointer uses; with no x values it returns early and the
+  // readout never appears.
+  const liveCanvasFocused = await ev(`(() => {
+    const c = ${F} && ${F}.querySelector("canvas.plot.live");
+    if (!c) return false;
+    c.focus();
+    return document.activeElement === c;
+  })()`);
+  if (liveCanvasFocused) {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowRight", code: "ArrowRight" });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowRight", code: "ArrowRight" });
+  }
+  const keyReadout = liveCanvasFocused
+    ? await waitFor(
+        `(() => {
+          const tip = ${F} && ${F}.querySelector(".readout.on");
+          if (!tip) return false;
+          const lines = tip.textContent.split("\\n");
+          const last = lines[lines.length - 1] || "";
+          const m = last.match(/=\\s*(\\S+)\\s*$/);
+          return !!m && Number.isFinite(parseFloat(m[1]));
+        })()`,
+        sampleMs,
+      )
+    : false;
+  check(
+    "ArrowRight on the focused live canvas shows a finite rotation number",
+    keyReadout,
+    JSON.stringify({
+      liveCanvasFocused,
+      readout: await ev(`(() => {
+        const tip = ${F} && ${F}.querySelector(".readout");
+        return tip ? { on: tip.classList.contains("on"), text: tip.textContent } : null;
+      })()`),
+    }),
   );
 
   const sBeforeView = await stats();

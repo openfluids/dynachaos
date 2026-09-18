@@ -64,3 +64,19 @@ test("a failed load retries once instead of poisoning the module", async () => {
   assert.equal(point.isReady(), false);
   assert.equal(point.sample(0.5, 0.2, N_TRANSIENT, N_ITER, THETA0), null);
 });
+
+test("the retry budget is exactly one: a third load returns the second rejection", async () => {
+  const glue = await writeStubGlue("export function other() { return 1; }\n");
+  const point = await loadPointIsolate("budget");
+  await assert.rejects(point.ensureLoaded(glue));
+  const second = point.ensureLoaded(glue);
+  await assert.rejects(second);
+  // The first failure bought one retry; the second failure spent it. A third
+  // call must hand back the same rejected promise, not start a third load.
+  // If every failure cleared `loading`, this would be a fresh promise and the
+  // module would retry for ever.
+  const third = point.ensureLoaded(glue);
+  assert.equal(third, second);
+  await assert.rejects(third);
+  assert.equal(point.isReady(), false);
+});
