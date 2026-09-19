@@ -73,6 +73,32 @@ const FUZZY_HEADER: usize = 5;
 /// Number of leading `f64` values that describe an `ordinal_distribution`
 /// result.
 const ORDINAL_HEADER: usize = 4;
+/// Largest recurrence-matrix side the browser may hand to a line kernel.
+///
+/// The mask arrives as `side * side` bytes and the scan is `O(side^2)`, so
+/// the side is capped to keep the matrix interactive: at 1024 the mask is
+/// one megabyte and the scan is about a million cell visits.
+const MAX_RQA_SIDE: usize = 1024;
+/// Largest field side `multifractal_moments` may be asked to use, per axis.
+const MAX_MF_SIDE: usize = 512;
+/// Largest box-size list `multifractal_moments` may be asked to evaluate.
+const MAX_MF_BOXES: usize = 64;
+/// Largest q list `multifractal_moments` may be asked to evaluate.
+const MAX_MF_Q: usize = 64;
+/// Largest delay `ami_histogram` may be asked to evaluate.
+const MAX_AMI_TAU: usize = 512;
+/// Largest bin count `ami_histogram` may be asked to use.
+const MAX_AMI_BINS: usize = 512;
+/// Largest E1 curve `select_dimension_cao` may be asked to read.
+const MAX_CAO_N: usize = 256;
+/// Number of leading `f64` values that describe a `diagonal_lines` or
+/// `vertical_lines` result.
+const LINES_HEADER: usize = 3;
+/// Number of leading `f64` values that describe a `multifractal_moments`
+/// result.
+const MULTIFRACTAL_HEADER: usize = 4;
+/// Number of leading `f64` values that describe an `ami_histogram` result.
+const AMI_HEADER: usize = 3;
 
 /// Rotation numbers of the sine circle map over a tile of the (Omega, K) plane.
 ///
@@ -566,6 +592,369 @@ pub fn ordinal_distribution(x: &[f64], d: usize, tau: usize) -> Vec<f64> {
     out.push(n_windows as f64);
     out.extend(counts.iter().map(|&c| c as f64));
     out
+}
+
+/// Diagonal line lengths of a recurrence matrix (determinism runs).
+///
+/// This is the same estimator `dynachaos.diagnostics.recurrence` runs in
+/// Python: `mask` is a row-major `u8` recurrence matrix of `side` rows and
+/// `side` columns where any nonzero byte counts as recurrent, and the result
+/// is the length of every run of recurrent cells along the super-diagonals
+/// `k = 1 .. side` that meets `l_min`. The kernel is the run-length counter
+/// `count_line_lengths`; this export gathers each super-diagonal into a
+/// reusable buffer and hands it to that counter, which applies the same
+/// run-length rule as the native kernel; `scripts/check_wasm_diagnostics.py`
+/// checks the two agree exactly.
+///
+/// # Returned layout
+///
+/// One flat array of `3 + n_lines` values:
+///
+/// - `[0]` = `side` actually used, after clamping.
+/// - `[1]` = `l_min` actually used, after clamping.
+/// - `[2]` = `n_lines`, the number of line lengths returned.
+/// - `[3 ..]` = the line lengths, in super-diagonal order `k = 1 .. side`.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A request that cannot produce a result at all — a mask shorter than
+/// `side * side`, or a side that clamps below 2 — returns an empty array,
+/// never a trap.
+///
+/// # Clamping
+///
+/// - `side`: clamped to `[2, 1024]` so the `side * side` mask stays
+///   interactive (at 1024 the mask is one megabyte and the scan is about a
+///   million cell visits).
+/// - `l_min`: clamped to `[1, side]`.
+/// - `mask`: the first `side * side` bytes are used; a nonzero byte is
+///   recurrent. The `O(side^2)` scan is the work budget.
+///
+/// The browser is for exploration; the Python package is for production runs.
+#[wasm_bindgen]
+pub fn diagonal_lines(mask: &[u8], side: usize, l_min: usize) -> Vec<f64> {
+    let side = side.clamp(2, MAX_RQA_SIDE);
+    if mask.len() < side * side {
+        return Vec::new();
+    }
+    let l_min = l_min.clamp(1, side);
+    let mask = &mask[..side * side];
+
+    let mut lengths: Vec<i64> = Vec::new();
+    let mut buf: Vec<bool> = Vec::with_capacity(side);
+    for k in 1..side {
+        buf.clear();
+        for i in 0..(side - k) {
+            buf.push(mask[i * side + (i + k)] != 0);
+        }
+        // The kernel only fails on a zero minimum, which the clamp above has
+        // already ruled out, so an error here would be a bug in the clamping.
+        // Report it as an empty result rather than trapping and killing the
+        // worker.
+        let Ok(run) = dynachaos_core::count_line_lengths(&buf, l_min) else {
+            return Vec::new();
+        };
+        lengths.extend(run);
+    }
+
+    let mut out = Vec::with_capacity(LINES_HEADER + lengths.len());
+    out.push(side as f64);
+    out.push(l_min as f64);
+    out.push(lengths.len() as f64);
+    out.extend(lengths.iter().map(|&v| v as f64));
+    out
+}
+
+/// Vertical line lengths of a recurrence matrix (laminarity runs).
+///
+/// This is the same estimator `dynachaos.diagnostics.recurrence` runs in
+/// Python: `mask` is a row-major `u8` recurrence matrix of `side` rows and
+/// `side` columns where any nonzero byte counts as recurrent, and the result
+/// is the length of every run of recurrent cells down each column that meets
+/// `v_min`. The kernel is the run-length counter `count_line_lengths`; this
+/// export gathers each column into a reusable buffer and hands it to that
+/// counter, which applies the same run-length rule as
+/// the native kernel; `scripts/check_wasm_diagnostics.py` checks the two
+/// agree exactly.
+///
+/// # Returned layout
+///
+/// One flat array of `3 + n_lines` values:
+///
+/// - `[0]` = `side` actually used, after clamping.
+/// - `[1]` = `v_min` actually used, after clamping.
+/// - `[2]` = `n_lines`, the number of line lengths returned.
+/// - `[3 ..]` = the line lengths, in column order `j = 0 .. side`.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A request that cannot produce a result at all — a mask shorter than
+/// `side * side`, or a side that clamps below 2 — returns an empty array,
+/// never a trap.
+///
+/// # Clamping
+///
+/// - `side`: clamped to `[2, 1024]` so the `side * side` mask stays
+///   interactive (at 1024 the mask is one megabyte and the scan is about a
+///   million cell visits).
+/// - `v_min`: clamped to `[1, side]`.
+/// - `mask`: the first `side * side` bytes are used; a nonzero byte is
+///   recurrent. The `O(side^2)` scan is the work budget.
+///
+/// The browser is for exploration; the Python package is for production runs.
+#[wasm_bindgen]
+pub fn vertical_lines(mask: &[u8], side: usize, v_min: usize) -> Vec<f64> {
+    let side = side.clamp(2, MAX_RQA_SIDE);
+    if mask.len() < side * side {
+        return Vec::new();
+    }
+    let v_min = v_min.clamp(1, side);
+    let mask = &mask[..side * side];
+
+    let mut lengths: Vec<i64> = Vec::new();
+    let mut buf: Vec<bool> = Vec::with_capacity(side);
+    for j in 0..side {
+        buf.clear();
+        for i in 0..side {
+            buf.push(mask[i * side + j] != 0);
+        }
+        // The kernel only fails on a zero minimum, which the clamp above has
+        // already ruled out, so an error here would be a bug in the clamping.
+        // Report it as an empty result rather than trapping and killing the
+        // worker.
+        let Ok(run) = dynachaos_core::count_line_lengths(&buf, v_min) else {
+            return Vec::new();
+        };
+        lengths.extend(run);
+    }
+
+    let mut out = Vec::with_capacity(LINES_HEADER + lengths.len());
+    out.push(side as f64);
+    out.push(v_min as f64);
+    out.push(lengths.len() as f64);
+    out.extend(lengths.iter().map(|&v| v as f64));
+    out
+}
+
+/// Multifractal partition moments over dyadic box scales.
+///
+/// This is the same estimator `dynachaos.diagnostics.multifractal` runs in
+/// Python: `field` is a row-major nonnegative measure field of `ny` rows and
+/// `nx` columns, and for each box size `r` and moment order `q` the kernel
+/// returns `log_z = ln(sum p^q)`, `alpha_num = sum mu ln p` and
+/// `f_num = sum mu ln mu`, plus `ln(r)` per scale. Boxes do not overlap and
+/// edge remainders are truncated, exactly as the native kernel does.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + 3 * n_scales * n_q + n_scales` values:
+///
+/// - `[0]` = `ny` actually used, after clamping.
+/// - `[1]` = `nx` actually used, after clamping.
+/// - `[2]` = `n_scales` actually used, after truncation.
+/// - `[3]` = `n_q` actually used, after truncation.
+/// - `[4 .. 4 + n_scales * n_q]` = `log_z`, row-major `(n_scales, n_q)`.
+/// - then `alpha_num`, row-major `(n_scales, n_q)`.
+/// - then `f_num`, row-major `(n_scales, n_q)`.
+/// - then `ln_scales`, `n_scales` values.
+///
+/// A skipped scale or a non-finite `q` leaves `NaN` in its slot, matching the
+/// native kernel. Read the header rather than assuming the values you passed
+/// were honoured. A request that cannot produce a result at all — a field
+/// shorter than `ny * nx`, a non-finite or negative entry, or a non-positive
+/// total mass — returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `ny`, `nx`: clamped to `[1, 512]` so the `ny * nx` field stays
+///   interactive.
+/// - `box_sizes`: truncated to 64 entries; each is rounded toward zero and a
+///   non-positive or too-large size leaves `NaN` in its row.
+/// - `q_values`: truncated to 64 entries; a non-finite `q` leaves `NaN` in
+///   its column.
+/// - The `O(ny * nx)` box accumulation is the work budget.
+///
+/// The browser is for exploration; the Python package is for production runs.
+#[wasm_bindgen]
+pub fn multifractal_moments(
+    field: &[f64],
+    ny: usize,
+    nx: usize,
+    box_sizes: &[f64],
+    q_values: &[f64],
+) -> Vec<f64> {
+    let ny = ny.clamp(1, MAX_MF_SIDE);
+    let nx = nx.clamp(1, MAX_MF_SIDE);
+    if field.len() < ny * nx {
+        return Vec::new();
+    }
+    let field = &field[..ny * nx];
+
+    let n_scales = box_sizes.len().min(MAX_MF_BOXES);
+    let n_q = q_values.len().min(MAX_MF_Q);
+    if n_scales == 0 || n_q == 0 {
+        return Vec::new();
+    }
+    let box_sizes: Vec<i64> = box_sizes[..n_scales]
+        .iter()
+        .map(|&b| if b.is_finite() { b as i64 } else { 0 })
+        .collect();
+    let q_values = &q_values[..n_q];
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty result rather than trapping and killing the worker.
+    let Ok(m) = dynachaos_core::multifractal_moments(field, ny, nx, &box_sizes, q_values) else {
+        return Vec::new();
+    };
+
+    let block = n_scales * n_q;
+    let mut out = Vec::with_capacity(MULTIFRACTAL_HEADER + 3 * block + n_scales);
+    out.push(ny as f64);
+    out.push(nx as f64);
+    out.push(n_scales as f64);
+    out.push(n_q as f64);
+    out.extend(m.log_z.iter().copied());
+    out.extend(m.alpha_num.iter().copied());
+    out.extend(m.f_num.iter().copied());
+    out.extend(m.ln_scales.iter().copied());
+    out
+}
+
+/// Average mutual information `I(tau)` for `tau = 1 ..= tau_max`.
+///
+/// This is the same estimator `dynachaos.diagnostics` runs in Python: `x` is
+/// a scalar series and the result is the delayed mutual information at each
+/// lag, estimated with a uniform `n_bins`-by-`n_bins` histogram as Fraser and
+/// Swinney (1986) describe.
+///
+/// # Returned layout
+///
+/// One flat array of `3 + tau_max` values:
+///
+/// - `[0]` = `N` actually used, after truncation.
+/// - `[1]` = `tau_max` actually used, after clamping.
+/// - `[2]` = `n_bins` actually used, after clamping.
+/// - `[3 ..]` = `I(1) .. I(tau_max)`, in lag order.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A request that cannot produce a result at all — fewer than two samples,
+/// or a non-finite sample anywhere in the kept prefix — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `x`: truncated to 20000 samples; a non-finite sample anywhere in the
+///   kept prefix returns an empty array.
+/// - `tau_max`: clamped to `[1, 512]`.
+/// - `n_bins`: clamped to `[1, 512]`.
+/// - The `tau_max` histogram passes over `N` samples are the work budget.
+///
+/// The browser is for exploration; the Python package is for production runs.
+#[wasm_bindgen]
+pub fn ami_histogram(x: &[f64], tau_max: usize, n_bins: usize) -> Vec<f64> {
+    let n = x.len().min(MAX_DIAG_N);
+    if n < 2 {
+        return Vec::new();
+    }
+    let x = &x[..n];
+    if x.iter().any(|v| !v.is_finite()) {
+        return Vec::new();
+    }
+    let tau_max = tau_max.clamp(1, MAX_AMI_TAU);
+    let n_bins = n_bins.clamp(1, MAX_AMI_BINS);
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty result rather than trapping and killing the worker.
+    let Ok(mi) = dynachaos_core::ami_histogram(x, tau_max, n_bins) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(AMI_HEADER + mi.len());
+    out.push(n as f64);
+    out.push(tau_max as f64);
+    out.push(n_bins as f64);
+    out.extend(mi);
+    out
+}
+
+/// Cao's embedding-dimension selector from an E1(d) curve.
+///
+/// This is the same selector `dynachaos.diagnostics` runs in Python: `e1` is
+/// the E1 curve indexed by dimension, and the result is the chosen embedding
+/// dimension — the onset of a stable near-1 plateau, else the first near-one
+/// crossing, else the closest value to 1.
+///
+/// # Returned layout
+///
+/// One flat array of `4` values:
+///
+/// - `[0]` = `N`, the E1 length actually used, after truncation.
+/// - `[1]` = `min_dim` actually used, after clamping.
+/// - `[2]` = `max_dim` actually used: `0` when the caller left it automatic,
+///   else the clamped bound.
+/// - `[3]` = the selected dimension.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A request that cannot produce a result at all — an empty E1 curve —
+/// returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `e1`: truncated to 256 entries; a non-finite entry is skipped by the
+///   selector, matching the native kernel.
+/// - `near_one_lower`, `near_one_upper`, `saturation_tol`: a non-finite
+///   value falls back to the published defaults (0.95, 1.05, 0.02).
+/// - `plateau_span`: clamped to `[2, N]`; `smoothing_window` to `[1, N]`;
+///   `min_dim` to `[1, N]`; `max_dim` to `[min_dim, N]` when set.
+/// - The single `O(N)` pass is the work budget.
+///
+/// The browser is for exploration; the Python package is for production runs.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn select_dimension_cao(
+    e1: &[f64],
+    near_one_lower: f64,
+    near_one_upper: f64,
+    saturation_tol: f64,
+    plateau_span: usize,
+    smoothing_window: usize,
+    min_dim: usize,
+    max_dim: f64,
+) -> Vec<f64> {
+    let n = e1.len().min(MAX_CAO_N);
+    if n == 0 {
+        return Vec::new();
+    }
+    let e1 = &e1[..n];
+    let near_one_lower = finite_or(near_one_lower, 0.95);
+    let near_one_upper = finite_or(near_one_upper, 1.05);
+    let saturation_tol = finite_or(saturation_tol, 0.02);
+    let plateau_span = plateau_span.clamp(2, n);
+    let smoothing_window = smoothing_window.clamp(1, n);
+    let min_dim = min_dim.clamp(1, n);
+    let max_dim_opt = if max_dim.is_finite() && max_dim >= 1.0 {
+        Some((max_dim as usize).clamp(min_dim, n))
+    } else {
+        None
+    };
+
+    let dim = dynachaos_core::select_dimension_cao(
+        e1,
+        near_one_lower,
+        near_one_upper,
+        saturation_tol,
+        plateau_span,
+        smoothing_window,
+        min_dim,
+        max_dim_opt,
+    );
+
+    vec![
+        n as f64,
+        min_dim as f64,
+        max_dim_opt.map_or(0.0, |d| d as f64),
+        dim as f64,
+    ]
 }
 
 /// Reduce `n_pts` until `pairs x dim` fits the diagnostics pair-term budget.
@@ -1078,5 +1467,302 @@ mod tests {
             Some(expected)
         );
         assert_eq!(tolerance_or_default(0.3, &[1.0, 2.0, 3.0, 4.0]), Some(0.3));
+    }
+
+    /// A deterministic recurrence mask: a logistic-map orbit thresholded so
+    /// about a third of the cells are recurrent, with a few nonzero bytes
+    /// that are not 0/1 to exercise the "any nonzero byte" rule.
+    fn rqa_mask(side: usize) -> Vec<u8> {
+        let mut x = 0.123456789f64;
+        (0..side * side)
+            .map(|i| {
+                x = 4.0 * x * (1.0 - x);
+                if x > 0.66 {
+                    // Every third recurrent cell carries a byte above 1.
+                    if i % 3 == 0 { 7 } else { 1 }
+                } else {
+                    0
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn diagonal_header_reports_the_values_actually_used() {
+        let mask = rqa_mask(40);
+        let out = diagonal_lines(&mask, 40, 2);
+        assert_eq!(out[0], 40.0);
+        assert_eq!(out[1], 2.0);
+        let n_lines = out[2] as usize;
+        assert_eq!(out.len(), LINES_HEADER + n_lines);
+        // Every reported line meets l_min.
+        assert!(out[LINES_HEADER..].iter().all(|&v| v >= 2.0));
+    }
+
+    #[test]
+    fn diagonal_matches_the_native_kernel() {
+        // The same mask through the pyo3 path is the parity oracle; here we
+        // check the traversal against count_line_lengths applied by hand.
+        let side = 25;
+        let mask = rqa_mask(side);
+        let out = diagonal_lines(&mask, side, 2);
+        let mut expected: Vec<i64> = Vec::new();
+        let mut buf = Vec::with_capacity(side);
+        for k in 1..side {
+            buf.clear();
+            for i in 0..(side - k) {
+                buf.push(mask[i * side + (i + k)] != 0);
+            }
+            expected.extend(dynachaos_core::count_line_lengths(&buf, 2).unwrap());
+        }
+        let got: Vec<i64> = out[LINES_HEADER..].iter().map(|&v| v as i64).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn diagonal_side_is_capped_not_refused() {
+        // A side above the cap clamps to the cap, so the mask only needs the
+        // capped number of cells.
+        let mask = rqa_mask(MAX_RQA_SIDE);
+        let out = diagonal_lines(&mask, MAX_RQA_SIDE + 500, 2);
+        assert_eq!(out[0], MAX_RQA_SIDE as f64);
+    }
+
+    #[test]
+    fn diagonal_l_min_is_clamped_into_the_side() {
+        let mask = rqa_mask(30);
+        let out = diagonal_lines(&mask, 30, 0);
+        assert_eq!(out[1], 1.0);
+        let out = diagonal_lines(&mask, 30, 10_000);
+        assert_eq!(out[1], 30.0);
+    }
+
+    #[test]
+    fn diagonal_unusable_requests_return_an_empty_result() {
+        let mask = rqa_mask(20);
+        // A mask shorter than side * side cannot produce a matrix.
+        assert!(diagonal_lines(&mask[..100], 20, 2).is_empty());
+        // A side below 2 clamps up to 2, not refused: a 2x2 scan still runs.
+        let tiny = rqa_mask(4);
+        assert_eq!(diagonal_lines(&tiny, 0, 2)[0], 2.0);
+        assert_eq!(diagonal_lines(&tiny, 1, 2)[0], 2.0);
+    }
+
+    #[test]
+    fn vertical_header_reports_the_values_actually_used() {
+        let mask = rqa_mask(40);
+        let out = vertical_lines(&mask, 40, 2);
+        assert_eq!(out[0], 40.0);
+        assert_eq!(out[1], 2.0);
+        let n_lines = out[2] as usize;
+        assert_eq!(out.len(), LINES_HEADER + n_lines);
+        assert!(out[LINES_HEADER..].iter().all(|&v| v >= 2.0));
+    }
+
+    #[test]
+    fn vertical_matches_the_native_kernel() {
+        let side = 25;
+        let mask = rqa_mask(side);
+        let out = vertical_lines(&mask, side, 2);
+        let mut expected: Vec<i64> = Vec::new();
+        let mut buf = Vec::with_capacity(side);
+        for j in 0..side {
+            buf.clear();
+            for i in 0..side {
+                buf.push(mask[i * side + j] != 0);
+            }
+            expected.extend(dynachaos_core::count_line_lengths(&buf, 2).unwrap());
+        }
+        let got: Vec<i64> = out[LINES_HEADER..].iter().map(|&v| v as i64).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn line_exports_scan_the_right_direction_on_an_asymmetric_mask() {
+        // The two tests above copy the export's traversal, so they cannot
+        // catch a wrong direction. This mask is not symmetric, and the
+        // expected lengths are written by hand:
+        //   1 1 0 0
+        //   1 0 1 0
+        //   1 0 0 1
+        //   0 0 0 0
+        // Super-diagonal k = 1 is (0,1), (1,2), (2,3): one line of 3. The
+        // other super-diagonals are empty. Column 0 holds a line of 3;
+        // columns 1, 2 and 3 hold one cell each.
+        let mask: [u8; 16] = [1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0];
+        let diag = diagonal_lines(&mask, 4, 1);
+        assert_eq!(&diag[LINES_HEADER..], &[3.0]);
+        let vert = vertical_lines(&mask, 4, 1);
+        assert_eq!(&vert[LINES_HEADER..], &[3.0, 1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn vertical_side_is_capped_not_refused() {
+        let mask = rqa_mask(MAX_RQA_SIDE);
+        let out = vertical_lines(&mask, MAX_RQA_SIDE + 500, 2);
+        assert_eq!(out[0], MAX_RQA_SIDE as f64);
+    }
+
+    #[test]
+    fn vertical_v_min_is_clamped_into_the_side() {
+        let mask = rqa_mask(30);
+        let out = vertical_lines(&mask, 30, 0);
+        assert_eq!(out[1], 1.0);
+        let out = vertical_lines(&mask, 30, 10_000);
+        assert_eq!(out[1], 30.0);
+    }
+
+    #[test]
+    fn vertical_unusable_requests_return_an_empty_result() {
+        let mask = rqa_mask(20);
+        // A mask shorter than side * side cannot produce a matrix.
+        assert!(vertical_lines(&mask[..100], 20, 2).is_empty());
+        // A side below 2 clamps up to 2, not refused: a 2x2 scan still runs.
+        let tiny = rqa_mask(4);
+        assert_eq!(vertical_lines(&tiny, 0, 2)[0], 2.0);
+        assert_eq!(vertical_lines(&tiny, 1, 2)[0], 2.0);
+    }
+
+    /// A deterministic nonnegative field for the multifractal export.
+    fn mf_field(ny: usize, nx: usize) -> Vec<f64> {
+        let mut x = 0.123456789f64;
+        (0..ny * nx)
+            .map(|_| {
+                x = 4.0 * x * (1.0 - x);
+                x + 0.5
+            })
+            .collect()
+    }
+
+    #[test]
+    fn multifractal_header_reports_the_values_actually_used() {
+        let field = mf_field(8, 8);
+        let out = multifractal_moments(&field, 8, 8, &[2.0, 4.0], &[1.0, 2.0]);
+        assert_eq!(out[0], 8.0);
+        assert_eq!(out[1], 8.0);
+        assert_eq!(out[2], 2.0);
+        assert_eq!(out[3], 2.0);
+        // 4 + 3 * 2 * 2 + 2 = 18 values.
+        assert_eq!(out.len(), MULTIFRACTAL_HEADER + 3 * 4 + 2);
+        // ln_scales sit at the tail: ln(2), ln(4).
+        assert!((out[16] - 2.0f64.ln()).abs() < 1e-12);
+        assert!((out[17] - 4.0f64.ln()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn multifractal_sides_are_capped_not_refused() {
+        let field = mf_field(MAX_MF_SIDE, MAX_MF_SIDE);
+        let out =
+            multifractal_moments(&field, MAX_MF_SIDE + 100, MAX_MF_SIDE + 100, &[2.0], &[1.0]);
+        assert_eq!(out[0], MAX_MF_SIDE as f64);
+        assert_eq!(out[1], MAX_MF_SIDE as f64);
+    }
+
+    #[test]
+    fn multifractal_box_and_q_lists_are_truncated_not_refused() {
+        let field = mf_field(8, 8);
+        let boxes = vec![2.0; MAX_MF_BOXES + 10];
+        let qs = vec![1.0; MAX_MF_Q + 10];
+        let out = multifractal_moments(&field, 8, 8, &boxes, &qs);
+        assert_eq!(out[2], MAX_MF_BOXES as f64);
+        assert_eq!(out[3], MAX_MF_Q as f64);
+    }
+
+    #[test]
+    fn multifractal_unusable_requests_return_an_empty_result() {
+        let field = mf_field(8, 8);
+        // A field shorter than ny * nx cannot produce a result.
+        assert!(multifractal_moments(&field[..10], 8, 8, &[2.0], &[1.0]).is_empty());
+        // No box sizes or no q values.
+        assert!(multifractal_moments(&field, 8, 8, &[], &[1.0]).is_empty());
+        assert!(multifractal_moments(&field, 8, 8, &[2.0], &[]).is_empty());
+        // A non-finite or negative field entry.
+        let mut bad = mf_field(8, 8);
+        bad[5] = f64::NAN;
+        assert!(multifractal_moments(&bad, 8, 8, &[2.0], &[1.0]).is_empty());
+        let mut neg = mf_field(8, 8);
+        neg[3] = -1.0;
+        assert!(multifractal_moments(&neg, 8, 8, &[2.0], &[1.0]).is_empty());
+        // A zero-mass field.
+        let zero = vec![0.0f64; 64];
+        assert!(multifractal_moments(&zero, 8, 8, &[2.0], &[1.0]).is_empty());
+    }
+
+    #[test]
+    fn ami_header_reports_the_values_actually_used() {
+        let x = diag_traj(500, 1);
+        let out = ami_histogram(&x, 10, 16);
+        assert_eq!(out[0], 500.0);
+        assert_eq!(out[1], 10.0);
+        assert_eq!(out[2], 16.0);
+        assert_eq!(out.len(), AMI_HEADER + 10);
+        assert!(out[AMI_HEADER..].iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn ami_tau_and_bins_are_clamped_not_refused() {
+        let x = diag_traj(200, 1);
+        let out = ami_histogram(&x, 0, 0);
+        assert_eq!(out[1], 1.0);
+        assert_eq!(out[2], 1.0);
+        let out = ami_histogram(&x, MAX_AMI_TAU + 100, MAX_AMI_BINS + 100);
+        assert_eq!(out[1], MAX_AMI_TAU as f64);
+        assert_eq!(out[2], MAX_AMI_BINS as f64);
+    }
+
+    #[test]
+    fn ami_the_sample_cap_is_the_budget() {
+        let x = diag_traj(MAX_DIAG_N + 5000, 1);
+        let out = ami_histogram(&x, 5, 8);
+        assert_eq!(out[0], MAX_DIAG_N as f64);
+    }
+
+    #[test]
+    fn ami_unusable_requests_return_an_empty_result() {
+        let x = diag_traj(100, 1);
+        // Fewer than two samples.
+        assert!(ami_histogram(&x[..1], 5, 8).is_empty());
+        // A non-finite sample in the kept prefix.
+        let mut bad = diag_traj(100, 1);
+        bad[7] = f64::NAN;
+        assert!(ami_histogram(&bad, 5, 8).is_empty());
+    }
+
+    #[test]
+    fn cao_header_reports_the_values_actually_used() {
+        // A plateau at 1 from dimension 3 on selects dimension 3.
+        let e1 = [0.4, 0.7, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let out = select_dimension_cao(&e1, 0.95, 1.05, 0.02, 3, 1, 2, f64::NAN);
+        assert_eq!(out[0], 7.0);
+        assert_eq!(out[1], 2.0);
+        assert_eq!(out[2], 0.0); // max_dim left automatic
+        assert_eq!(out[3], 3.0);
+    }
+
+    #[test]
+    fn cao_parameters_are_clamped_not_refused() {
+        let e1 = [0.4, 0.7, 1.0, 1.0, 1.0, 1.0, 1.0];
+        // Non-finite tolerances fall back to the published defaults.
+        let out = select_dimension_cao(&e1, f64::NAN, f64::INFINITY, f64::NAN, 3, 1, 2, f64::NAN);
+        assert_eq!(out[3], 3.0);
+        // min_dim clamps into the curve; a max_dim below min_dim clamps up.
+        let out = select_dimension_cao(&e1, 0.95, 1.05, 0.02, 3, 1, 0, 1.0);
+        assert_eq!(out[1], 1.0);
+        assert_eq!(out[2], 1.0);
+        // A max_dim above the curve length clamps down to N.
+        let out = select_dimension_cao(&e1, 0.95, 1.05, 0.02, 3, 1, 2, 10_000.0);
+        assert_eq!(out[2], 7.0);
+    }
+
+    #[test]
+    fn cao_the_curve_cap_is_the_budget() {
+        let e1 = vec![1.0f64; MAX_CAO_N + 100];
+        let out = select_dimension_cao(&e1, 0.95, 1.05, 0.02, 3, 1, 2, f64::NAN);
+        assert_eq!(out[0], MAX_CAO_N as f64);
+    }
+
+    #[test]
+    fn cao_unusable_requests_return_an_empty_result() {
+        assert!(select_dimension_cao(&[], 0.95, 1.05, 0.02, 3, 1, 2, f64::NAN).is_empty());
     }
 }
