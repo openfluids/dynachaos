@@ -57,6 +57,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-extras
+      - name: Run the core crate's own tests
+        # The Python tests reach the core only through the extension. Tests
+        # such as the FFT check against direct sums live in the crate itself
+        # and run only here.
+        run: cargo test --manifest-path rust/core/Cargo.toml
       - name: Build Rust extension
         run: uv run maturin develop --release
       - name: Run tests (with Rust)
