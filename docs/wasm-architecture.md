@@ -291,3 +291,50 @@ Grassberger-Procaccia, logistic, N=1000):
 A browser has far fewer workers than this box has cores, so the useful figure
 for planning a live figure is the 2-to-8-thread range, not the single-thread
 number and not the 24-thread number.
+
+## Figure inventory for live mode
+
+The class names the cheapest browser path that reproduces the figure: A has a
+WASM export for the plotted quantity, B needs one bounded map kernel, and C
+remains a canonical precomputed figure. `MAX_STEPS` is the per-call budget
+defined in `rust/wasm/src/lib.rs:32`.
+
+| section | png | module | class | interaction | kernel | caps |
+|---|---|---|---|---|---|---|
+| sec02_circle_map | devils_staircase.png | maps.circle_map | A | slider D and zoom A (rotation panel) | rotation_number_tile | A for the rotation panel; n_omega=1 and n_k<=512; Lyapunov panel stays PNG pending circle_map_lyapunov_sum |
+| sec02_circle_map | arnold_tongues.png | maps.arnold_tongues | A | zoom (Omega,K) | rotation_number_tile | n_omega,n_k<=512; n_cells*(transient+iter)<=MAX_STEPS |
+| sec02_circle_map | staircase_zoom.png | maps.circle_map | A | zoom K window | rotation_number_tile | n_omega,n_k<=512; n_cells*(transient+iter)<=MAX_STEPS |
+| sec03_transition | phase_diagram.png | maps.coupled_logistic | B | zoom (A,D) | coupled_logistic_phase_tile | viewport cells<=512; cells*(transient+sample)<=MAX_STEPS |
+| sec03_transition | attractors.png | maps.coupled_logistic | B | A slider with iteration-count control | coupled_logistic_attractor_tile | n_A<=64,n_plot<=4096; n_A*(transient+plot)<=MAX_STEPS |
+| sec03_transition | basins.png | maps.coupled_logistic | B | zoom initial-state plane | coupled_logistic_basin_grid | n_x,n_y<=512; cells*transient+reference_transient<=MAX_STEPS |
+| sec04_doubling | map_I_attractors.png | maps.torus_doubling | B | D slider with iteration-count control | torus_doubling_attractor_tile | map I dim=3; n_plot<=4096; transient+plot<=MAX_STEPS |
+| sec04_doubling | map_IV_attractors.png | maps.torus_doubling | B | D slider with iteration-count control | torus_doubling_attractor_tile | map IV dim=4; n_plot<=4096; transient+plot<=MAX_STEPS |
+| sec04_doubling | map_IV_lyapunov.png | maps.torus_doubling | B | zoom D in the doubling window | torus_doubling_lyapunov_tile | n_D<=512; n_D*(transient+iter)<=MAX_STEPS |
+| sec05_oscillation | attractors.png | maps.delayed_logistic | B | D slider with iteration-count control | delayed_logistic_attractor_tile | n_D<=64,n_plot<=4096; n_D*(transient+plot)<=MAX_STEPS |
+| sec05_oscillation | lyapunov_vs_D.png | maps.delayed_logistic | B | zoom D and iteration-count control | delayed_logistic_lyapunov_tile | n_D<=512; n_D*(transient+iter)<=MAX_STEPS |
+| sec05_oscillation | locking_sequence.png | maps.delayed_logistic | B | D slider through the locking window | delayed_logistic_attractor_tile | n_D<=64,n_plot<=4096; n_D*(transient+plot)<=MAX_STEPS |
+| sec06_three_torus | lyapunov_vs_DB.png | maps.coupled_delayed | B | DB and epsilon sliders | coupled_delayed_lyapunov_tile | n_DB<=128; n_DB*(transient+iter)<=MAX_STEPS |
+| sec06_three_torus | xz_projections.png | maps.coupled_delayed | B | DB slider with projection zoom | coupled_delayed_projection_tile | n_DB<=32,n_plot<=4096; n_DB*(transient+plot)<=MAX_STEPS |
+| sec06_three_torus | double_staircase.png | maps.modulated_circle | B | D slider and zoom | modulated_circle_rotation_tile | n_D<=512; n_D*(transient+iter)<=MAX_STEPS |
+| sec06_three_torus | double_staircase_zoom.png | maps.modulated_circle | B | zoom either locking window | modulated_circle_rotation_tile | n_D<=512; n_D*(transient+iter)<=MAX_STEPS |
+| sec07_fractalization | fractal_attractors.png | maps.fractalization | B | D slider with iteration-count control | fractalization_attractor_tile | n_D<=32,n_plot<=4096; n_D*(transient+plot)<=MAX_STEPS |
+| sec07_fractalization | correlation_dimension.png | maps.fractalization | C | none | precomputed | C: 200 parameters, 100,000 samples, and max_pairs=1,000,000 are paper-scale |
+| sec08_sti | spacetime_diagrams.png | cml.spatiotemporal | B | play/pause and epsilon slider | cml_spacetime_tile | n_sites<=512,n_record<=2048; n_sites*(transient+record)<=MAX_STEPS |
+| sec08_sti | comoving_lyapunov.png | cml.comoving_figure | C | none | precomputed | C: three 301-velocity scans at 100,000 iterations on N=500 exceed a tile budget |
+| sec08_sti | correlation_decay.png | cml.correlation_figure | C | none | precomputed | C: four regimes plus 20,000-step Lyapunov-density diagnostics are a published cache |
+| sec09_pattern | phase_diagram.png | cml.pattern_dynamics | C | none | precomputed | C: 160x200 phase sweep with 5,000 transient and 2,000 sample steps on N=100 |
+| sec09_pattern | space_amplitude.png | cml.pattern_dynamics | C | none | precomputed | C: five long phase exemplars are static snapshots, not a bounded exploration |
+| sec10_gcm | gcm_msd.png | cml.globally_coupled | C | none | precomputed | C: N reaches 20,000 and each series has 100,000 samples |
+| sec10_gcm | gcm_distribution.png | cml.globally_coupled | C | none | precomputed | C: N reaches 20,000 and each series has 100,000 samples |
+| sec10_gcm | gcm_clusters.png | cml.gcm_clusters | C | none | precomputed | C: cluster labels are a fixed phase exemplar with 20,000 transient and 500 record steps |
+| sec10_gcm | collective_lyapunov.png | cml.gcm_clusters | C | none | precomputed | C: 100 parameter values at N=500 and 50,000 measurement steps are paper-scale |
+| sec11_diagnostics | test01_sweep.png | diagnostics.compare_all | C | none | precomputed | C: 500-parameter sweep, 5,000-series samples, and 50 frequencies per point |
+| sec11_diagnostics | sali_comparison.png | diagnostics.compare_all | C | none | precomputed | C: four fixed 10,000-step SALI diagnostic traces are published comparisons |
+| sec11_diagnostics | permutation_entropy.png | diagnostics.compare_all | C | none | precomputed | C: 500 logistic plus 300 delayed-logistic parameter sweeps over 5,000 samples |
+| sec11_diagnostics | complexity_entropy_plane.png | diagnostics.compare_all | C | none | precomputed | C: two 200-parameter sweeps over 5,000 samples feed a diagnostic plane |
+| sec11_diagnostics | rqa_measures.png | diagnostics.compare_all | C | none | precomputed | C: 80 parameters each require a 2,000-point recurrence matrix |
+| sec12_intermittency | type_i_intermittency.png | diagnostics.intermittency_figure | C | none | precomputed | C: 200,000-point tail, bootstrap fits, normal-form scaling, and a Lorenz return map |
+| sec12_intermittency | on_off_intermittency.png | diagnostics.on_off_intermittency_figure | C | none | precomputed | C: benchmark orbit, 100,000-point scaling, and bootstrap fits are proof diagnostics |
+| sec12_intermittency | type_ii_intermittency.png | diagnostics.type_ii_intermittency_figure | C | none | precomputed | C: stochastic reinjection proof data and bootstrap fits are published values |
+| sec12_intermittency | type_iii_intermittency.png | diagnostics.type_iii_intermittency_figure | C | none | precomputed | C: stochastic reinjection, escape episodes, and bootstrap fits are proof data |
+| sec12_intermittency | sti_spine.png | cml.sti_spine_figure | C | none | precomputed | C: 512-site spacetime plus a nine-point coupling sweep and cluster fit are a diagnostic cache |
