@@ -148,7 +148,7 @@ jobs:
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
         # Name each file. A bare directory made node skip one of the two files.
-        run: node --test tests/js/index.js tests/js/raster.js tests/js/point.js
+        run: node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js
       - name: Run the live-figure end-to-end test
         # Node and Chrome are already on the runner image, so this needs no
         # setup-node step and no npm toolchain.

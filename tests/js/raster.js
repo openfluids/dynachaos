@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import {
   HEADER,
   liveTileColorKey,
@@ -165,59 +164,5 @@ test("liveTileColorKey misses on a replaced record and hits an unchanged one", (
   assert.equal(liveTileColorKey(unstamped), liveTileColorKey({ ...unstamped }));
 });
 
-test("the figure's onPaint stamps each stored record with a paint sequence", async () => {
-  // The handler lives inside the JS template in scripts/paper_shell.py, so
-  // the test lifts its body out of the source and runs it against stubs.
-  // Without the stamp every record keys with an empty paint sequence and the
-  // stale-bitmap collision liveTileColorKey was built for comes back.
-  const source = await readFile(
-    new URL("../../scripts/paper_shell.py", import.meta.url),
-    "utf8",
-  );
-  const marker = "onPaint(cmd){";
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, "onPaint handler not found in paper_shell.py");
-  const bodyStart = start + marker.length;
-  let depth = 1;
-  let end = bodyStart;
-  while (depth > 0 && end < source.length) {
-    const ch = source[end];
-    if (ch === "{") depth += 1;
-    else if (ch === "}") depth -= 1;
-    end += 1;
-  }
-  assert.equal(depth, 0, "onPaint handler braces did not balance");
-  const body = source.slice(bodyStart, end - 1);
-  const store = { tiles: [], generation: 0, painted: 0, nIter: 2000 };
-  const viewport = { omegaMin: 0, omegaMax: 1, kMin: 0, kMax: 0.3 };
-  const pool = { getState: () => ({ generation: 1, viewport }) };
-  const raster = { tileWorld };
-  let redraws = 0;
-  const plot = { redraw: () => { redraws += 1; } };
-  const onPaint = new Function(
-    "pool",
-    "raster",
-    "store",
-    "plot",
-    `let paintSeq=0;return function onPaint(cmd){${body}};`,
-  )(pool, raster, store, plot);
-  const data = new Float64Array(HEADER + 4);
-  data[0] = 2;
-  data[1] = 2;
-  data[HEADER] = 0.1;
-  data[HEADER + 3] = 0.9;
-  const cmd = { id: "0:0:0", generation: 1, header: [2, 2, 200, 2000], data };
-  // The same tile painted twice in one generation replaces its record; the
-  // replacement must key differently or the cached bitmap goes stale.
-  onPaint(cmd);
-  onPaint(cmd);
-  assert.equal(store.tiles.length, 1);
-  assert.equal(store.tiles[0].id, "0:0:0");
-  assert.equal(store.tiles[0].paintSeq, 2);
-  assert.equal(store.generation, 1);
-  assert.equal(store.painted, 1);
-  assert.equal(redraws, 2);
-  const stamped = liveTileColorKey(store.tiles[0]);
-  const { paintSeq, ...unstamped } = store.tiles[0];
-  assert.notEqual(stamped, liveTileColorKey(unstamped));
-});
+// The onPaint paint-sequence assertions moved to tests/js/live-figure.js,
+// which imports the handler from site-src/live/live-figure.js.

@@ -1623,10 +1623,11 @@ function liveModuleUrl(name){
 
 async function mountLive(fig){
   const body=fig.querySelector(".fig-body");
-  const [poolMod, raster, point]=await Promise.all([
+  const [poolMod, raster, point, liveFigure]=await Promise.all([
     import(liveModuleUrl("pool.js")),
     import(liveModuleUrl("raster.js")),
     import(liveModuleUrl("point.js")),
+    import(liveModuleUrl("live-figure.js")),
   ]);
   const fc=fig.querySelector("figcaption");
   let capText=fc?fc.textContent.trim():"";
@@ -1644,18 +1645,10 @@ async function mountLive(fig){
     w.appendChild(c);body.appendChild(w);
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=title;w.insertBefore(h,c);
-    const store={tiles:[],generation:0,painted:0,nIter:2000};
-    let pool=null,plot=null,paintSeq=0;
+    const store=liveFigure.createStore();
+    let pool=null,plot=null;
     point.ensureLoaded().catch(()=>{});
-    const sampleReadout=(omega,K)=>{
-      if(point.isReady()){
-        try{
-          const rho=point.sample(omega,K,200,2000,0.1);
-          if(typeof rho==="number"&&Number.isFinite(rho)) return rho;
-        }catch(_){}
-      }
-      return raster.sampleAt(store.tiles,store.generation,omega,K);
-    };
+    const sampleReadout=liveFigure.createReadout({store,point,raster});
     const live={
       base:{x0:0,x1:1,y0:0,y1:0.3},
       tiles:store.tiles,
@@ -1663,17 +1656,7 @@ async function mountLive(fig){
       tilePixelRect:raster.tilePixelRect,
       tileColorKey:raster.liveTileColorKey,
       sample:sampleReadout,
-      onView(d){
-        if(!pool) return;
-        pool.setViewport({omegaMin:d.x0,omegaMax:d.x1,kMin:d.y0,kMax:d.y1});
-        const gen=pool.getState().generation;
-        if(gen!==store.generation){
-          store.generation=gen;
-          store.painted=0;
-          store.tiles.length=0;
-          if(plot) plot.redraw();
-        }
-      }
+      onView:liveFigure.createViewHandler({store,getPool:()=>pool,getPlot:()=>plot})
     };
     const panel={
       title,
@@ -1703,19 +1686,7 @@ async function mountLive(fig){
       onCapacityLost(){
         hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
       },
-      onPaint(cmd){
-        const state=pool.getState();
-        if(cmd.generation!==state.generation) return;
-        const world=raster.tileWorld(cmd.id,state.viewport);
-        if(!world) return;
-        const rec={...world,generation:cmd.generation,header:cmd.header,data:cmd.data,paintSeq:++paintSeq};
-        const idx=store.tiles.findIndex(t=>t.id===rec.id);
-        if(idx>=0) store.tiles[idx]=rec; else store.tiles.push(rec);
-        store.generation=cmd.generation;
-        store.painted=store.tiles.filter(t=>t.generation===store.generation).length;
-        if(cmd.header&&Number.isFinite(cmd.header[3])) store.nIter=cmd.header[3];
-        plot.redraw();
-      }
+      onPaint:liveFigure.createPaintHandler({store,raster,getPool:()=>pool,getPlot:()=>plot})
     });
     fig._pool=pool;
     const d0=plot.getDomain();
@@ -1723,7 +1694,7 @@ async function mountLive(fig){
     store.generation=pool.getState().generation;
     fig._live={
       sample:sampleReadout,
-      rasterSample:(omega,K)=>raster.sampleAt(store.tiles,store.generation,omega,K),
+      rasterSample:liveFigure.createRasterSample({store,raster}),
       pointReady:()=>point.isReady(),
       setView(v){
         plot.setDomain({x0:v.omegaMin,x1:v.omegaMax,y0:v.kMin,y1:v.kMax});

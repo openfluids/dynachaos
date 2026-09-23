@@ -105,7 +105,7 @@ the first time they arrive, which is a poor trade for figures that tile cleanly.
 ### Live JS runtime
 
 The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
-`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Five files:
+`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Six files:
 
 | file | job |
 |---|---|
@@ -114,6 +114,7 @@ The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
 | `tile-worker.js` | Loads `site/wasm/dynachaos_wasm.js`, calls `rotation_number_tile`, transfers the `Float64Array` back. Reads the 4-element header rather than trusting the request. |
 | `raster.js` | Pure tile→pixel mapping, `liveTileColorKey`, and the tile lookup used as the readout fallback. Row 0 of a tile is `kMin`, the bottom; the canvas y axis points down. Node unit-tests this. |
 | `point.js` | Main-thread lazy load of the wasm glue; synchronous `sample()` of one (Omega, K) point with lock detection on and the display stop off. Hover and keyboard readout share this path. |
+| `live-figure.js` | The glue mountLive calls: the onPaint store update with its paint-sequence stamp, the readout fallback (point kernel, else the raster lookup), and the onView generation reset. No DOM at import time; node unit-tests this. |
 
 The paper page loads `pool.js` from `app.js` with a dynamic `import()` when the
 reader presses interact on `figure#fig:arnold_tongues`. `Plot()` keeps axes,
@@ -264,7 +265,7 @@ rather than assumed:
   capabilities this repository does not need.
 
 The CI job builds the WebAssembly bundle, builds the page, exports this
-figure's chart JSON, then runs `node --test tests/js/index.js tests/js/raster.js`
+figure's chart JSON, then runs `node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js`
 and the end-to-end script. A missing Chrome fails the job; the script prints
 the command it tried and exits non-zero. The job does not skip the browser
 check.
