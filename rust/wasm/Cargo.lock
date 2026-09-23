@@ -32,6 +32,7 @@ name = "dynachaos-wasm"
 version = "0.1.0"
 dependencies = [
  "dynachaos-core",
+ "ndarray",
  "wasm-bindgen",
 ]
 

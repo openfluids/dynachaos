@@ -20,6 +20,7 @@
 //! `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the
 //! map-attractor and space-time live figures.
 
+use ndarray::Array2;
 use wasm_bindgen::prelude::*;
 
 /// Largest tile side the browser may ask for, in cells.
@@ -635,11 +636,11 @@ pub fn ordinal_distribution(x: &[f64], d: usize, tau: usize) -> Vec<f64> {
 /// Python: `mask` is a row-major `u8` recurrence matrix of `side` rows and
 /// `side` columns where any nonzero byte counts as recurrent, and the result
 /// is the length of every run of recurrent cells along the super-diagonals
-/// `k = 1 .. side` that meets `l_min`. The kernel is the run-length counter
-/// `count_line_lengths`; this export gathers each super-diagonal into a
-/// reusable buffer and hands it to that counter, which applies the same
-/// run-length rule as the native kernel; `scripts/check_wasm_diagnostics.py`
-/// checks the two agree exactly.
+/// `k = 1 .. side` that meets `l_min`. The kernel is the native
+/// `diagonal_lines` itself: this export only rebuilds the mask as an
+/// `Array2<bool>` and hands the kernel its view, so the browser runs the
+/// same scan the paper used; `scripts/check_wasm_diagnostics.py` checks
+/// the two agree exactly.
 ///
 /// # Returned layout
 ///
@@ -674,22 +675,19 @@ pub fn diagonal_lines(mask: &[u8], side: usize, l_min: usize) -> Vec<f64> {
     let l_min = l_min.clamp(1, side);
     let mask = &mask[..side * side];
 
-    let mut lengths: Vec<i64> = Vec::new();
-    let mut buf: Vec<bool> = Vec::with_capacity(side);
-    for k in 1..side {
-        buf.clear();
-        for i in 0..(side - k) {
-            buf.push(mask[i * side + (i + k)] != 0);
-        }
-        // The kernel only fails on a zero minimum, which the clamp above has
-        // already ruled out, so an error here would be a bug in the clamping.
-        // Report it as an empty result rather than trapping and killing the
-        // worker.
-        let Ok(run) = dynachaos_core::count_line_lengths(&buf, l_min) else {
-            return Vec::new();
-        };
-        lengths.extend(run);
-    }
+    // Building the matrix only fails on a shape mismatch and the kernel only
+    // fails on a zero minimum or a non-square matrix, all ruled out by the
+    // clamps above, so an error here would be a bug in the clamping. Report
+    // it as an empty result rather than trapping and killing the worker.
+    let Ok(r) = Array2::from_shape_vec(
+        (side, side),
+        mask.iter().map(|&b| b != 0).collect::<Vec<bool>>(),
+    ) else {
+        return Vec::new();
+    };
+    let Ok(lengths) = dynachaos_core::diagonal_lines(r.view(), l_min) else {
+        return Vec::new();
+    };
 
     let mut out = Vec::with_capacity(LINES_HEADER + lengths.len());
     out.push(side as f64);
@@ -705,11 +703,10 @@ pub fn diagonal_lines(mask: &[u8], side: usize, l_min: usize) -> Vec<f64> {
 /// Python: `mask` is a row-major `u8` recurrence matrix of `side` rows and
 /// `side` columns where any nonzero byte counts as recurrent, and the result
 /// is the length of every run of recurrent cells down each column that meets
-/// `v_min`. The kernel is the run-length counter `count_line_lengths`; this
-/// export gathers each column into a reusable buffer and hands it to that
-/// counter, which applies the same run-length rule as
-/// the native kernel; `scripts/check_wasm_diagnostics.py` checks the two
-/// agree exactly.
+/// `v_min`. The kernel is the native `vertical_lines` itself: this export
+/// only rebuilds the mask as an `Array2<bool>` and hands the kernel its
+/// view, so the browser runs the same scan the paper used;
+/// `scripts/check_wasm_diagnostics.py` checks the two agree exactly.
 ///
 /// # Returned layout
 ///
@@ -744,22 +741,19 @@ pub fn vertical_lines(mask: &[u8], side: usize, v_min: usize) -> Vec<f64> {
     let v_min = v_min.clamp(1, side);
     let mask = &mask[..side * side];
 
-    let mut lengths: Vec<i64> = Vec::new();
-    let mut buf: Vec<bool> = Vec::with_capacity(side);
-    for j in 0..side {
-        buf.clear();
-        for i in 0..side {
-            buf.push(mask[i * side + j] != 0);
-        }
-        // The kernel only fails on a zero minimum, which the clamp above has
-        // already ruled out, so an error here would be a bug in the clamping.
-        // Report it as an empty result rather than trapping and killing the
-        // worker.
-        let Ok(run) = dynachaos_core::count_line_lengths(&buf, v_min) else {
-            return Vec::new();
-        };
-        lengths.extend(run);
-    }
+    // Building the matrix only fails on a shape mismatch and the kernel only
+    // fails on a zero minimum or a non-square matrix, all ruled out by the
+    // clamps above, so an error here would be a bug in the clamping. Report
+    // it as an empty result rather than trapping and killing the worker.
+    let Ok(r) = Array2::from_shape_vec(
+        (side, side),
+        mask.iter().map(|&b| b != 0).collect::<Vec<bool>>(),
+    ) else {
+        return Vec::new();
+    };
+    let Ok(lengths) = dynachaos_core::vertical_lines(r.view(), v_min) else {
+        return Vec::new();
+    };
 
     let mut out = Vec::with_capacity(LINES_HEADER + lengths.len());
     out.push(side as f64);
