@@ -598,6 +598,86 @@ try {
     check("at least one refinement generation completes after a view change", false, "no _live.setView");
   }
 
+  // Keyboard seams: the first arrow after a view change reads the snapped
+  // position instead of stepping off it, a keyboard zoom refreshes a shown
+  // tip, and a degenerate setView domain still reads a finite Omega.
+  const pressKey = async (key, code = key) => {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key, code });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key, code });
+  };
+  const tipField = (line) =>
+    `(() => {
+      const tip = ${F} && ${F}.querySelector(".readout.on");
+      if (!tip) return null;
+      const lines = tip.textContent.split("\\n");
+      const m = (lines[${line}] || "").match(/=\\s*(\\S+)\\s*$/);
+      return m ? parseFloat(m[1]) : null;
+    })()`;
+  const liveCanvasSel = `${F} && ${F}.querySelector("canvas.plot.live")`;
+
+  // The cursor from the ArrowRight above sits at ~0.548, outside the new
+  // [0, 0.3] domain. The first ArrowLeft must read the snapped position
+  // (0.3, the last of the 32 grid points); stepping off it would read 0.2903.
+  await ev(`(() => { const c = ${liveCanvasSel}; if (c) c.focus(); return document.activeElement === c; })()`);
+  await pressKey("ArrowLeft");
+  const snapOmega = await ev(tipField(0));
+  check(
+    "the first arrow after a view change reads the snapped position",
+    snapOmega !== null && Math.abs(snapOmega - 0.3) < 0.005,
+    JSON.stringify({ snapOmega, tip: await ev(`(${liveCanvasSel}) ? ${F}.querySelector(".readout").textContent : null`) }),
+  );
+  await pressKey("ArrowLeft");
+  const stepOmega = await ev(tipField(0));
+  check(
+    "the next arrow steps one grid position",
+    stepOmega !== null && Math.abs(stepOmega - 0.2903) < 0.005,
+    JSON.stringify({ stepOmega }),
+  );
+
+  // Zooming out about the cursor clamps the y domain at its lower edge, so
+  // the K midline moves (0.075 -> 0.1) while Omega stays put. A stale tip
+  // would keep the old K line.
+  await ev(`(() => { const tip = ${F}.querySelector(".readout"); window.__dcTip = tip ? tip.textContent : null; return true; })()`);
+  await pressKey("ArrowDown");
+  const tipAfterZoom = await waitFor(
+    `(() => {
+      const tip = ${F} && ${F}.querySelector(".readout.on");
+      return !!tip && tip.textContent !== window.__dcTip;
+    })()`,
+    3_000,
+  );
+  const zoomOmega = await ev(tipField(0));
+  const zoomK = await ev(tipField(1));
+  check(
+    "a keyboard zoom re-renders the shown tip at the same Omega",
+    Boolean(
+      tipAfterZoom &&
+        zoomOmega !== null &&
+        Math.abs(zoomOmega - 0.2903) < 0.005 &&
+        zoomK !== null &&
+        Math.abs(zoomK - 0.1) < 0.005,
+    ),
+    JSON.stringify({ tipAfterZoom, zoomOmega, zoomK, tip: await ev(`${F}.querySelector(".readout").textContent`) }),
+  );
+
+  // A hidden tip must stay hidden through a keyboard zoom.
+  await pressKey("0", "Digit0");
+  await pressKey("ArrowUp");
+  const tipHidden = await ev(`!(${F} && ${F}.querySelector(".readout.on"))`);
+  check("a keyboard zoom leaves a hidden tip hidden", tipHidden, JSON.stringify({ tipHidden }));
+
+  // A degenerate domain must be clamped like zoomAt's, so the arrow readout
+  // still shows a finite Omega instead of dividing by zero.
+  await ev(`(${F}._live.setView({ omegaMin: 0.5, omegaMax: 0.5, kMin: 0.1, kMax: 0.1 }), true)`);
+  await ev(`(() => { const c = ${liveCanvasSel}; if (c) c.focus(); return document.activeElement === c; })()`);
+  await pressKey("ArrowLeft");
+  const degOmega = await ev(tipField(0));
+  check(
+    "a degenerate setView domain still reads a finite Omega",
+    degOmega !== null && Number.isFinite(degOmega),
+    JSON.stringify({ degOmega, tip: await ev(`(${liveCanvasSel}) ? ${F}.querySelector(".readout").textContent : null`) }),
+  );
+
   const sEnd = await stats();
   check(
     "every worker is still alive",

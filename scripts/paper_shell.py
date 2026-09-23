@@ -947,6 +947,9 @@ function Plot(canvas,panel,meta){
   resetBtn.textContent="reset view";
   wrap.appendChild(resetBtn);
   let W=0,H=0,dom=null,base=null,drag=null,kx=null,dpr=1,legendLayout=null;
+  // Set by afterDomain() -- every real view change funnels through it -- so
+  // the next arrow key reads the snapped position instead of stepping off it.
+  let viewChanged=false;
   let liveColorCache=new Map(),liveColorGen=-1;
   const heat=meta.kind==="heatmap";
   // Offscreen cache for the heatmap raster: the per-cell fillRect loop below
@@ -961,6 +964,7 @@ function Plot(canvas,panel,meta){
   // the URL-state hook (meta.onDomainChange, wired in mountInteractive) fires
   // exactly once per real change instead of being sprinkled at each call site.
   function afterDomain(){
+    viewChanged=true;
     if(meta.onDomainChange)meta.onDomainChange();
     if(live&&live.onView)live.onView(dom);
   }
@@ -1567,6 +1571,10 @@ function Plot(canvas,panel,meta){
     }
     draw();
     afterDomain();
+    // A shown tip was laid out against the old pixel mapping; refresh it in
+    // place so its K and rho are not stale until the next arrow key.
+    if(kx!==null&&tip.classList.contains("on"))
+      renderReadout(sx(kx),(pad.t+H-pad.b)/2);
   }
   canvas.addEventListener("keydown",e=>{
     const xs=xValues();
@@ -1575,7 +1583,10 @@ function Plot(canvas,panel,meta){
       e.preventDefault();
       if(kx===null) kx=xs[Math.floor(xs.length/2)];
       let i=nearestIndex(xs,kx);
-      i=Math.max(0,Math.min(xs.length-1,i+(e.key==="ArrowRight"?1:-1)));
+      // The first press after a zoom, pan, reset or setDomain reads the
+      // snapped position; only later presses step one index.
+      if(!viewChanged) i=Math.max(0,Math.min(xs.length-1,i+(e.key==="ArrowRight"?1:-1)));
+      viewChanged=false;
       kx=xs[i];
       renderReadout(sx(kx),(pad.t+H-pad.b)/2);
     }else if(e.key==="+"||e.key==="="||e.key==="ArrowUp"){
@@ -1598,7 +1609,12 @@ function Plot(canvas,panel,meta){
     // that came from a shared link rather than a live drag or keypress.
     getDomain:()=>({...dom}),
     getBase:()=>({...base}),
-    setDomain:d=>{dom={...base,...d};draw();afterDomain();},
+    setDomain:d=>{const n={...base,...d};
+      // Same floor zoomAt applies: a degenerate span would make sx()/sy()
+      // divide by zero and the readout show a non-finite value.
+      n.x1=n.x0+Math.max(1e-9,n.x1-n.x0);
+      n.y1=n.y0+Math.max(1e-9,n.y1-n.y0);
+      dom=n;draw();afterDomain();},
     isModified:()=>!!dom&&!!base&&(dom.x0!==base.x0||dom.x1!==base.x1||dom.y0!==base.y0||dom.y1!==base.y1),
     reset:resetDom};
 }

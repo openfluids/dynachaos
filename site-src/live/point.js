@@ -26,8 +26,13 @@ export function isReady() {
 }
 
 export function ensureLoaded(glueUrl) {
-  if (glueUrl) glueHref = glueUrl;
-  if (loading == null) loading = loadWasm();
+  // A URL is honoured only before a load has started: while one is in flight
+  // the argument is ignored, so a late caller cannot retarget the URL the
+  // one retry after a failure would use.
+  if (loading == null) {
+    if (glueUrl) glueHref = glueUrl;
+    loading = loadWasm();
+  }
   return loading;
 }
 

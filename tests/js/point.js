@@ -80,3 +80,16 @@ test("the retry budget is exactly one: a third load returns the second rejection
   await assert.rejects(third);
   assert.equal(point.isReady(), false);
 });
+
+test("a URL passed during an in-flight load does not retarget the retry", async () => {
+  const bad = await writeStubGlue("export function other() { return 1; }\n");
+  const worse = await writeStubGlue('throw new Error("retargeted glue loaded");\n');
+  const point = await loadPointIsolate("inflight");
+  const first = point.ensureLoaded(bad);
+  // The load is in flight: this URL must be ignored, not stored for the retry.
+  const same = point.ensureLoaded(worse);
+  assert.equal(same, first);
+  await assert.rejects(first, /rotation_number_point/);
+  // The retry must still load `bad` -- failing the same way -- not `worse`.
+  await assert.rejects(point.ensureLoaded(), /rotation_number_point/);
+});
