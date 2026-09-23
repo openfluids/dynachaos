@@ -30,11 +30,11 @@ const VIEW_MS = 20_000;
 const REDUCED_WAIT_MS = 3_000;
 const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
-  FIRST_PAINT_MS +
+  4 * FIRST_PAINT_MS +
   REFINE_MS +
-  6 * SAMPLE_MS +
+  8 * SAMPLE_MS +
   VIEW_MS +
-  REDUCED_WAIT_MS;
+  2 * REDUCED_WAIT_MS;
 const WATCHDOG_MS = DEADLINE_SUM_MS + 180_000;
 const WASM_RE = /dynachaos_wasm_bg\.wasm/;
 const TELEMETRY_EVENTS = ["paint", "drop", "error", "cancel"];
@@ -826,6 +826,123 @@ try {
     JSON.stringify(stNewD),
   );
 
+  // ---- delayed-logistic attractors: the (x, y) cloud live at a slider-chosen D ----
+  // The third live figure: a point cloud (not a curve or a heatmap) drawn by
+  // one direct kernel call per parameter set. The slider moves D, the n
+  // field sets the plotted-state count, the hash carries both, and one
+  // plotted state must equal the kernel's own output at the same request.
+  const A = "document.getElementById('fig:delayed_logistic_attractors')";
+  const atStats = () => ev(`${A} && ${A}._live ? ${A}._live.stats() : null`);
+  check(
+    "the attractors figure is marked live-capable",
+    await ev(`!!${A} && ${A}.dataset.live === "delayed_logistic_attractors"`),
+    await ev(`${A} ? JSON.stringify(${A}.dataset) : "no figure"`),
+  );
+  await ev(`(${A}.querySelector(".act-interact").click(), true)`);
+  const atFirstPaint = await waitFor(
+    `!!${A}._live && ${A}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const atStats0 = await atStats();
+  check(
+    "the attractor cloud is painted at the default D",
+    atFirstPaint && atStats0 && atStats0.points === 2048,
+    JSON.stringify(atStats0),
+  );
+  check(
+    "the attractors figure has a D slider and an n field",
+    await ev(
+      `!!(${A} && ${A}.querySelector(".live-params input[type=range]") && ${A}.querySelector(".live-params input[type=number]"))`,
+    ),
+  );
+
+  // One plotted state against the kernel computed the same way: the page's
+  // own glue module answers delayed_logistic_attractor_tile at the figure's
+  // current (D, n), and the trace's first point must be that tile's first
+  // (x, y) pair — x first, then y.
+  const atCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${A}._live.params();
+    const fp = (Math.sqrt(1 + 4 * p.D) - 1) / (2 * p.D);
+    const tile = glue.delayed_logistic_attractor_tile(0.3, p.D, p.D, 1, 20000, p.n, [fp + 0.01, fp - 0.01]);
+    const tr = ${A}._live.trace();
+    return { x: tr.x[0], y: tr.y[0], kx: tile[4], ky: tile[5], n: tr.x.length, nPlot: tile[1] };
+  })()`);
+  check(
+    "a plotted state equals the kernel's at the same (A, D, n)",
+    atCheck != null &&
+      atCheck.x === atCheck.kx &&
+      atCheck.y === atCheck.ky &&
+      atCheck.n === atCheck.nPlot,
+    JSON.stringify(atCheck),
+  );
+
+  // Move D: the debounced apply must recompute, repaint, and write the new
+  // value into the hash. The range input snaps to its step, so the check
+  // reads back the snapped value rather than assuming it.
+  const atBefore = await atStats();
+  const atSet = await ev(`(() => {
+    const r = ${A}.querySelector(".live-params input[type=range]");
+    r.value = "2.09";
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return r.value;
+  })()`);
+  const atMoved = await waitFor(
+    `!!${A}._live && ${A}._live.stats().generation > ${atBefore ? atBefore.generation : -1} && ${A}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("D=" + ${JSON.stringify(atSet)})`, 5_000);
+  const atHash = await ev("location.hash");
+  check(
+    "moving the attractor D repaints a new generation",
+    Boolean(atBefore && atMoved),
+    JSON.stringify({ before: atBefore, after: await atStats() }),
+  );
+  check(
+    "moving the attractor D writes the parameter into the hash",
+    atHash.includes(`fig:delayed_logistic_attractors.D=${atSet}`),
+    JSON.stringify({ atSet, atHash }),
+  );
+  const atMovedCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${A}._live.params();
+    const fp = (Math.sqrt(1 + 4 * p.D) - 1) / (2 * p.D);
+    const tile = glue.delayed_logistic_attractor_tile(0.3, p.D, p.D, 1, 20000, p.n, [fp + 0.01, fp - 0.01]);
+    const tr = ${A}._live.trace();
+    return { D: p.D, x: tr.x[0], kx: tile[4] };
+  })()`);
+  check(
+    "after the move the cloud is the new D's orbit",
+    atMovedCheck != null &&
+      atMovedCheck.D === Number(atSet) &&
+      atMovedCheck.x === atMovedCheck.kx,
+    JSON.stringify(atMovedCheck),
+  );
+
+  // The iteration-count control: setting n to 512 must repaint a cloud of
+  // exactly 512 states — the density-for-response-time trade the control
+  // exists for.
+  await ev(`(() => {
+    const nums = ${A}.querySelectorAll(".live-params input[type=number]");
+    const n = nums[1];
+    n.value = "512";
+    n.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  const atN = await waitFor(
+    `!!${A}._live && ${A}._live.stats().points === 512`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  check(
+    "the n control sets the plotted-state count",
+    Boolean(atN),
+    JSON.stringify(await atStats()),
+  );
+
+
   const sEnd = await stats();
   check(
     "every worker is still alive",
@@ -919,6 +1036,28 @@ try {
       "under prefers-reduced-data the staircase keeps its PNG and mounts no slider",
       Boolean(stReduced && stReduced.shown && !stReduced.liveCanvas && !stReduced.slider && !stReduced.hasLive),
       JSON.stringify(stReduced),
+    );
+    // The attractors figure under reduced data: same rule — the published
+    // twelve-panel PNG stays, no slider, no live canvas, no wasm.
+    await ev(`(${A}.querySelector(".act-interact") && ${A}.querySelector(".act-interact").click(), true)`);
+    await sleep(REDUCED_WAIT_MS);
+    const atReduced = await ev(`(() => {
+      const fig = ${A};
+      if (!fig) return { missing: true };
+      const img = fig.querySelector(".fig-body img");
+      const shown = img && getComputedStyle(img).display !== "none";
+      return {
+        shown,
+        liveCanvas: !!fig.querySelector("canvas.plot.live"),
+        slider: !!fig.querySelector(".live-params input"),
+        hasLive: !!fig._live,
+        state: fig.dataset.state,
+      };
+    })()`);
+    check(
+      "under prefers-reduced-data the attractors figure keeps its PNG and mounts no slider",
+      Boolean(atReduced && atReduced.shown && !atReduced.liveCanvas && !atReduced.slider && !atReduced.hasLive),
+      JSON.stringify(atReduced),
     );
   }
   await pullDebug();

@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   LIVE_ARNOLD,
+  LIVE_ATTRACTORS,
+  LIVE_FIGURES,
   LIVE_STAIRCASE,
+  attractorFixedPoint,
+  attractorRequest,
+  attractorTrace,
+  createAttractorFigure,
   createPaintHandler,
   createRasterSample,
   createReadout,
@@ -483,4 +489,138 @@ test("the staircase scheduler options carry lockOmega and the paper's counts", (
     theta0: 0.1,
     lockOmega: true,
   });
+});
+
+// A manual timer pair, as in tests/js/params.js: scheduled callbacks queue
+// up and run only when the test flushes them, so the debounce is checked
+// without real time.
+function manualTimers() {
+  const queue = [];
+  return {
+    queue,
+    set: (fn) => {
+      queue.push(fn);
+      return queue.length - 1;
+    },
+    clear: (id) => {
+      queue[id] = null;
+    },
+    flush() {
+      const fns = queue.splice(0);
+      for (const fn of fns) if (fn) fn();
+    },
+  };
+}
+
+const tick = () => new Promise((r) => setImmediate(r));
+
+test("LIVE_ATTRACTORS is frozen, registered, and holds the paper's parameters", () => {
+  assert.equal(LIVE_FIGURES.delayed_logistic_attractors, LIVE_ATTRACTORS);
+  assert.equal(LIVE_ATTRACTORS.A, 0.3);
+  assert.equal(LIVE_ATTRACTORS.nTransient, 20000);
+  const [d, n] = LIVE_ATTRACTORS.paramSpecs;
+  // The D slider's range is the wasm kernel's own clamp, so the control can
+  // never ask for a value the kernel would silently move.
+  assert.deepEqual(
+    { name: d.name, min: d.min, max: d.max, default: d.default },
+    { name: "D", min: 1.4, max: 3.5, default: 1.9 },
+  );
+  // The iteration-count control is bounded by the kernel's 4096 cap.
+  assert.equal(n.name, "n");
+  assert.equal(n.max, 4096);
+  assert.ok(Object.isFrozen(LIVE_ATTRACTORS));
+});
+
+test("the attractor request passes A then D in the kernel's order", () => {
+  // delayed_logistic_attractor_tile(a, d_min, d_max, n_d, n_transient,
+  // n_plot, state0): swapping A and D here sends the slider's D into the
+  // map's A slot, which this test catches.
+  const req = attractorRequest({ D: 1.9, n: 2048 });
+  assert.equal(req.a, 0.3);
+  assert.equal(req.dMin, 1.9);
+  assert.equal(req.dMax, 1.9);
+  assert.equal(req.nD, 1);
+  assert.equal(req.nTransient, 20000);
+  assert.equal(req.nPlot, 2048);
+  // The published x0 convention: (fp + 0.01, fp - 0.01) at the analytic
+  // fixed point fp = (sqrt(1 + 4D) - 1) / 2D = 0.508572542032378 at D=1.9.
+  const fp = attractorFixedPoint(1.9);
+  assert.equal(fp, 0.508572542032378);
+  assert.equal(req.state0[0], fp + 0.01);
+  assert.equal(req.state0[1], fp - 0.01);
+});
+
+test("attractorTrace folds the tile into x then y pairs", () => {
+  // Header [n_D, n_plot, n_transient, 2], then n_plot (x, y) pairs. An x/y
+  // swap in the fold lands y on the x axis, which this test catches.
+  const tile = new Float64Array([1, 2, 20000, 2, 0.1, 0.2, 0.3, 0.4]);
+  const t = attractorTrace(tile);
+  assert.deepEqual(t.x, [0.1, 0.3]);
+  assert.deepEqual(t.y, [0.2, 0.4]);
+});
+
+test("attractorTrace folds every D block and rejects a short tile", () => {
+  const two = new Float64Array([2, 1, 20000, 2, 0.5, 0.6, 0.7, 0.8]);
+  const t = attractorTrace(two);
+  assert.deepEqual(t.x, [0.5, 0.7]);
+  assert.deepEqual(t.y, [0.6, 0.8]);
+  assert.deepEqual(attractorTrace(new Float64Array([1, 9, 0, 2, 0.1])).x, []);
+  assert.deepEqual(attractorTrace(null).x, []);
+});
+
+test("a slider burst recomputes once and a stale result is dropped", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const deferreds = [];
+  const fig = createAttractorFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return new Promise((r) => deferreds.push(r));
+    },
+    onTrace: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  for (const v of [1.9, 1.95, 2.0]) fig.onInput("D", v);
+  timers.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].dMin, 2.0);
+
+  // Two more requests in flight; the older one resolving last must not
+  // overwrite the newer result.
+  fig.setParams({ D: 1.86 });
+  fig.setParams({ D: 2.16 });
+  assert.equal(calls.length, 3);
+  const tileFor = (d) => new Float64Array([1, 1, 20000, 2, d, -d]);
+  deferreds[2](tileFor(2.16));
+  await tick();
+  deferreds[1](tileFor(1.86));
+  await tick();
+  assert.deepEqual(fig.store.trace.x, [2.16]);
+  assert.deepEqual(fig.store.trace.y, [-2.16]);
+  assert.equal(fig.store.generation, 3);
+});
+
+test("the attractor store's trace arrays keep their identity across paints", async () => {
+  // The page's panel.traces captures these arrays at mount; replacing them
+  // would leave the plot drawing the empty arrays forever.
+  const fig = createAttractorFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: async () => new Float64Array([1, 2, 20000, 2, 0.1, 0.2, 0.3, 0.4]),
+    onTrace: () => {},
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  const xs = fig.store.trace.x;
+  const ys = fig.store.trace.y;
+  fig.refresh();
+  await tick();
+  fig.refresh();
+  await tick();
+  assert.equal(fig.store.trace.x, xs);
+  assert.equal(fig.store.trace.y, ys);
+  assert.deepEqual([...xs], [0.1, 0.3]);
 });

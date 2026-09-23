@@ -43,12 +43,36 @@ export const LIVE_STAIRCASE = Object.freeze({
 });
 
 /**
+ * The delayed-logistic attractors figure: the (x, y) point cloud of
+ * (x, y)' = (A x + (1 - A)(1 - D y^2), x) at a reader-chosen D, A = 0.3
+ * fixed. The paper computes A = 0.3, n_transient 20000, n_plot 100000
+ * (maps/delayed_logistic.py compute_attractors); the live figure plots at
+ * most 4096 states, the wasm kernel's cap. D's range is the kernel's own
+ * clamp [1.4, 3.5]; the default 1.90 is one of the published panels. `n`
+ * is the plotted-state count: the control that trades cloud density for
+ * response time. `domain` is the published figure's shared axis limits —
+ * the union of both committed npz files padded by 5% — so the slider
+ * compares attractors on the paper's axes instead of a refit frame.
+ */
+export const LIVE_ATTRACTORS = Object.freeze({
+  A: 0.3,
+  nTransient: 20000,
+  nPlot: 2048,
+  domain: Object.freeze({ x0: -0.5642697119632384, x1: 0.9817445276044394, y0: -0.5642697119632384, y1: 0.9817445276044394 }),
+  paramSpecs: Object.freeze([
+    Object.freeze({ name: "D", label: "map parameter D", min: 1.4, max: 3.5, step: 0.005, default: 1.9 }),
+    Object.freeze({ name: "n", label: "plotted states n", min: 256, max: 4096, step: 256, default: 2048 }),
+  ]),
+});
+
+/**
  * data-live kind -> live figure config. The hash-restore path in the page
  * reads paramSpecs from here so a shared link can name its figure.
  */
 export const LIVE_FIGURES = Object.freeze({
   arnold_tongues: LIVE_ARNOLD,
   devils_staircase: LIVE_STAIRCASE,
+  delayed_logistic_attractors: LIVE_ATTRACTORS,
 });
 
 /**
@@ -378,4 +402,198 @@ export function createParamWiring({ specs, debounceMs, echo, apply, writeHash, t
     writeHash();
   }
   return { state, onInput, setParams };
+}
+
+const ATTRACTOR_GLUE_HREF = new URL("../wasm/dynachaos_wasm.js", import.meta.url).href;
+
+/**
+ * The analytic fixed point of the delayed logistic map at parameter D:
+ * solving x = A x + (1 - A)(1 - D x^2) gives x = (sqrt(1 + 4D) - 1) / 2D.
+ * The published figure starts its orbits at (fp + 0.01, fp - 0.01), so the
+ * live figure does too, and the canvas marks the point itself.
+ *
+ * @param {number} D
+ * @returns {number}
+ */
+export function attractorFixedPoint(D) {
+  return (Math.sqrt(1 + 4 * D) - 1) / (2 * D);
+}
+
+/**
+ * The kernel request for one attractor state: A first, then the D range —
+ * the order delayed_logistic_attractor_tile takes them. n_D is 1, so the
+ * tile holds one block of n_plot (x, y) pairs. state0 is the published
+ * convention (fp + 0.01, fp - 0.01); the same expression in the same order
+ * as maps/delayed_logistic.py, so the orbit is bit-identical.
+ *
+ * @param {object} state name -> value, from the parameter wiring
+ * @param {{ A: number, nTransient: number, nPlot: number }} [params]
+ * @returns {{ a: number, dMin: number, dMax: number, nD: number, nTransient: number, nPlot: number, state0: Float64Array }}
+ */
+export function attractorRequest(state, params = LIVE_ATTRACTORS) {
+  const D = state.D;
+  const fp = attractorFixedPoint(D);
+  return {
+    a: params.A,
+    dMin: D,
+    dMax: D,
+    nD: 1,
+    nTransient: params.nTransient,
+    nPlot: Math.round(state.n),
+    state0: new Float64Array([fp + 0.01, fp - 0.01]),
+  };
+}
+
+/**
+ * Fold an attractor tile into the point cloud. The layout is the kernel's:
+ * a 4-element header [n_D, n_plot, n_transient, 2], then n_D blocks of
+ * n_plot (x, y) pairs — x first, then y. A diverged D is a block of NaN
+ * pairs; the plot skips non-finite points, so they fold in harmlessly.
+ * Anything that does not match the header yields an empty cloud rather
+ * than a misread buffer.
+ *
+ * @param {ArrayLike<number> | null | undefined} tile
+ * @returns {{ x: number[], y: number[] }}
+ */
+export function attractorTrace(tile) {
+  const x = [];
+  const y = [];
+  if (!tile || tile.length < HEADER) return { x, y };
+  const nD = Math.floor(Number(tile[0]));
+  const nPlot = Math.floor(Number(tile[1]));
+  if (!(nD >= 1) || !(nPlot >= 1) || tile.length < HEADER + nD * nPlot * 2) {
+    return { x, y };
+  }
+  for (let i = 0; i < nD * nPlot; i++) {
+    x.push(tile[HEADER + 2 * i]);
+    y.push(tile[HEADER + 2 * i + 1]);
+  }
+  return { x, y };
+}
+
+let attractorKernelPromise = null;
+
+/**
+ * Lazily load the wasm glue and return delayed_logistic_attractor_tile.
+ * The module is the same instance point.js initialises (the import cache
+ * keys on the resolved URL), and the glue's init is idempotent. A failed
+ * load is not cached forever: the next call retries once.
+ *
+ * @returns {Promise<(a: number, dMin: number, dMax: number, nD: number, nTransient: number, nPlot: number, state0: Float64Array) => Float64Array>}
+ */
+export function loadAttractorKernel() {
+  if (attractorKernelPromise == null) {
+    attractorKernelPromise = (async () => {
+      const glue = await import(ATTRACTOR_GLUE_HREF);
+      if (typeof glue.delayed_logistic_attractor_tile !== "function") {
+        throw new Error("wasm glue is missing delayed_logistic_attractor_tile");
+      }
+      const isNode =
+        typeof process !== "undefined" && process.versions && process.versions.node;
+      if (!isNode) {
+        await glue.default();
+      } else {
+        const { readFile } = await import("node:fs/promises");
+        const bytes = await readFile(new URL("dynachaos_wasm_bg.wasm", ATTRACTOR_GLUE_HREF));
+        glue.initSync({ module: bytes });
+      }
+      return glue.delayed_logistic_attractor_tile;
+    })();
+    attractorKernelPromise.catch(() => {
+      attractorKernelPromise = null;
+    });
+  }
+  return attractorKernelPromise;
+}
+
+
+/**
+ * The default kernel call: load the glue, then invoke the export with the
+ * request's fields in the kernel's own order — A, then the D range, the
+ * counts, and the start state.
+ *
+ * @param {ReturnType<typeof attractorRequest>} req
+ * @returns {Promise<Float64Array>}
+ */
+export async function attractorKernelCall(req) {
+  const kernel = await loadAttractorKernel();
+  return kernel(req.a, req.dMin, req.dMax, req.nD, req.nTransient, req.nPlot, req.state0);
+}
+
+/**
+ * The attractor figure's parameter wiring and recompute path. The page
+ * (mountAttractors in scripts/paper_shell.py) builds the inputs and hands
+ * in the DOM callbacks; the decisions live here so node tests can drive
+ * them. `call` is injectable: the page passes attractorKernelCall, a test
+ * passes a spy.
+ *
+ * The kernel is called directly on the main thread — one call is at most
+ * 20000 + 4096 map steps, microseconds of work, so the tile pool's worker
+ * round trip would buy nothing. The debounce collapses a slider burst into
+ * one apply, and a sequence number drops a stale result: a request that
+ * resolves after a newer one was issued is discarded, never painted.
+ *
+ * @param {object} deps
+ * @param {{ A: number, nTransient: number, nPlot: number, paramSpecs: object[] }} [deps.params]
+ * @param {number} deps.debounceMs
+ * @param {(name: string, value: number) => void} deps.echo
+ * @param {(req: object) => Promise<ArrayLike<number>>} [deps.call]
+ * @param {(store: object, trace: {x: number[], y: number[]}, req: object) => void} deps.onTrace
+ * @param {() => void} deps.writeHash
+ * @param {(err: unknown) => void} [deps.onError]
+ * @param {{ set?: (fn: () => void, ms: number) => unknown, clear?: (id: unknown) => void }} [deps.timers]
+ * @returns {{ state: object, store: object, onInput: (name: string, raw: number) => void, setParams: (values: object) => void, refresh: () => void, ready: () => boolean }}
+ */
+export function createAttractorFigure({
+  params = LIVE_ATTRACTORS,
+  debounceMs,
+  echo,
+  call = attractorKernelCall,
+  onTrace,
+  writeHash,
+  onError,
+  timers,
+}) {
+  const store = { trace: { x: [], y: [] }, generation: 0, painted: 0 };
+  let seq = 0;
+  let ready = false;
+  async function run() {
+    const req = attractorRequest(wiring.state, params);
+    const mySeq = ++seq;
+    try {
+      const tile = await call(req);
+      ready = true;
+      if (mySeq !== seq) return; // a newer request superseded this one
+      const trace = attractorTrace(tile);
+      // Splice into the store's arrays instead of replacing them: the
+      // page's panel.traces captured these two arrays at mount, and a
+      // fresh object would orphan the plot's view of the cloud.
+      store.trace.x.splice(0, store.trace.x.length, ...trace.x);
+      store.trace.y.splice(0, store.trace.y.length, ...trace.y);
+      store.generation = mySeq;
+      store.painted = trace.x.length;
+    } catch (err) {
+      if (onError) onError(err);
+    }
+  }
+  const wiring = createParamWiring({
+    specs: params.paramSpecs,
+    debounceMs,
+    echo,
+    apply: () => {
+      run();
+    },
+    writeHash,
+    timers,
+  });
+  return {
+    state: wiring.state,
+    store,
+    onInput: wiring.onInput,
+    setParams: wiring.setParams,
+    refresh: () => {
+      run();
+    },
+    ready: () => ready,
+  };
 }

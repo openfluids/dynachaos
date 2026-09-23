@@ -15,6 +15,15 @@ reconstructed from git history. 0.4.0 is the first public release.
   (`scripts/check_wasm_staircase.py`, run in CI). The Lyapunov panel stays a
   static image.
 
+- The paper page computes the delayed-logistic attractor live: the (x, y)
+  point cloud at a map parameter D the reader sets with a slider or number
+  field (default 1.90, the kernel's [1.4, 3.5] clamp as the range), plus an
+  iteration-count control bounded at 4096 plotted states. The values go
+  into the page address, so a link reproduces the view. The map uses only
+  +, -, *, so the browser orbit matches the published trajectories bit for
+  bit (`scripts/check_wasm_delayed_logistic.py`, run in CI). The published
+  twelve-panel figure stays below the live cloud.
+
 - The compiled extension exports `delayed_logistic_attractor_tile` and
   `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
   the torus-doubling maps (I) and (IV) in Rust and return the same

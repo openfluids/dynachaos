@@ -74,6 +74,8 @@ CSS = (
   --ink:#14161c;
   --ink-mid:#454b59;
   --ink-low:#6c7284; /* WCAG AA: 4.52:1 on --ground, 4.80:1 on --raised */
+  --slate:#2E3440;    /* the paper's ink: attractor point clouds */
+  --vermilion:#D1495B;/* the paper's single signal accent */
   --rule:#e0dccf;
   --rule-soft:#ebe7dc;
 
@@ -100,6 +102,7 @@ CSS = (
     --locked:#f0a830; --locked-hero:#f9bb46; --torus:#9086dc; --chaotic:#3fd0c8;
     --ground:#0a0d15; --raised:#111624; --sunken:#070911;
     --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
+    --slate:#a6b0c7; --vermilion:#e06a7c;
     --rule:#1e2537; --rule-soft:#161c2b;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
   }
@@ -108,6 +111,7 @@ CSS = (
   --locked:#f0a830; --locked-hero:#f9bb46; --torus:#9086dc; --chaotic:#3fd0c8;
   --ground:#0a0d15; --raised:#111624; --sunken:#070911;
   --ink:#e9edf7; --ink-mid:#a6b0c7; --ink-low:#767f98; /* WCAG AA: 4.86:1 on --ground, 4.52:1 on --raised */
+  --slate:#a6b0c7; --vermilion:#e06a7c;
   --rule:#1e2537; --rule-soft:#161c2b;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
 }
@@ -115,6 +119,7 @@ CSS = (
   --locked:#a8620a; --locked-hero:#c07410; --torus:#54489f; --chaotic:#0d6f6a;
   --ground:#faf8f3; --raised:#ffffff; --sunken:#efece3;
   --ink:#14161c; --ink-mid:#454b59; --ink-low:#6c7284; /* WCAG AA: 4.52:1 on --ground, 4.80:1 on --raised */
+  --slate:#2E3440; --vermilion:#D1495B;
   --rule:#e0dccf; --rule-soft:#ebe7dc;
   --shadow:0 1px 2px rgba(20,22,28,.05), 0 8px 28px rgba(20,22,28,.07);
 }
@@ -1235,9 +1240,14 @@ function Plot(canvas,panel,meta){
       ctx.fillText(fmtSpan(t,xspan),x,H-pad.b+7);
     }
     ctx.fillStyle=mid;ctx.textAlign="center";ctx.textBaseline="bottom";
+    // meta.labelFont swaps the axis labels' mono for the paper's math
+    // italic (the delayed-logistic panels label their axes x and y).
+    ctx.save();
+    if(meta.labelFont) ctx.font=meta.labelFont;
     ctx.fillText(meta.xlabel||"",pad.l+(W-pad.l-pad.r)/2,H-2);
-    ctx.save();ctx.translate(11,pad.t+(H-pad.t-pad.b)/2);ctx.rotate(-Math.PI/2);
-    ctx.textBaseline="top";ctx.fillText(meta.ylabel||"",0,0);ctx.restore();
+    ctx.translate(11,pad.t+(H-pad.t-pad.b)/2);ctx.rotate(-Math.PI/2);
+    ctx.textBaseline="top";ctx.fillText(meta.ylabel||"",0,0);
+    ctx.restore();
 
     ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,W-pad.l-pad.r,H-pad.t-pad.b);ctx.clip();
     if(heat){
@@ -1668,6 +1678,10 @@ async function mountLive(fig){
     await mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMod,capText});
     return;
   }
+  if(fig.dataset.live==="delayed_logistic_attractors"){
+    await mountAttractors(fig,body,{liveFigure,paramsMod,capText});
+    return;
+  }
   const title="Rotation number over the circle-map parameter plane";
   // Five levels keep the finest tile small. A zoom then waits on less in-flight work.
   const liveLevels=5;
@@ -1754,6 +1768,29 @@ async function mountLive(fig){
   }
 }
 
+/* One row of range + number inputs per parameter spec, shared by the live
+   figures that carry sliders. Pure DOM: the decisions (clamp, debounce,
+   hash) live in live-figure.js's parameter wiring. */
+function buildParamControls(specs){
+  const ctrls=document.createElement("div");ctrls.className="live-params";
+  const inputs={};
+  for(const spec of specs){
+    const lab=document.createElement("label");lab.className="live-param";
+    const name=document.createElement("span");name.className="live-param-name";
+    name.textContent=spec.name;
+    const range=document.createElement("input");
+    range.type="range";range.min=spec.min;range.max=spec.max;range.step=spec.step;
+    range.value=spec.default;range.setAttribute("aria-label",spec.label);
+    const num=document.createElement("input");
+    num.type="number";num.min=spec.min;num.max=spec.max;num.step=spec.step;
+    num.value=spec.default;num.setAttribute("aria-label",spec.label+" (number)");
+    lab.appendChild(name);lab.appendChild(range);lab.appendChild(num);
+    ctrls.appendChild(lab);
+    inputs[spec.name]={range,num};
+  }
+  return {ctrls,inputs};
+}
+
 /* The devil's staircase: rho(A) live at a reader-chosen D, above the PNG.
    The PNG's lower panel (the Lyapunov exponent) has no wasm kernel yet, so
    the image stays and a note says which part is live. This function only
@@ -1771,22 +1808,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=title;w.appendChild(h);
     w.appendChild(c);
-    const ctrls=document.createElement("div");ctrls.className="live-params";
-    const inputs={};
-    for(const spec of cfg.paramSpecs){
-      const lab=document.createElement("label");lab.className="live-param";
-      const name=document.createElement("span");name.className="live-param-name";
-      name.textContent=spec.name;
-      const range=document.createElement("input");
-      range.type="range";range.min=spec.min;range.max=spec.max;range.step=spec.step;
-      range.value=spec.default;range.setAttribute("aria-label",spec.label);
-      const num=document.createElement("input");
-      num.type="number";num.min=spec.min;num.max=spec.max;num.step=spec.step;
-      num.value=spec.default;num.setAttribute("aria-label",spec.label+" (number)");
-      lab.appendChild(name);lab.appendChild(range);lab.appendChild(num);
-      ctrls.appendChild(lab);
-      inputs[spec.name]={range,num};
-    }
+    const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
     w.appendChild(ctrls);
     const hint=document.createElement("p");hint.className="hint";
     hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
@@ -1880,6 +1902,103 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
         workerCount:pool.workerCount,
         liveWorkers:pool.liveWorkers,
         nIter:store.nIter
+      })
+    };
+    fig.dataset.state="live";
+  }catch(err){
+    unmountPlot(fig);
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
+    throw err;
+  }
+}
+
+/* The delayed-logistic attractors: the (x, y) point cloud live at a
+   reader-chosen D, above the published twelve-panel PNG. One direct kernel
+   call per parameter set — no tile pool: a burst of slider moves is
+   collapsed by the debounce in live-figure.js and stale results drop by
+   sequence number. This function only builds DOM; the request shape, the
+   trace fold and the hash live in live-figure.js for node tests. */
+async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
+  const cfg=liveFigure.LIVE_ATTRACTORS;
+  const title="Delayed logistic map, \u03b1 = 0.3";
+  try{
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    c.setAttribute("aria-label",capText+" — "+title);
+    const h=document.createElement("p");h.className="plot-title";
+    h.textContent=title;w.appendChild(h);
+    w.appendChild(c);
+    const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
+    w.appendChild(ctrls);
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    w.appendChild(hint);
+    body.insertBefore(w,body.firstChild);
+    const note=document.createElement("p");note.className="hint";
+    note.textContent="the image below is the published figure — twelve panels at fixed D values; the cloud above is computed in your browser at the D you choose";
+    body.insertBefore(note,w.nextSibling);
+    let plot=null;
+    const writeHash=()=>{
+      const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,af.state);
+      history.replaceState(null,"",location.pathname+location.search+(frag?"#"+frag:""));
+    };
+    const af=liveFigure.createAttractorFigure({
+      params:cfg,
+      debounceMs:150,
+      echo:(name,v)=>{
+        const f=inputs[name];if(f){f.range.value=v;f.num.value=v;}
+        if(name==="D") h.textContent=title+" — D = "+v;
+      },
+      onTrace:(store,trace,req)=>{
+        // panel.traces holds these arrays; replacing them would orphan the
+        // plot. The second trace is the analytic fixed point the orbit
+        // starts beside — the figure's one vermilion mark.
+        const fp=liveFigure.attractorFixedPoint(req.dMin);
+        fpTrace.x.splice(0,fpTrace.x.length,fp);
+        fpTrace.y.splice(0,fpTrace.y.length,fp);
+        if(plot) plot.redraw();
+      },
+      onError:()=>{
+        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+      },
+      writeHash
+    });
+    const fpTrace={x:[],y:[]};
+    const panel={title,traces:[
+      {name:"orbit",x:af.store.trace.x,y:af.store.trace.y,color:"--slate"},
+      {name:"fixed point",x:fpTrace.x,y:fpTrace.y,color:"--vermilion"}
+    ]};
+    const live={
+      base:{...cfg.domain},
+      generation:()=>af.store.generation
+    };
+    plot=Plot(c,panel,{
+      kind:"scatter",
+      live,
+      labelFont:"italic 11px 'TeX Gyre Pagella',Georgia,serif",
+      xlabel:"x",
+      ylabel:"y",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    for(const spec of cfg.paramSpecs){
+      const f=inputs[spec.name];
+      f.range.addEventListener("input",()=>af.onInput(spec.name,Number(f.range.value)));
+      f.num.addEventListener("change",()=>af.onInput(spec.name,Number(f.num.value)));
+    }
+    af.refresh();
+    fig._live={
+      setParams:(values)=>{af.setParams(values);},
+      params:()=>({...af.state}),
+      trace:()=>({x:af.store.trace.x.slice(),y:af.store.trace.y.slice()}),
+      ready:()=>af.ready(),
+      stats:()=>({
+        generation:af.store.generation,
+        painted:af.store.painted,
+        points:af.store.trace.x.length
       })
     };
     fig.dataset.state="live";

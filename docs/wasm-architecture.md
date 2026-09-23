@@ -163,6 +163,23 @@ a shared link restores the exact view; the scroll-spy preserves the
 `&key=value` tokens when it rewrites the section id. Under
 `prefers-reduced-data` no slider is created and the PNG stays.
 
+The delayed-logistic attractors (`figure#fig:delayed_logistic_attractors`)
+are the third live figure and the first point cloud: the (x, y) orbit of
+the delayed logistic map at a reader-chosen D ∈ [1.4, 3.5] (the kernel's
+own clamp), A = 0.3 fixed, with an iteration-count control bounded by the
+kernel's 4096 plotted states. It does not use the tile pool: one
+`delayed_logistic_attractor_tile` call per parameter set is at most
+20000 + 4096 map steps, microseconds of work, so the worker round trip
+would buy nothing. The debounce collapses a slider burst into one call and
+a sequence number drops a stale result. The start state is the published
+convention (fp + 0.01, fp − 0.01) at the analytic fixed point, which the
+canvas marks in vermilion over the slate cloud. The map uses only +, −, *,
+so the wasm orbit is bit-identical to the npz trajectories;
+`scripts/check_wasm_delayed_logistic.py` asserts exactly that at every
+committed D in the wasm-parity CI job. Parameter state rides the URL hash
+like the staircase's; under `prefers-reduced-data` no slider is created
+and the PNG stays.
+
 ## WebGPU is a fast path, never the baseline
 
 As of 2026-09: Chromium ships WebGPU (113+, and Android 121+), Safari turned it
@@ -292,6 +309,14 @@ the wasm-parity CI job: the wasm tile at D = 0.25 against the committed
 so their linspace reproduces npz points bit for bit, asserted before the
 comparison). Below K_c every point stays within the display tolerance; above
 it divergence is allowed but bounded by the same share limit.
+
+`scripts/check_wasm_delayed_logistic.py` is the attractor figure's parity
+sibling in the same job: the wasm tile at each committed D in
+`attractors.npz` and `locking_sequence.npz` against the first 4096 plotted
+states, same x0 convention and n_transient 20000. The delayed logistic map
+has no transcendental call, so the rule is bit-exact equality — a
+difference means the kernel's operation order drifted, not a tolerance to
+negotiate.
 
 ## Measuring performance honestly
 

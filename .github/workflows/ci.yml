@@ -113,6 +113,12 @@ jobs:
         # this compares the wasm tile against the committed npz at the same A
         # values, with the parity script's own thresholds.
         run: uv run python scripts/check_wasm_staircase.py
+      - name: Check the live delayed-logistic attractor against the published npz files
+        # The attractors figure recomputes in the browser at a reader-chosen
+        # D; this compares the wasm tile against both committed npz files at
+        # their exact D values. The map uses only +, -, * so the check is
+        # bit-exact; the reasoning is in the script's docstring.
+        run: uv run python scripts/check_wasm_delayed_logistic.py
       - name: Check the diagnostics exports against the native build
         # Counts must match exactly; the fuzzy-entropy sum has a stated
         # tolerance, justified in the script's docstring.
