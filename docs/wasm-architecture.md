@@ -388,6 +388,92 @@ A browser has far fewer workers than this box has cores, so the useful figure
 for planning a live figure is the 2-to-8-thread range, not the single-thread
 number and not the 24-thread number.
 
+## Performance headroom
+
+Measured 2026-09-24 on the development box (AMD Ryzen 9 9900X, 12 cores / 24
+threads, 15.8 GB RAM, shared with other projects), node v22.19.0, Chrome for
+Testing 142.0.7444.175 headless. The 1-minute load average was recorded before
+and after each timing series; a series was repeated, up to three times, when
+the load exceeded 2.0 before it started.
+
+### SIMD: bit-identical, not faster
+
+A second wasm build with `RUSTFLAGS="-C target-feature=+simd128"` (the flag
+took effect: the module carries 407 `0xFD`-prefixed SIMD opcodes against 19
+in the scalar build) ran `rotation_number_tile` on the flagship's default
+view — a 64 x 64 tile over Omega in [0, 1], K in [0, 0.3], `nTransient` 200,
+`nIter` 2000, `theta0` 0.1 — 3 warm-ups, median of 15, in node. Load
+average 1.86 before the series, 2.73 after.
+
+| build | median (ms) | min-max (ms) |
+|---|---|---|
+| scalar (the shipped `site/wasm` build) | 43.38 | 42.92-45.06 |
+| simd128 | 43.01 | 42.81-43.56 |
+
+Every returned f64 of the tile — all 4100 values, header included — is
+bit-identical between the two builds. The speed ratio is 1.01, under the
+1.3 needed to adopt it, so **SIMD is not adopted**. The kernel is a
+sequential recurrence: each circle-map iteration needs the previous state,
+so the hot loop has no independent values to put in SIMD lanes.
+
+The SIMD build:
+
+    RUSTFLAGS="-C target-feature=+simd128" CARGO_TARGET_DIR=target-simd \
+      cargo build --manifest-path rust/wasm/Cargo.toml \
+        --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir simd-pkg \
+      target-simd/wasm32-unknown-unknown/release/dynachaos_wasm.wasm
+
+### Workers: faster, but well under linear
+
+First full paint of the flagship (`fig:arnold_tongues`) in headless Chrome,
+from the click that starts live mode until every tile is painted: 341 tiles
+(levels 0-4, 1 + 4 + 16 + 64 + 256 tiles; the finest level is 62 x 62
+cells). `navigator.hardwareConcurrency` was overridden for each run;
+`pool.js` caps the pool at 8. Three series were run; the table gives the
+first, with the full-paint times of the other two in parentheses. Load
+average before the series: 0.89 / 1.68 / 1.52; after: 1.87 / 2.79 / 3.56.
+
+| workers | first tile (ms) | full paint (ms) | tiles/s | sum of per-tile compute (s) |
+|---|---|---|---|---|
+| 1 | 90 | 10820 (13673, 13787) | 31.5 | 10.2 |
+| 2 | 57 | 10122 (10144, 10170) | 33.7 | 19.4 |
+| 4 | 73 | 4536 (4508, 4606) | 75.2 | 17.1 |
+| 8 | 61 | 3415 (3428, 3443) | 99.9 | 25.6 |
+
+The first tile arrives in 60-90 ms at every pool size, so one worker is
+enough for the first response. Full paint is 3.2 times faster with 8
+workers than with 1. The summed per-tile compute time grows with the pool
+(10.2 s with 1 worker, 25.6 s with 8): each tile runs slower when more run
+at once. These measurements do not separate the causes (other projects'
+jobs on the same box, shared cache, clock speed under load). In the first
+series two workers gave almost no gain over one (10.1 s against 10.8 s).
+The gain from 4 to 8 workers is smaller than from 2 to 4.
+
+Worker tiling only helps figures whose cells are independent. These
+figures follow one orbit or one field forward in time and give no
+independent tiles: `sec03_transition/attractors.png`
+(`coupled_logistic_attractor_tile`), `sec04_doubling/map_I_attractors.png`
+and `map_IV_attractors.png` (`torus_doubling_attractor_tile`),
+`sec05_oscillation/attractors.png` and `locking_sequence.png`
+(`delayed_logistic_attractor_tile`), `sec06_three_torus/xz_projections.png`
+(`coupled_delayed_projection_tile`),
+`sec07_fractalization/fractal_attractors.png`
+(`fractalization_attractor_tile`), and `sec08_sti/spacetime_diagrams.png`
+(`cml_spacetime_tile`; neighbouring sites couple at every step, so the
+lattice cannot be split into independent tiles either). To run these
+faster, the kernel itself needs threads, which need `SharedArrayBuffer` and
+the COOP/COEP headers GitHub Pages cannot send; `coi-serviceworker` (see the
+threads section) provides them at the cost of one reload on the first
+visit.
+
+### WebGPU: API present, no adapter
+
+Headless Chrome 142 on this box exposes `navigator.gpu` on the served page,
+but `requestAdapter()` returns `null`, with and without `--disable-gpu`.
+There is no GPU behind the API here. CPU-wasm stays the baseline, the only
+path every visitor can run.
+
 ## Figure inventory for live mode
 
 The class names the cheapest browser path that reproduces the figure: A has a
