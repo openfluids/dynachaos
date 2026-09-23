@@ -525,7 +525,7 @@ def test_runner_env_appends_to_existing_pythonpath(monkeypatch, tmp_path):
 
     env = _runner._runner_env(tmp_path, "paper")
 
-    assert env["PYTHONPATH"].startswith(f"/repo/src{_runner.os.pathsep}")
+    assert env["PYTHONPATH"].startswith(f"{Path('/repo/src')}{_runner.os.pathsep}")
     assert "/some/existing/path" in env["PYTHONPATH"]
 
 
@@ -537,7 +537,20 @@ def test_runner_env_sets_pythonpath_when_none_was_set(monkeypatch, tmp_path):
 
     env = _runner._runner_env(tmp_path, "paper")
 
-    assert env["PYTHONPATH"] == "/repo/src"
+    assert env["PYTHONPATH"] == str(Path("/repo/src"))
+
+
+def test_runner_env_pythonpath_uses_platform_path_separator(monkeypatch, tmp_path):
+    """The joined PYTHONPATH follows the platform's os.pathsep."""
+    from dynachaos.pipelines import runner as _runner
+
+    monkeypatch.setenv("PYTHONPATH", "/some/existing/path")
+    monkeypatch.setattr(_runner, "_repo_src_dir", lambda: Path("/repo/src"))
+    monkeypatch.setattr(_runner.os, "pathsep", ";")
+
+    env = _runner._runner_env(tmp_path, "paper")
+
+    assert env["PYTHONPATH"] == f"{Path('/repo/src')}{_runner.os.pathsep}/some/existing/path"
 
 
 def test_run_section_rejects_invalid_profile(tmp_path):
