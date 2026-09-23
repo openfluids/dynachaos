@@ -936,6 +936,129 @@ try {
     FIRST_PAINT_MS,
     100,
   );
+
+  // ---- torus-doubling attractors: the (X, Y) cloud with a map selector ----
+  // The fourth live figure: one canvas serving map (I) and map (IV). The
+  // select switches the map — and with it A, x0, the D slider's window and
+  // the title — the D slider moves inside the chosen map's doubling window,
+  // the n field sets the plotted-state count, the hash carries all three,
+  // and one plotted state must equal the kernel's own output at the same
+  // request.
+  const T = "document.getElementById('fig:map_I_attractors')";
+  const tStats = () => ev(`${T} && ${T}._live ? ${T}._live.stats() : null`);
+  check(
+    "the torus figure is marked live-capable",
+    await ev(`!!${T} && ${T}.dataset.live === "torus_doubling_attractors"`),
+    await ev(`${T} ? JSON.stringify(${T}.dataset) : "no figure"`),
+  );
+  await ev(`(${T}.querySelector(".act-interact").click(), true)`);
+  const tFirstPaint = await waitFor(
+    `!!${T}._live && ${T}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const tStats0 = await tStats();
+  check(
+    "the torus cloud is painted at the default map and D",
+    tFirstPaint && tStats0 && tStats0.points === 2048,
+    JSON.stringify(tStats0),
+  );
+  check(
+    "the torus figure has a map selector, a D slider and an n field",
+    await ev(
+      `!!(${T} && ${T}.querySelector(".live-params select") && ${T}.querySelector(".live-params input[type=range]") && ${T}.querySelector(".live-params input[type=number]"))`,
+    ),
+  );
+
+  // One plotted state against the kernel computed the same way: the page's
+  // own glue module answers torus_doubling_attractor_tile at the figure's
+  // current (map, D, n), and the trace's first point must be that tile's
+  // first (X, Y) pair — components 0 and 1 of the first state.
+  const tCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${T}._live.params();
+    const x0 = p.map === 4 ? [0.5, 0.45, 0.52, 0.48] : [0.5, 0.5, 0.5];
+    const a = p.map === 4 ? 0.3 : 0.4;
+    const tile = glue.torus_doubling_attractor_tile(p.map, a, p.D, 20000, p.n, x0);
+    const tr = ${T}._live.trace();
+    return { x: tr.x[0], y: tr.y[0], kx: tile[4], ky: tile[5], n: tr.x.length, nProduced: tile[3] };
+  })()`);
+  check(
+    "a plotted torus state equals the kernel's at the same (map, A, D, n)",
+    tCheck != null &&
+      tCheck.x === tCheck.kx &&
+      tCheck.y === tCheck.ky &&
+      tCheck.n === tCheck.nProduced,
+    JSON.stringify(tCheck),
+  );
+
+  // Switch to map IV: the selector must move D into the new map's window
+  // (its published default 1.5206), repaint a new generation, and write the
+  // map into the hash.
+  const tBefore = await tStats();
+  await ev(`(() => {
+    const s = ${T}.querySelector(".live-params select");
+    s.value = "4";
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  const tSwitched = await waitFor(
+    `!!${T}._live && ${T}._live.stats().generation > ${tBefore ? tBefore.generation : -1} && ${T}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("map=4")`, 5_000);
+  const tParams4 = await ev(`${T} && ${T}._live ? ${T}._live.params() : null`);
+  check(
+    "switching to map IV repaints a new generation",
+    Boolean(tBefore && tSwitched),
+    JSON.stringify({ before: tBefore, after: await tStats() }),
+  );
+  check(
+    "switching to map IV moves D into the new window and writes the hash",
+    tParams4 != null &&
+      tParams4.map === 4 &&
+      tParams4.D === 1.5206 &&
+      (await ev("location.hash")).includes("fig:map_I_attractors.map=4"),
+    JSON.stringify({ tParams4, hash: await ev("location.hash") }),
+  );
+
+  // Move D inside map IV's window: the debounced apply must recompute,
+  // repaint, and write the new value into the hash. The range input snaps
+  // to its step, so the check reads back the snapped value rather than
+  // assuming it.
+  const tBeforeD = await tStats();
+  const tSet = await ev(`(() => {
+    const r = ${T}.querySelector(".live-params input[type=range]");
+    r.value = "1.515";
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return r.value;
+  })()`);
+  const tMoved = await waitFor(
+    `!!${T}._live && ${T}._live.stats().generation > ${tBeforeD ? tBeforeD.generation : -1} && ${T}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("D=" + ${JSON.stringify(tSet)})`, 5_000);
+  const tMovedCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${T}._live.params();
+    const tile = glue.torus_doubling_attractor_tile(4, 0.3, p.D, 20000, p.n, [0.5, 0.45, 0.52, 0.48]);
+    const tr = ${T}._live.trace();
+    return { D: p.D, x: tr.x[0], kx: tile[4] };
+  })()`);
+  check(
+    "moving the torus D repaints a new generation",
+    Boolean(tBeforeD && tMoved),
+    JSON.stringify({ before: tBeforeD, after: await tStats() }),
+  );
+  check(
+    "after the move the torus cloud is the new D's orbit",
+    tMovedCheck != null &&
+      tMovedCheck.D === Number(tSet) &&
+      tMovedCheck.x === tMovedCheck.kx,
+    JSON.stringify(tMovedCheck),
+  );
   check(
     "the n control sets the plotted-state count",
     Boolean(atN),
@@ -1058,6 +1181,31 @@ try {
       "under prefers-reduced-data the attractors figure keeps its PNG and mounts no slider",
       Boolean(atReduced && atReduced.shown && !atReduced.liveCanvas && !atReduced.slider && !atReduced.hasLive),
       JSON.stringify(atReduced),
+    );
+    // The torus figure under reduced data: same rule — the published
+    // three-panel PNG (or its JSON chart) stays, no selector, no live
+    // canvas, no wasm.
+    await ev(`(${T}.querySelector(".act-interact") && ${T}.querySelector(".act-interact").click(), true)`);
+    await sleep(REDUCED_WAIT_MS);
+    const tReduced = await ev(`(() => {
+      const fig = ${T};
+      if (!fig) return { missing: true };
+      const img = fig.querySelector(".fig-body img");
+      const imgShown = img && getComputedStyle(img).display !== "none";
+      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      return {
+        shown: Boolean(imgShown || jsonChart),
+        liveCanvas: !!fig.querySelector("canvas.plot.live"),
+        slider: !!fig.querySelector(".live-params input"),
+        selector: !!fig.querySelector(".live-params select"),
+        hasLive: !!fig._live,
+        state: fig.dataset.state,
+      };
+    })()`);
+    check(
+      "under prefers-reduced-data the torus figure keeps its PNG and mounts no controls",
+      Boolean(tReduced && tReduced.shown && !tReduced.liveCanvas && !tReduced.slider && !tReduced.selector && !tReduced.hasLive),
+      JSON.stringify(tReduced),
     );
   }
   await pullDebug();

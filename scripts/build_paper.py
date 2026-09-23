@@ -837,6 +837,7 @@ LIVE_FIGURES = {
     "fig:arnold_tongues": "arnold_tongues",
     "fig:devils_staircase": "devils_staircase",
     "fig:delayed_logistic_attractors": "delayed_logistic_attractors",
+    "fig:map_I_attractors": "torus_doubling_attractors",
 }
 
 

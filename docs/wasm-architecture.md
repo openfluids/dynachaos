@@ -180,6 +180,25 @@ committed D in the wasm-parity CI job. Parameter state rides the URL hash
 like the staircase's; under `prefers-reduced-data` no slider is created
 and the PNG stays.
 
+The torus-doubling attractors (`figure#fig:map_I_attractors`) are the
+fourth live figure: the (X, Y) projection of map (I) or map (IV) at a
+reader-chosen D, drawn by `torus_doubling_attractor_tile` on the main
+thread like the delayed-logistic cloud. A map selector — the page's first
+non-slider control, a `<select>` — switches between map (I) (A = 0.4,
+x0 = (0.5, 0.5, 0.5), D ∈ [1.9, 2.25]) and map (IV) (A = 0.3,
+x0 = (0.5, 0.45, 0.52, 0.48), D ∈ [1.48, 1.53]); each window is the
+published sweep inside the kernel's [1.48, 2.25] clamp, and switching maps
+resets D to the new map's published default rather than clamping the old
+value into the new window. An iteration-count control is bounded by the
+kernel's 4096 plotted states. Both maps project the state onto (X, Y) —
+components 0 and 1 — on one fixed domain, the union of both committed npz
+extents, so the selector compares the maps on the paper's axes. The maps
+use only +, −, *, so the wasm orbit is bit-identical to the npz
+trajectories; `scripts/check_wasm_torus_doubling.py` asserts exactly that
+at every committed D in the wasm-parity CI job. Parameter state — the map
+included — rides the URL hash like the staircase's; under
+`prefers-reduced-data` no controls are created and the PNG stays.
+
 ## WebGPU is a fast path, never the baseline
 
 As of 2026-09: Chromium ships WebGPU (113+, and Android 121+), Safari turned it
@@ -317,6 +336,13 @@ states, same x0 convention and n_transient 20000. The delayed logistic map
 has no transcendental call, so the rule is bit-exact equality — a
 difference means the kernel's operation order drifted, not a tolerance to
 negotiate.
+
+`scripts/check_wasm_torus_doubling.py` is the torus figure's parity
+sibling in the same job: the wasm tile at each committed D in
+`map_I_attractors.npz` and `map_IV_attractors.npz` against the first 4096
+plotted states, every state component, same x0 and n_transient 20000. The
+torus-doubling maps have no transcendental call either, so the rule is
+again bit-exact equality.
 
 ## Measuring performance honestly
 

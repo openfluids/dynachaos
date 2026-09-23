@@ -119,6 +119,13 @@ jobs:
         # their exact D values. The map uses only +, -, * so the check is
         # bit-exact; the reasoning is in the script's docstring.
         run: uv run python scripts/check_wasm_delayed_logistic.py
+      - name: Check the live torus-doubling attractor against the published npz files
+        # The map (I) attractors figure recomputes in the browser at a
+        # reader-chosen map and D; this compares the wasm tile against both
+        # committed npz files at their exact D values, every state
+        # component. The maps use only +, -, * so the check is bit-exact;
+        # the reasoning is in the script's docstring.
+        run: uv run python scripts/check_wasm_torus_doubling.py
       - name: Check the diagnostics exports against the native build
         # Counts must match exactly; the fuzzy-entropy sum has a stated
         # tolerance, justified in the script's docstring.

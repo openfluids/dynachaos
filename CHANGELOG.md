@@ -24,6 +24,17 @@ reconstructed from git history. 0.4.0 is the first public release.
   bit (`scripts/check_wasm_delayed_logistic.py`, run in CI). The published
   twelve-panel figure stays below the live cloud.
 
+- The paper page computes the torus-doubling attractors live: the (X, Y)
+  projection of map (I) or map (IV) at a map parameter D the reader sets
+  with a slider or number field, plus an iteration-count control bounded
+  at 4096 plotted states. A map selector switches between map (I)
+  (A = 0.4, D in [1.9, 2.25]) and map (IV) (A = 0.3, D in [1.48, 1.53]),
+  each window the published doubling sweep. The values go into the page
+  address, so a link reproduces the view. The maps use only +, -, *, so
+  the browser orbit matches the published trajectories bit for bit
+  (`scripts/check_wasm_torus_doubling.py`, run in CI). The published
+  three-panel figure stays below the live cloud.
+
 - The compiled extension exports `delayed_logistic_attractor_tile` and
   `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
   the torus-doubling maps (I) and (IV) in Rust and return the same

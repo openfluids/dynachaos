@@ -5,6 +5,7 @@ import {
   LIVE_ATTRACTORS,
   LIVE_FIGURES,
   LIVE_STAIRCASE,
+  LIVE_TORUS,
   attractorFixedPoint,
   attractorRequest,
   attractorTrace,
@@ -16,8 +17,12 @@ import {
   createStaircaseReadout,
   createStaircaseView,
   createStore,
+  createTorusFigure,
   createViewHandler,
   tilesToTrace,
+  torusMapKind,
+  torusRequest,
+  torusTrace,
 } from "../../site-src/live/live-figure.js";
 import {
   HEADER,
@@ -603,6 +608,29 @@ test("a slider burst recomputes once and a stale result is dropped", async () =>
   assert.equal(fig.store.generation, 3);
 });
 
+test("onTrace runs once per painted result and never for a stale one", async () => {
+  // The page repaints and draws the fixed-point marker in onTrace; in
+  // fe8a64d it was accepted but never called, and no test noticed.
+  const deferreds = [];
+  const traced = [];
+  const fig = createAttractorFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: () => new Promise((r) => deferreds.push(r)),
+    onTrace: (store, trace, req) => traced.push([trace.x[0], req.dMin]),
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  fig.setParams({ D: 1.86 });
+  fig.setParams({ D: 2.16 });
+  const tileFor = (d) => new Float64Array([1, 1, 20000, 2, d, -d]);
+  deferreds[1](tileFor(2.16));
+  await tick();
+  deferreds[0](tileFor(1.86));
+  await tick();
+  assert.deepEqual(traced, [[2.16, 2.16]]);
+});
+
 test("the attractor store's trace arrays keep their identity across paints", async () => {
   // The page's panel.traces captures these arrays at mount; replacing them
   // would leave the plot drawing the empty arrays forever.
@@ -623,4 +651,154 @@ test("the attractor store's trace arrays keep their identity across paints", asy
   assert.equal(fig.store.trace.x, xs);
   assert.equal(fig.store.trace.y, ys);
   assert.deepEqual([...xs], [0.1, 0.3]);
+});
+
+test("LIVE_TORUS is frozen, registered, and holds the paper's parameters", () => {
+  assert.equal(LIVE_FIGURES.torus_doubling_attractors, LIVE_TORUS);
+  assert.equal(LIVE_TORUS.nTransient, 20000);
+  // The paper's per-map constants (maps/torus_doubling.py): map I at
+  // A = 0.4 from (0.5, 0.5, 0.5), map IV at A = 0.3 from (0.5, 0.45, 0.52,
+  // 0.48); each D window is the published sweep inside the kernel's
+  // [1.48, 2.25] clamp, and each default is a published panel.
+  const m1 = LIVE_TORUS.maps[1];
+  const m4 = LIVE_TORUS.maps[4];
+  assert.equal(m1.a, 0.4);
+  assert.deepEqual([...m1.x0], [0.5, 0.5, 0.5]);
+  assert.deepEqual({ dMin: m1.dMin, dMax: m1.dMax, dDefault: m1.dDefault }, { dMin: 1.9, dMax: 2.25, dDefault: 2.16 });
+  assert.equal(m4.a, 0.3);
+  assert.deepEqual([...m4.x0], [0.5, 0.45, 0.52, 0.48]);
+  assert.deepEqual({ dMin: m4.dMin, dMax: m4.dMax, dDefault: m4.dDefault }, { dMin: 1.48, dMax: 1.53, dDefault: 1.5206 });
+  const [map, d, n] = LIVE_TORUS.paramSpecs;
+  assert.equal(map.name, "map");
+  assert.deepEqual(map.options.map((o) => o.value), [1, 4]);
+  assert.equal(d.name, "D");
+  assert.equal(n.name, "n");
+  assert.equal(n.max, 4096);
+  assert.ok(Object.isFrozen(LIVE_TORUS));
+});
+
+test("the torus request passes map kind, A, D in the kernel's order", () => {
+  // torus_doubling_attractor_tile(map_kind, a, d, n_transient, n_plot,
+  // state0): swapping A and D here sends the slider's D into the map's A
+  // slot, and dropping the map kind runs the wrong map — this test catches
+  // both.
+  const req1 = torusRequest({ map: 1, D: 2.16, n: 2048 });
+  assert.equal(req1.mapKind, 1);
+  assert.equal(req1.a, 0.4);
+  assert.equal(req1.d, 2.16);
+  assert.equal(req1.nTransient, 20000);
+  assert.equal(req1.nPlot, 2048);
+  assert.deepEqual([...req1.state0], [0.5, 0.5, 0.5]);
+
+  const req4 = torusRequest({ map: 4, D: 1.5206, n: 512 });
+  assert.equal(req4.mapKind, 4);
+  assert.equal(req4.a, 0.3);
+  assert.equal(req4.d, 1.5206);
+  assert.equal(req4.nPlot, 512);
+  assert.deepEqual([...req4.state0], [0.5, 0.45, 0.52, 0.48]);
+
+  // A D outside the chosen map's window clamps into it before the kernel
+  // ever sees it.
+  assert.equal(torusRequest({ map: 4, D: 2.16, n: 512 }).d, 1.53);
+  assert.equal(torusRequest({ map: 1, D: 1.5, n: 512 }).d, 1.9);
+});
+
+test("torusMapKind snaps the selector the way the kernel does", () => {
+  assert.equal(torusMapKind(1), 1);
+  assert.equal(torusMapKind(2), 1);
+  assert.equal(torusMapKind(3), 4);
+  assert.equal(torusMapKind(4), 4);
+  assert.equal(torusMapKind(0), 1);
+});
+
+test("torusTrace folds the tile by the map's projection", () => {
+  // Header [map_kind, dim, n_transient, n_produced], then n_produced states
+  // of dim components. The paper scatters components 0 and 1 (X, Y); a
+  // swapped projection lands Y on the x axis, which this test catches.
+  const tile3 = new Float64Array([1, 3, 20000, 2, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+  const t3 = torusTrace(tile3, LIVE_TORUS.maps[1]);
+  assert.deepEqual(t3.x, [0.1, 0.4]);
+  assert.deepEqual(t3.y, [0.2, 0.5]);
+
+  const tile4 = new Float64Array([4, 4, 20000, 2, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]);
+  const t4 = torusTrace(tile4, LIVE_TORUS.maps[4]);
+  assert.deepEqual(t4.x, [0.1, 0.5]);
+  assert.deepEqual(t4.y, [0.2, 0.6]);
+
+  // A short tile, a null tile and a diverged orbit all yield an empty
+  // cloud rather than a misread buffer.
+  assert.deepEqual(torusTrace(new Float64Array([1, 3, 0, 9, 0.1]), LIVE_TORUS.maps[1]).x, []);
+  assert.deepEqual(torusTrace(null, LIVE_TORUS.maps[1]).x, []);
+  assert.deepEqual(torusTrace(new Float64Array([4, 4, 20000, 0]), LIVE_TORUS.maps[4]).x, []);
+});
+
+test("switching the torus map resets D to the new map's window and repaints", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const fig = createTorusFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return Promise.resolve(new Float64Array([req.mapKind, req.mapKind === 1 ? 3 : 4, 20000, 1, 0.1, 0.2, 0.3, 0.4]));
+    },
+    onTrace: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  fig.onInput("map", 4);
+  timers.flush();
+  await tick();
+  // The selector snapped to map IV and D moved to that map's published
+  // default — a clamp would have pinned it to the window's edge instead.
+  assert.equal(fig.state.map, 4);
+  assert.equal(fig.state.D, 1.5206);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].mapKind, 4);
+  assert.equal(calls[0].a, 0.3);
+  assert.equal(calls[0].d, 1.5206);
+  assert.deepEqual([...calls[0].state0], [0.5, 0.45, 0.52, 0.48]);
+  assert.equal(fig.store.painted, 1);
+});
+
+test("a hash state with map and D restores both, in spec order", async () => {
+  // parseHash returns name -> value; setParams applies the specs in order,
+  // so map=4 resets D to map IV's default and then D=1.515 lands inside
+  // the new window. A wiring that applied D before the map switch would
+  // clamp it into map I's window first.
+  const timers = manualTimers();
+  const calls = [];
+  const fig = createTorusFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return Promise.resolve(new Float64Array([4, 4, 20000, 0]));
+    },
+    onTrace: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  fig.setParams({ map: 4, D: 1.515 });
+  await tick();
+  assert.equal(fig.state.map, 4);
+  assert.equal(fig.state.D, 1.515);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].d, 1.515);
+});
+
+test("a D outside the active map's window clamps into it", () => {
+  const fig = createTorusFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: () => Promise.resolve(new Float64Array([4, 4, 20000, 0])),
+    onTrace: () => {},
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  fig.setParams({ map: 4 });
+  // The number field accepts the union range; the figure clamps into the
+  // active window rather than asking the kernel for a D it would move.
+  fig.onInput("D", 2.0);
+  assert.equal(fig.state.D, 1.53);
 });

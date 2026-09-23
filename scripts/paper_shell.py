@@ -1682,6 +1682,10 @@ async function mountLive(fig){
     await mountAttractors(fig,body,{liveFigure,paramsMod,capText});
     return;
   }
+  if(fig.dataset.live==="torus_doubling_attractors"){
+    await mountTorus(fig,body,{liveFigure,paramsMod,capText});
+    return;
+  }
   const title="Rotation number over the circle-map parameter plane";
   // Five levels keep the finest tile small. A zoom then waits on less in-flight work.
   const liveLevels=5;
@@ -1778,6 +1782,22 @@ function buildParamControls(specs){
     const lab=document.createElement("label");lab.className="live-param";
     const name=document.createElement("span");name.className="live-param-name";
     name.textContent=spec.name;
+    if(spec.options){
+      // A discrete parameter (the torus figure's map selector) is a select,
+      // not a slider pair; the wiring still sees a number.
+      const sel=document.createElement("select");
+      sel.setAttribute("aria-label",spec.label);
+      for(const opt of spec.options){
+        const o=document.createElement("option");
+        o.value=String(opt.value);o.textContent=opt.label;
+        sel.appendChild(o);
+      }
+      sel.value=String(spec.default);
+      lab.appendChild(name);lab.appendChild(sel);
+      ctrls.appendChild(lab);
+      inputs[spec.name]={select:sel};
+      continue;
+    }
     const range=document.createElement("input");
     range.type="range";range.min=spec.min;range.max=spec.max;range.step=spec.step;
     range.value=spec.default;range.setAttribute("aria-label",spec.label);
@@ -1999,6 +2019,119 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
         generation:af.store.generation,
         painted:af.store.painted,
         points:af.store.trace.x.length
+      })
+    };
+    fig.dataset.state="live";
+  }catch(err){
+    unmountPlot(fig);
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
+    throw err;
+  }
+}
+
+/* The torus-doubling attractors: the (X, Y) projection of map (I) or map
+   (IV) live at a reader-chosen D, above the published three-panel PNG. One
+   direct kernel call per parameter set — no tile pool, same as the
+   delayed-logistic figure. The map selector is a <select>; switching maps
+   moves the D slider's range and default to the chosen map's doubling
+   window. This function only builds DOM; the request shape, the trace
+   fold, the map switch and the hash live in live-figure.js for node
+   tests. */
+async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
+  const cfg=liveFigure.LIVE_TORUS;
+  try{
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    const h=document.createElement("p");h.className="plot-title";
+    w.appendChild(h);
+    w.appendChild(c);
+    const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
+    w.appendChild(ctrls);
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    w.appendChild(hint);
+    body.insertBefore(w,body.firstChild);
+    const note=document.createElement("p");note.className="hint";
+    note.textContent="the image below is the published figure — three panels at fixed D values; the cloud above is computed in your browser at the map and D you choose";
+    body.insertBefore(note,w.nextSibling);
+    let plot=null;
+    const setTitle=()=>{h.textContent=cfg.maps[liveFigure.torusMapKind(tf.state.map)].title+" — D = "+tf.state.D;};
+    const setDBounds=(m)=>{
+      const f=inputs.D;
+      f.range.min=m.dMin;f.range.max=m.dMax;f.range.step=m.dStep;
+      f.num.min=m.dMin;f.num.max=m.dMax;f.num.step=m.dStep;
+    };
+    const applyMap=(m)=>{
+      inputs.map.select.value=String(m.kind);
+      setDBounds(m);
+      c.setAttribute("aria-label",capText+" — "+m.title);
+    };
+    const writeHash=()=>{
+      const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,tf.state);
+      history.replaceState(null,"",location.pathname+location.search+(frag?"#"+frag:""));
+    };
+    const tf=liveFigure.createTorusFigure({
+      params:cfg,
+      debounceMs:150,
+      echo:(name,v)=>{
+        const f=inputs[name];
+        if(name==="map"){applyMap(cfg.maps[v]);setTitle();return;}
+        if(f){f.range.value=v;f.num.value=v;}
+        if(name==="D") setTitle();
+      },
+      onTrace:(store,trace,req)=>{
+        // panel.traces holds these arrays; replacing them would orphan the
+        // plot. The second trace is the map's unstable fixed point — the
+        // figure's one vermilion mark, as on the delayed-logistic figure.
+        const fp=liveFigure.attractorFixedPoint(req.d);
+        fpTrace.x.splice(0,fpTrace.x.length,fp);
+        fpTrace.y.splice(0,fpTrace.y.length,fp);
+        if(plot) plot.redraw();
+      },
+      onError:()=>{
+        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+      },
+      writeHash
+    });
+    const fpTrace={x:[],y:[]};
+    const panel={title:cfg.maps[1].title,traces:[
+      {name:"orbit",x:tf.store.trace.x,y:tf.store.trace.y,color:"--slate"},
+      {name:"fixed point",x:fpTrace.x,y:fpTrace.y,color:"--vermilion"}
+    ]};
+    const live={
+      base:{...cfg.domain},
+      generation:()=>tf.store.generation
+    };
+    plot=Plot(c,panel,{
+      kind:"scatter",
+      live,
+      labelFont:"italic 11px 'TeX Gyre Pagella',Georgia,serif",
+      xlabel:"X",
+      ylabel:"Y",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    applyMap(cfg.maps[liveFigure.torusMapKind(tf.state.map)]);
+    setTitle();
+    for(const spec of cfg.paramSpecs){
+      const f=inputs[spec.name];
+      if(f.select){f.select.addEventListener("change",()=>tf.onInput(spec.name,Number(f.select.value)));continue;}
+      f.range.addEventListener("input",()=>tf.onInput(spec.name,Number(f.range.value)));
+      f.num.addEventListener("change",()=>tf.onInput(spec.name,Number(f.num.value)));
+    }
+    tf.refresh();
+    fig._live={
+      setParams:(values)=>{tf.setParams(values);},
+      params:()=>({...tf.state}),
+      trace:()=>({x:tf.store.trace.x.slice(),y:tf.store.trace.y.slice()}),
+      ready:()=>tf.ready(),
+      stats:()=>({
+        generation:tf.store.generation,
+        painted:tf.store.painted,
+        points:tf.store.trace.x.length
       })
     };
     fig.dataset.state="live";

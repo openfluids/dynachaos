@@ -66,6 +66,67 @@ export const LIVE_ATTRACTORS = Object.freeze({
 });
 
 /**
+ * The torus-doubling attractors figure: the (X, Y) projection of map (I) or
+ * map (IV) at a reader-chosen D. The paper computes map I at A = 0.4 from
+ * x0 = (0.5, 0.5, 0.5) and map IV at A = 0.3 from x0 = (0.5, 0.45, 0.52,
+ * 0.48), both with n_transient 20000 (maps/torus_doubling.py
+ * compute_map_I/compute_map_IV); the live figure plots at most 4096 states,
+ * the wasm kernel's cap. Each map's D window is its published sweep —
+ * [1.9, 2.25] for map I, [1.48, 1.53] for map IV — inside the kernel's
+ * [1.48, 2.25] clamp; the defaults 2.16 and 1.5206 are the published
+ * doubled-torus panels. The D spec's range is the union of both windows so
+ * a hash token for either map parses; the figure itself clamps D into the
+ * active map's window. `domain` is the union of both committed npz files'
+ * (X, Y) extents padded by 5%, so the selector compares the two maps on
+ * one fixed frame. `project` is the paper's projection: both figures
+ * scatter columns 0 and 1 (X, Y) of the state.
+ */
+export const LIVE_TORUS = Object.freeze({
+  nTransient: 20000,
+  domain: Object.freeze({ x0: -0.5148468759369567, x1: 1.0121499654527584, y0: -0.5253812228060238, y1: 0.971379815168809 }),
+  maps: Object.freeze({
+    1: Object.freeze({
+      kind: 1,
+      a: 0.4,
+      x0: Object.freeze([0.5, 0.5, 0.5]),
+      dMin: 1.9,
+      dMax: 2.25,
+      dStep: 0.005,
+      dDefault: 2.16,
+      title: "Map (I), \u03b1 = 0.4",
+      project: Object.freeze([0, 1]),
+    }),
+    4: Object.freeze({
+      kind: 4,
+      a: 0.3,
+      x0: Object.freeze([0.5, 0.45, 0.52, 0.48]),
+      dMin: 1.48,
+      dMax: 1.53,
+      dStep: 0.0002,
+      dDefault: 1.5206,
+      title: "Map (IV), \u03b1 = 0.3",
+      project: Object.freeze([0, 1]),
+    }),
+  }),
+  paramSpecs: Object.freeze([
+    Object.freeze({
+      name: "map",
+      label: "map",
+      min: 1,
+      max: 4,
+      step: 3,
+      default: 1,
+      options: Object.freeze([
+        Object.freeze({ value: 1, label: "map (I), \u03b1 = 0.4" }),
+        Object.freeze({ value: 4, label: "map (IV), \u03b1 = 0.3" }),
+      ]),
+    }),
+    Object.freeze({ name: "D", label: "map parameter D", min: 1.48, max: 2.25, step: 0.005, default: 2.16 }),
+    Object.freeze({ name: "n", label: "plotted states n", min: 256, max: 4096, step: 256, default: 2048 }),
+  ]),
+});
+
+/**
  * data-live kind -> live figure config. The hash-restore path in the page
  * reads paramSpecs from here so a shared link can name its figure.
  */
@@ -73,6 +134,7 @@ export const LIVE_FIGURES = Object.freeze({
   arnold_tongues: LIVE_ARNOLD,
   devils_staircase: LIVE_STAIRCASE,
   delayed_logistic_attractors: LIVE_ATTRACTORS,
+  torus_doubling_attractors: LIVE_TORUS,
 });
 
 /**
@@ -365,7 +427,12 @@ export function createLineYFit({ store, getPlot }) {
  * schedules `apply` through the debounce — a drag burst collapses into one
  * recompute. `setParams` applies a parsed hash state immediately, with no
  * debounce: a shared link must not wait. `writeHash` runs inside apply so
- * the URL and the recompute cannot drift apart.
+ * the URL and the recompute cannot drift apart. `onSet`, when given, runs
+ * after each spec's state update — in `setParams` between specs, so a
+ * selector that changes another parameter's range (the torus figure's map
+ * switch moves D's window) sees the new value before the next spec applies
+ * — and the echo reads the post-hook state, so a snapped or derived value
+ * never disagrees with its control.
  *
  * @param {object} deps
  * @param {{ name: string, min: number, max: number, default: number }[]} deps.specs
@@ -373,10 +440,11 @@ export function createLineYFit({ store, getPlot }) {
  * @param {(name: string, value: number) => void} deps.echo
  * @param {() => void} deps.apply
  * @param {() => void} deps.writeHash
+ * @param {(name: string, state: object) => void} [deps.onSet]
  * @param {{ set?: (fn: () => void, ms: number) => unknown, clear?: (id: unknown) => void }} [deps.timers]
  * @returns {{ state: object, onInput: (name: string, raw: number) => void, setParams: (values: object) => void }}
  */
-export function createParamWiring({ specs, debounceMs, echo, apply, writeHash, timers }) {
+export function createParamWiring({ specs, debounceMs, echo, apply, writeHash, onSet, timers }) {
   const state = {};
   for (const spec of specs) state[spec.name] = spec.default;
   const fire = debounce(() => {
@@ -386,17 +454,17 @@ export function createParamWiring({ specs, debounceMs, echo, apply, writeHash, t
   function onInput(name, raw) {
     const spec = specs.find((s) => s.name === name);
     if (!spec) return;
-    const v = clampValue(raw, spec);
-    state[name] = v;
-    echo(name, v);
+    state[name] = clampValue(raw, spec);
+    if (onSet) onSet(name, state);
+    echo(name, state[name]);
     fire();
   }
   function setParams(values) {
     for (const spec of specs) {
       if (values[spec.name] === undefined) continue;
-      const v = clampValue(values[spec.name], spec);
-      state[spec.name] = v;
-      echo(spec.name, v);
+      state[spec.name] = clampValue(values[spec.name], spec);
+      if (onSet) onSet(spec.name, state);
+      echo(spec.name, state[spec.name]);
     }
     apply();
     writeHash();
@@ -471,22 +539,24 @@ export function attractorTrace(tile) {
   return { x, y };
 }
 
-let attractorKernelPromise = null;
+const kernelPromises = new Map();
 
 /**
- * Lazily load the wasm glue and return delayed_logistic_attractor_tile.
- * The module is the same instance point.js initialises (the import cache
- * keys on the resolved URL), and the glue's init is idempotent. A failed
- * load is not cached forever: the next call retries once.
+ * Lazily load the wasm glue and return one named export. The module is the
+ * same instance point.js initialises (the import cache keys on the resolved
+ * URL), and the glue's init is idempotent. A failed load is not cached
+ * forever: the next call retries once.
  *
- * @returns {Promise<(a: number, dMin: number, dMax: number, nD: number, nTransient: number, nPlot: number, state0: Float64Array) => Float64Array>}
+ * @param {string} name the wasm-bindgen export to return
+ * @returns {Promise<Function>}
  */
-export function loadAttractorKernel() {
-  if (attractorKernelPromise == null) {
-    attractorKernelPromise = (async () => {
+function loadWasmExport(name) {
+  let promise = kernelPromises.get(name);
+  if (promise == null) {
+    promise = (async () => {
       const glue = await import(ATTRACTOR_GLUE_HREF);
-      if (typeof glue.delayed_logistic_attractor_tile !== "function") {
-        throw new Error("wasm glue is missing delayed_logistic_attractor_tile");
+      if (typeof glue[name] !== "function") {
+        throw new Error(`wasm glue is missing ${name}`);
       }
       const isNode =
         typeof process !== "undefined" && process.versions && process.versions.node;
@@ -497,13 +567,32 @@ export function loadAttractorKernel() {
         const bytes = await readFile(new URL("dynachaos_wasm_bg.wasm", ATTRACTOR_GLUE_HREF));
         glue.initSync({ module: bytes });
       }
-      return glue.delayed_logistic_attractor_tile;
+      return glue[name];
     })();
-    attractorKernelPromise.catch(() => {
-      attractorKernelPromise = null;
+    promise.catch(() => {
+      kernelPromises.delete(name);
     });
+    kernelPromises.set(name, promise);
   }
-  return attractorKernelPromise;
+  return promise;
+}
+
+/**
+ * delayed_logistic_attractor_tile, loaded through the shared loader.
+ *
+ * @returns {Promise<(a: number, dMin: number, dMax: number, nD: number, nTransient: number, nPlot: number, state0: Float64Array) => Float64Array>}
+ */
+export function loadAttractorKernel() {
+  return loadWasmExport("delayed_logistic_attractor_tile");
+}
+
+/**
+ * torus_doubling_attractor_tile, loaded through the shared loader.
+ *
+ * @returns {Promise<(mapKind: number, a: number, d: number, nTransient: number, nPlot: number, state0: Float64Array) => Float64Array>}
+ */
+export function loadTorusKernel() {
+  return loadWasmExport("torus_doubling_attractor_tile");
 }
 
 
@@ -518,6 +607,50 @@ export function loadAttractorKernel() {
 export async function attractorKernelCall(req) {
   const kernel = await loadAttractorKernel();
   return kernel(req.a, req.dMin, req.dMax, req.nD, req.nTransient, req.nPlot, req.state0);
+}
+
+/**
+ * The recompute loop behind the direct-call attractor figures. `request`
+ * turns the parameter state into a kernel request, `call` runs it, `fold`
+ * turns the returned tile into the (x, y) cloud, and a sequence number
+ * drops a stale result: a request that resolves after a newer one was
+ * issued is discarded, never painted. `onTrace` runs after the store's
+ * arrays are spliced so the page can update its derived marks and redraw.
+ *
+ * @param {object} deps
+ * @param {object} deps.store
+ * @param {() => object} deps.getState
+ * @param {(state: object) => object} deps.request
+ * @param {(tile: ArrayLike<number>, req: object) => {x: number[], y: number[]}} deps.fold
+ * @param {(req: object) => Promise<ArrayLike<number>>} deps.call
+ * @param {(store: object, trace: {x: number[], y: number[]}, req: object) => void} [deps.onTrace]
+ * @param {(err: unknown) => void} [deps.onError]
+ * @returns {{ run: () => void, ready: () => boolean }}
+ */
+function createKernelRunner({ store, getState, request, fold, call, onTrace, onError }) {
+  let seq = 0;
+  let ready = false;
+  async function run() {
+    const req = request(getState());
+    const mySeq = ++seq;
+    try {
+      const tile = await call(req);
+      ready = true;
+      if (mySeq !== seq) return; // a newer request superseded this one
+      const trace = fold(tile, req);
+      // Splice into the store's arrays instead of replacing them: the
+      // page's panel.traces captured these two arrays at mount, and a
+      // fresh object would orphan the plot's view of the cloud.
+      store.trace.x.splice(0, store.trace.x.length, ...trace.x);
+      store.trace.y.splice(0, store.trace.y.length, ...trace.y);
+      store.generation = mySeq;
+      store.painted = trace.x.length;
+      if (onTrace) onTrace(store, trace, req);
+    } catch (err) {
+      if (onError) onError(err);
+    }
+  }
+  return { run, ready: () => ready };
 }
 
 /**
@@ -555,33 +688,21 @@ export function createAttractorFigure({
   timers,
 }) {
   const store = { trace: { x: [], y: [] }, generation: 0, painted: 0 };
-  let seq = 0;
-  let ready = false;
-  async function run() {
-    const req = attractorRequest(wiring.state, params);
-    const mySeq = ++seq;
-    try {
-      const tile = await call(req);
-      ready = true;
-      if (mySeq !== seq) return; // a newer request superseded this one
-      const trace = attractorTrace(tile);
-      // Splice into the store's arrays instead of replacing them: the
-      // page's panel.traces captured these two arrays at mount, and a
-      // fresh object would orphan the plot's view of the cloud.
-      store.trace.x.splice(0, store.trace.x.length, ...trace.x);
-      store.trace.y.splice(0, store.trace.y.length, ...trace.y);
-      store.generation = mySeq;
-      store.painted = trace.x.length;
-    } catch (err) {
-      if (onError) onError(err);
-    }
-  }
+  const runner = createKernelRunner({
+    store,
+    getState: () => wiring.state,
+    request: (state) => attractorRequest(state, params),
+    fold: (tile) => attractorTrace(tile),
+    call,
+    onTrace,
+    onError,
+  });
   const wiring = createParamWiring({
     specs: params.paramSpecs,
     debounceMs,
     echo,
     apply: () => {
-      run();
+      runner.run();
     },
     writeHash,
     timers,
@@ -592,8 +713,178 @@ export function createAttractorFigure({
     onInput: wiring.onInput,
     setParams: wiring.setParams,
     refresh: () => {
-      run();
+      runner.run();
     },
-    ready: () => ready,
+    ready: runner.ready,
+  };
+}
+
+/**
+ * Snap a map selector value to a kernel map kind: 2 and below is map I, 3
+ * and above is map IV — the same snap the wasm export applies, so the
+ * figure and the kernel can never disagree about which map runs.
+ *
+ * @param {number} value
+ * @returns {1 | 4}
+ */
+export function torusMapKind(value) {
+  return Number(value) >= 3 ? 4 : 1;
+}
+
+/**
+ * The kernel request for one torus-doubling state: map kind first, then A,
+ * D, the counts, and the start state — the order
+ * torus_doubling_attractor_tile takes them. A and x0 come from the chosen
+ * map's config; D is clamped into that map's doubling window so a stale or
+ * hand-edited hash value can never reach the kernel outside it.
+ *
+ * @param {object} state name -> value, from the parameter wiring
+ * @param {{ nTransient: number, maps: object }} [params]
+ * @returns {{ mapKind: number, a: number, d: number, nTransient: number, nPlot: number, state0: Float64Array }}
+ */
+export function torusRequest(state, params = LIVE_TORUS) {
+  const map = params.maps[torusMapKind(state.map)];
+  const d = Math.min(map.dMax, Math.max(map.dMin, state.D));
+  return {
+    mapKind: map.kind,
+    a: map.a,
+    d,
+    nTransient: params.nTransient,
+    nPlot: Math.round(state.n),
+    state0: new Float64Array(map.x0),
+  };
+}
+
+/**
+ * Fold a torus-doubling tile into the (X, Y) point cloud. The layout is
+ * the kernel's: a 4-element header [map_kind, dim, n_transient,
+ * n_produced], then n_produced states of dim components each. `project`
+ * names the two state components the paper scatters — [0, 1] (X, Y) for
+ * both maps. A tile that does not match its header, or a diverged orbit
+ * with zero produced states, yields an empty cloud rather than a misread
+ * buffer.
+ *
+ * @param {ArrayLike<number> | null | undefined} tile
+ * @param {{ project: ArrayLike<number> }} map the chosen map's config
+ * @returns {{ x: number[], y: number[] }}
+ */
+export function torusTrace(tile, map) {
+  const x = [];
+  const y = [];
+  if (!tile || tile.length < HEADER) return { x, y };
+  const dim = Math.floor(Number(tile[1]));
+  const nProduced = Math.floor(Number(tile[3]));
+  const px = Math.floor(Number(map.project[0]));
+  const py = Math.floor(Number(map.project[1]));
+  if (!(dim >= 1) || !(nProduced >= 0) || px >= dim || py >= dim) return { x, y };
+  if (tile.length < HEADER + nProduced * dim) return { x, y };
+  for (let i = 0; i < nProduced; i++) {
+    x.push(tile[HEADER + i * dim + px]);
+    y.push(tile[HEADER + i * dim + py]);
+  }
+  return { x, y };
+}
+
+/**
+ * The default kernel call: load the glue, then invoke the export with the
+ * request's fields in the kernel's own order — map kind, A, D, the counts,
+ * and the start state.
+ *
+ * @param {ReturnType<typeof torusRequest>} req
+ * @returns {Promise<Float64Array>}
+ */
+export async function torusKernelCall(req) {
+  const kernel = await loadTorusKernel();
+  return kernel(req.mapKind, req.a, req.d, req.nTransient, req.nPlot, req.state0);
+}
+
+/**
+ * The torus-doubling figure's parameter wiring and recompute path, sharing
+ * the delayed-logistic figure's runner. The page (mountTorus in
+ * scripts/paper_shell.py) builds the inputs and hands in the DOM
+ * callbacks; the decisions live here so node tests can drive them.
+ *
+ * The map selector is the figure's one non-slider control. Switching maps
+ * snaps the value to a kernel kind, resets D to the new map's published
+ * default — the window's own D range would clamp a map-I D to map IV's
+ * ceiling, which reads as a broken slider — and lets the wiring's echo
+ * carry the snapped value back to the control. A D input outside the
+ * active window (the number field accepts the union range) clamps into it.
+ *
+ * @param {object} deps
+ * @param {{ nTransient: number, maps: object, paramSpecs: object[] }} [deps.params]
+ * @param {number} deps.debounceMs
+ * @param {(name: string, value: number) => void} deps.echo
+ * @param {(req: object) => Promise<ArrayLike<number>>} [deps.call]
+ * @param {(store: object, trace: {x: number[], y: number[]}, req: object) => void} deps.onTrace
+ * @param {() => void} deps.writeHash
+ * @param {(err: unknown) => void} [deps.onError]
+ * @param {{ set?: (fn: () => void, ms: number) => unknown, clear?: (id: unknown) => void }} [deps.timers]
+ * @returns {{ state: object, store: object, onInput: (name: string, raw: number) => void, setParams: (values: object) => void, refresh: () => void, ready: () => boolean }}
+ */
+export function createTorusFigure({
+  params = LIVE_TORUS,
+  debounceMs,
+  echo,
+  call = torusKernelCall,
+  onTrace,
+  writeHash,
+  onError,
+  timers,
+}) {
+  const store = { trace: { x: [], y: [] }, generation: 0, painted: 0 };
+  const runner = createKernelRunner({
+    store,
+    getState: () => wiring.state,
+    request: (state) => torusRequest(state, params),
+    fold: (tile, req) => torusTrace(tile, params.maps[req.mapKind]),
+    call,
+    onTrace,
+    onError,
+  });
+  let activeKind = null;
+  function syncState(name) {
+    const kind = torusMapKind(wiring.state.map);
+    if (wiring.state.map !== kind) {
+      wiring.state.map = kind;
+      echo("map", kind);
+    }
+    const map = params.maps[kind];
+    if (kind !== activeKind) {
+      if (name === "map") {
+        // A map switch moves D's window; reset to the new map's published
+        // default rather than clamping the old map's D into it.
+        wiring.state.D = map.dDefault;
+        echo("D", map.dDefault);
+      }
+      activeKind = kind;
+    } else {
+      const d = Math.min(map.dMax, Math.max(map.dMin, wiring.state.D));
+      if (wiring.state.D !== d) {
+        wiring.state.D = d;
+        echo("D", d);
+      }
+    }
+  }
+  const wiring = createParamWiring({
+    specs: params.paramSpecs,
+    debounceMs,
+    echo,
+    apply: () => {
+      runner.run();
+    },
+    writeHash,
+    onSet: (name) => syncState(name),
+    timers,
+  });
+  return {
+    state: wiring.state,
+    store,
+    onInput: wiring.onInput,
+    setParams: wiring.setParams,
+    refresh: () => {
+      runner.run();
+    },
+    ready: runner.ready,
   };
 }
