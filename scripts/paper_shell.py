@@ -1646,9 +1646,10 @@ async function mountLive(fig){
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=title;w.insertBefore(h,c);
     const store=liveFigure.createStore();
+    const params=liveFigure.LIVE_ARNOLD;
     let pool=null,plot=null;
     point.ensureLoaded().catch(()=>{});
-    const sampleReadout=liveFigure.createReadout({store,point,raster});
+    const sampleReadout=liveFigure.createReadout({store,point,raster,params});
     const live={
       base:{x0:0,x1:1,y0:0,y1:0.3},
       tiles:store.tiles,
@@ -1675,14 +1676,14 @@ async function mountLive(fig){
     MOUNTED.push(plot);fig._plots=[plot];
     const dpr=Math.min(devicePixelRatio||1,2);
     const tileCells=raster.tileCellsFor((c.clientWidth||1)*dpr,(c.clientHeight||1)*dpr,{
-      levels:liveLevels,nIter:2000,nTransient:200
+      levels:liveLevels,nIter:params.nIter,nTransient:params.nTransient
     });
     const hint=document.createElement("p");hint.className="hint";
     hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
     body.appendChild(hint);
     pool=poolMod.createPool({
       workerUrl:new URL("live/tile-worker.js", document.baseURI),
-      scheduler:{levels:liveLevels,tileCells,nTransient:200,nIter:2000,theta0:0.1},
+      scheduler:liveFigure.createSchedulerOptions({levels:liveLevels,tileCells,params}),
       onCapacityLost(){
         hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
       },

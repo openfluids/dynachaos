@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  LIVE_ARNOLD,
   createPaintHandler,
   createRasterSample,
   createReadout,
+  createSchedulerOptions,
   createStore,
   createViewHandler,
 } from "../../site-src/live/live-figure.js";
@@ -312,4 +314,59 @@ test("a tile that spent its retry is retried again after onView pans", () => {
   assert.equal(w3.posted[0].generation, 2);
   assert.equal(pool.getState().droppedTiles, 1);
   pool.destroy();
+});
+
+test("LIVE_ARNOLD is frozen and holds the published figure's parameters", () => {
+  assert.ok(Object.isFrozen(LIVE_ARNOLD));
+  assert.deepEqual({ ...LIVE_ARNOLD }, { nTransient: 200, nIter: 2000, theta0: 0.1 });
+  // The store starts at the same nIter the tiles will be computed with.
+  assert.equal(createStore().nIter, LIVE_ARNOLD.nIter);
+});
+
+test("one params object reaches both the readout and the scheduler options", () => {
+  const params = { nTransient: 11, nIter: 222, theta0: 0.33 };
+  const store = createStore();
+  const calls = [];
+  const point = {
+    isReady: () => true,
+    sample: (...args) => {
+      calls.push(args);
+      return 0.0743;
+    },
+  };
+  const raster = { sampleAt: () => 0.5 };
+  const readout = createReadout({ store, point, raster, params });
+  readout(0.08, 0.03);
+  assert.deepEqual(calls, [[0.08, 0.03, 11, 222, 0.33]]);
+  const scheduler = createSchedulerOptions({ levels: 5, tileCells: 32, params });
+  assert.deepEqual(scheduler, {
+    levels: 5,
+    tileCells: 32,
+    nTransient: 11,
+    nIter: 222,
+    theta0: 0.33,
+  });
+  // Without params both fall back to LIVE_ARNOLD, so a hard-coded value in
+  // either path is caught here too.
+  const defaultCalls = [];
+  const defaultReadout = createReadout({
+    store,
+    point: {
+      isReady: () => true,
+      sample: (...args) => {
+        defaultCalls.push(args);
+        return 0.1;
+      },
+    },
+    raster,
+  });
+  defaultReadout(0.08, 0.03);
+  assert.deepEqual(defaultCalls, [[0.08, 0.03, 200, 2000, 0.1]]);
+  assert.deepEqual(createSchedulerOptions({ levels: 5, tileCells: 32 }), {
+    levels: 5,
+    tileCells: 32,
+    nTransient: 200,
+    nIter: 2000,
+    theta0: 0.1,
+  });
 });

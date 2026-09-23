@@ -14,13 +14,22 @@
  */
 
 /**
+ * The published figure's iteration parameters. The readout's point.sample
+ * call, the tile scheduler options and the raster's tile-size budget all
+ * read this one object, so the quoted number and the picture cannot drift
+ * apart. Frozen: a mutation would silently change only the readers that
+ * already captured a value.
+ */
+export const LIVE_ARNOLD = Object.freeze({nTransient: 200, nIter: 2000, theta0: 0.1});
+
+/**
  * The figure's mutable tile store. `tiles` is the same array the Plot()
  * live adapter reads, so a generation reset empties it in place.
  *
  * @returns {{ tiles: object[], generation: number, painted: number, nIter: number }}
  */
 export function createStore() {
-  return { tiles: [], generation: 0, painted: 0, nIter: 2000 };
+  return { tiles: [], generation: 0, painted: 0, nIter: LIVE_ARNOLD.nIter };
 }
 
 /**
@@ -75,13 +84,14 @@ export function createPaintHandler({ store, raster, getPool, getPlot }) {
  * @param {object} deps.store
  * @param {{ isReady: () => boolean, sample: (omega: number, K: number, nTransient: number, nIter: number, theta0: number) => number | null }} deps.point
  * @param {{ sampleAt: (tiles: object[], generation: number, omega: number, K: number) => number | null }} deps.raster
+ * @param {{ nTransient: number, nIter: number, theta0: number }} [deps.params]
  * @returns {(omega: number, K: number) => number | null}
  */
-export function createReadout({ store, point, raster }) {
+export function createReadout({ store, point, raster, params = LIVE_ARNOLD }) {
   return function sampleReadout(omega, K) {
     if (point.isReady()) {
       try {
-        const rho = point.sample(omega, K, 200, 2000, 0.1);
+        const rho = point.sample(omega, K, params.nTransient, params.nIter, params.theta0);
         if (typeof rho === "number" && Number.isFinite(rho)) return rho;
       } catch (_) {}
     }
@@ -101,6 +111,28 @@ export function createReadout({ store, point, raster }) {
  */
 export function createRasterSample({ store, raster }) {
   return (omega, K) => raster.sampleAt(store.tiles, store.generation, omega, K);
+}
+
+/**
+ * The scheduler options for the pool: the pyramid shape (levels, tileCells)
+ * plus the iteration parameters every tile command carries. The same
+ * `params` object feeds the readout, so the picture and the quoted number
+ * are computed with identical settings.
+ *
+ * @param {object} deps
+ * @param {number} deps.levels
+ * @param {number} deps.tileCells
+ * @param {{ nTransient: number, nIter: number, theta0: number }} [deps.params]
+ * @returns {{ levels: number, tileCells: number, nTransient: number, nIter: number, theta0: number }}
+ */
+export function createSchedulerOptions({ levels, tileCells, params = LIVE_ARNOLD }) {
+  return {
+    levels,
+    tileCells,
+    nTransient: params.nTransient,
+    nIter: params.nIter,
+    theta0: params.theta0,
+  };
 }
 
 /**
