@@ -1,10 +1,12 @@
 """Check that the diagnostics WebAssembly exports match the native build.
 
-Two trajectory exports are compared in addition to the diagnostics exports:
-``delayed_logistic_attractor_tile`` and ``torus_doubling_attractor_tile``.
-The native side is the pyo3 extension, which runs the same ``rust/core`` code;
-the browser side is the ``site/wasm`` bundle driven through node. Both sides
-receive the same inputs, built once below.
+Four map and lattice exports are compared in addition to the diagnostics
+exports: ``delayed_logistic_attractor_tile``,
+``torus_doubling_attractor_tile`` (maps I and IV),
+``modulated_circle_rotation_tile`` and ``cml_spacetime_tile`` (models A, B
+and C). The native side is the pyo3 extension, which runs the same
+``rust/core`` code; the browser side is the ``site/wasm`` bundle driven
+through node. Both sides receive the same inputs, built once below.
 
 The diagnostics exports are ``correlation_counts``, ``apen_counts``,
 ``fuzzy_entropy_sum``, ``ordinal_distribution``, ``diagonal_lines``,
@@ -31,6 +33,15 @@ The tolerance is set per export by what the kernel computes:
   the per-c K values are held to 1e-9 absolute — loose enough for a
   transcendental last-bit difference, tight enough that an all-zero kernel
   (which returns exact zeros) fails the median check below.
+* ``modulated_circle_rotation_tile`` and model (B) of
+  ``cml_spacetime_tile`` evaluate ``sin`` inside the kernel. The wasm module
+  carries its own sine, which can differ from the platform one in the last
+  bit; on this build the measured difference is 0 for the rotation numbers
+  and 4.6e-13 for the model-(B) field over the horizon below. They are held
+  to 1e-12 and 1e-9 absolute respectively — loose enough for a last-bit sine
+  difference amplified over the recorded steps, tight enough that a wrong
+  formula fails. Models (A) and (C) carry no transcendental call and must
+  match exactly, as must both torus maps and the delayed logistic.
 
 Each export also gets a self-check: one value of the native result is
 perturbed and the comparison must fail, so a script that compares nothing
@@ -56,10 +67,12 @@ import numpy as np
 from dynachaos._rust import (
     ami_histogram,
     apen_counts,
+    cml_spacetime_tile,
     correlation_counts,
     delayed_logistic_attractor_tile,
     diagonal_lines,
     fuzzy_entropy_sum,
+    modulated_circle_rotation_tile,
     multifractal_moments,
     ordinal_distribution,
     select_dimension_cao,
@@ -112,16 +125,43 @@ CAO_E1 = [0.35, 0.62, 0.97, 1.0, 1.0, 1.0, 1.0, 1.0]
 # Map-attractor trajectories: bounded, evenly spaced D values keep JSON finite
 # and exercise the flat headers without making this diagnostic heavyweight.
 MAP_TRANSIENT = 100
-MAP_PLOT = 64
+MAP_PLOT = 1024
 DELAYED_A = 0.3
 DELAYED_D_MIN = 1.55
 DELAYED_D_MAX = 2.16
 DELAYED_N_D = 3
 DELAYED_STATE = [0.4, 0.35]
+TORUS_I_KIND = 1
+TORUS_I_A = 0.4
+TORUS_I_D = 2.19
+TORUS_I_STATE = [0.5, 0.5, 0.5]
 TORUS_KIND = 4
 TORUS_A = 0.3
 TORUS_D = 1.5212
 TORUS_STATE = [0.5, 0.45, 0.52, 0.48]
+
+# Modulated circle: a modest sweep keeps the node message small; the rotation
+# numbers are well conditioned at the subcritical A the paper uses.
+CIRCLE_A = 0.1
+CIRCLE_C = (np.sqrt(5) - 1) / 2
+CIRCLE_D_MIN = 0.0
+CIRCLE_D_MAX = 1.0
+CIRCLE_N_D = 16
+CIRCLE_EPS = 0.05
+CIRCLE_TRANSIENT = 200
+CIRCLE_ITER = 2000
+CIRCLE_STATE = [0.1, 0.1]
+
+# CML space-time: a 64-site lattice over a short record. Model (B) carries a
+# sine, so its field is compared at 1e-9 absolute — measured 4.6e-13 on this
+# build, with the growth rate (~x70 per 250 rows) leaving the horizon far
+# inside the bound. Models (A) and (C) are compared exactly.
+CML_N_SITES = 64
+CML_TRANSIENT = 50
+CML_RECORD = 64
+CML_EPS = {0: 0.07, 1: 0.024, 2: 0.2}
+CIRCLE_ABS_TOLERANCE = 1e-12
+CML_B_ABS_TOLERANCE = 1e-9
 ZERO_ONE_C = [0.7, 1.1, 1.9, 2.6, 3.3]
 ZERO_ONE_N_CUT = 100
 
@@ -154,6 +194,22 @@ const e1 = new Float64Array(spec.e1);
 process.stdout.write(JSON.stringify({
   correlation_counts: Array.from(mod.correlation_counts(
     traj, spec.dim, new Float64Array(spec.r_values), spec.theiler, true)),
+  torus_i_attractor_tile: Array.from(mod.torus_doubling_attractor_tile(
+    spec.torus_i_kind, spec.torus_i_a, spec.torus_i_d, spec.map_transient,
+    spec.map_plot, new Float64Array(spec.torus_i_state))),
+  modulated_circle_rotation_tile: Array.from(mod.modulated_circle_rotation_tile(
+    spec.circle_a, spec.circle_c, spec.circle_d_min, spec.circle_d_max,
+    spec.circle_n_d, spec.circle_eps, spec.circle_transient, spec.circle_iter,
+    spec.circle_state[0], spec.circle_state[1])),
+  cml_spacetime_a: Array.from(mod.cml_spacetime_tile(
+    0, spec.cml_eps[0], spec.cml_n_sites, spec.cml_transient, spec.cml_record,
+    new Float64Array(spec.cml_x0))),
+  cml_spacetime_b: Array.from(mod.cml_spacetime_tile(
+    1, spec.cml_eps[1], spec.cml_n_sites, spec.cml_transient, spec.cml_record,
+    new Float64Array(spec.cml_x0))),
+  cml_spacetime_c: Array.from(mod.cml_spacetime_tile(
+    2, spec.cml_eps[2], spec.cml_n_sites, spec.cml_transient, spec.cml_record,
+    new Float64Array(spec.cml_x0))),
   correlation_counts_euclidean: Array.from(mod.correlation_counts(
     traj, spec.dim, new Float64Array(spec.r_values), spec.theiler_nz, false)),
   apen_counts: Array.from(mod.apen_counts(traj, spec.dim, spec.apen_r)),
@@ -303,6 +359,24 @@ def main() -> int:
         "cao_min": 2,
         "cao_max": 0.0,
         "zero_one_c": ZERO_ONE_C,
+        "torus_i_kind": TORUS_I_KIND,
+        "torus_i_a": TORUS_I_A,
+        "torus_i_d": TORUS_I_D,
+        "torus_i_state": TORUS_I_STATE,
+        "circle_a": CIRCLE_A,
+        "circle_c": CIRCLE_C,
+        "circle_d_min": CIRCLE_D_MIN,
+        "circle_d_max": CIRCLE_D_MAX,
+        "circle_n_d": CIRCLE_N_D,
+        "circle_eps": CIRCLE_EPS,
+        "circle_transient": CIRCLE_TRANSIENT,
+        "circle_iter": CIRCLE_ITER,
+        "circle_state": CIRCLE_STATE,
+        "cml_n_sites": CML_N_SITES,
+        "cml_transient": CML_TRANSIENT,
+        "cml_record": CML_RECORD,
+        "cml_eps": CML_EPS,
+        "cml_x0": x[:CML_N_SITES].tolist(),
         "zero_one_n_cut": ZERO_ONE_N_CUT,
         "map_transient": MAP_TRANSIENT,
         "map_plot": MAP_PLOT,
@@ -645,6 +719,128 @@ def main() -> int:
         ):
             print("FAIL: torus_doubling_attractor_tile self-check did not trip")
             failed = True
+
+    # torus_doubling_attractor_tile, map I: same layout as map IV above.
+    torus_i_native = torus_doubling_attractor_tile(
+        TORUS_I_KIND,
+        TORUS_I_A,
+        TORUS_I_D,
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array(TORUS_I_STATE, dtype=np.float64),
+    )
+    out = wasm["torus_i_attractor_tile"]
+    torus_i_expected_header = [
+        float(TORUS_I_KIND),
+        3.0,
+        float(MAP_TRANSIENT),
+        float(MAP_PLOT),
+    ]
+    if not check_header(
+        "torus_i_attractor_tile", out[:4], torus_i_expected_header
+    ):
+        failed = True
+    else:
+        bad, worst = compare(
+            "torus_i_attractor_tile",
+            [float(v) for v in np.asarray(torus_i_native).ravel()],
+            out[4:],
+            0.0,
+        )
+        print(
+            f"torus_i_attractor_tile: map {TORUS_I_KIND}, "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: torus_i_attractor_tile differs")
+            failed = True
+        elif not self_check(
+            "torus_i_attractor_tile",
+            [float(v) for v in np.asarray(torus_i_native).ravel()],
+            out[4:],
+            0.0,
+            1.0,
+        ):
+            print("FAIL: torus_i_attractor_tile self-check did not trip")
+            failed = True
+
+    # modulated_circle_rotation_tile: [n_D, n_transient, n_iter, 2, pairs...].
+    circle_d_values = np.linspace(CIRCLE_D_MIN, CIRCLE_D_MAX, CIRCLE_N_D)
+    circle_native = modulated_circle_rotation_tile(
+        CIRCLE_A,
+        CIRCLE_C,
+        circle_d_values,
+        CIRCLE_EPS,
+        CIRCLE_TRANSIENT,
+        CIRCLE_ITER,
+        np.array(CIRCLE_STATE, dtype=np.float64),
+    )
+    out = wasm["modulated_circle_rotation_tile"]
+    circle_expected_header = [
+        float(CIRCLE_N_D),
+        float(CIRCLE_TRANSIENT),
+        float(CIRCLE_ITER),
+        2.0,
+    ]
+    if not check_header(
+        "modulated_circle_rotation_tile", out[:4], circle_expected_header
+    ):
+        failed = True
+    else:
+        circle_native_flat = [float(v) for v in np.asarray(circle_native).ravel()]
+        bad, worst = compare(
+            "modulated_circle_rotation_tile",
+            circle_native_flat,
+            out[4:],
+            CIRCLE_ABS_TOLERANCE,
+        )
+        print(
+            f"modulated_circle_rotation_tile: {CIRCLE_N_D} D values x "
+            f"{CIRCLE_ITER} steps, worst {worst:.3e} "
+            f"(limit {CIRCLE_ABS_TOLERANCE:.1e})"
+        )
+        if bad:
+            print("FAIL: modulated_circle_rotation_tile differs")
+            failed = True
+        elif not self_check(
+            "modulated_circle_rotation_tile",
+            circle_native_flat,
+            out[4:],
+            CIRCLE_ABS_TOLERANCE,
+            1e-6,
+        ):
+            print("FAIL: modulated_circle_rotation_tile self-check did not trip")
+            failed = True
+
+    # cml_spacetime_tile: [model, n_sites, n_transient, n_record, field...].
+    cml_x0 = np.array(x[:CML_N_SITES], dtype=np.float64)
+    for model, key in [(0, "cml_spacetime_a"), (1, "cml_spacetime_b"), (2, "cml_spacetime_c")]:
+        cml_native = cml_spacetime_tile(
+            model, CML_EPS[model], CML_TRANSIENT, CML_RECORD, cml_x0
+        )
+        out = wasm[key]
+        cml_expected_header = [
+            float(model),
+            float(CML_N_SITES),
+            float(CML_TRANSIENT),
+            float(CML_RECORD),
+        ]
+        tolerance = CML_B_ABS_TOLERANCE if model == 1 else 0.0
+        if not check_header(key, out[:4], cml_expected_header):
+            failed = True
+        else:
+            cml_native_flat = [float(v) for v in np.asarray(cml_native).ravel()]
+            bad, worst = compare(key, cml_native_flat, out[4:], tolerance)
+            print(
+                f"{key}: {CML_RECORD} rows x {CML_N_SITES} sites, "
+                f"worst {worst:.3e} (limit {tolerance:.1e})"
+            )
+            if bad:
+                print(f"FAIL: {key} differs")
+                failed = True
+            elif not self_check(key, cml_native_flat, out[4:], tolerance, 1e-6):
+                print(f"FAIL: {key} self-check did not trip")
+                failed = True
 
     if failed:
         return 1

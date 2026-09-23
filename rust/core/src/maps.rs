@@ -263,6 +263,92 @@ pub fn torus_doubling_attractor_tile(
     Ok(samples.unwrap_or_default())
 }
 
+/// Modulated-circle rotation numbers: one `(rho_theta, rho_phi)` pair per `D`.
+///
+/// The map is Kaneko's modulated circle (Eq. 3.1):
+///
+/// ```text
+/// theta' = theta + A * sin(2 * pi * theta) + D + eps * sin(2 * pi * phi)
+/// phi'   = phi + C
+/// ```
+///
+/// For each `d` in `d_values` the kernel starts from `state0 = (theta0, phi0)`
+/// and accumulates the *unwrapped* increments — `theta` and `phi` are never
+/// reduced modulo 1 — exactly as `rotation_numbers` does
+/// (`src/dynachaos/maps/modulated_circle.py:48`, using `iterate_unwrapped` in
+/// `src/dynachaos/maps/_iter.py:11`). After `n_transient` steps it records the
+/// state, iterates `n_iter` more, and returns the mean increments
+/// `(theta_end - theta_start) / n_iter` and `(phi_end - phi_start) / n_iter`.
+/// The increment is evaluated in the same operation order as the Python line,
+/// so the pair is bit-identical to the Python reference.
+///
+/// The result is flat, D-major: `d_values.len()` pairs, so
+/// `out[k * 2]` is `rho_theta` and `out[k * 2 + 1]` is `rho_phi` at
+/// `d_values[k]`.
+///
+/// # Errors
+///
+/// `CoreError::InvalidArgument` when `d_values` is empty, `n_iter` is zero,
+/// `state0` does not hold exactly two entries, or `a`, `c`, `eps`, any `d`,
+/// or a state component is not finite.
+pub fn modulated_circle_rotation_tile(
+    a: f64,
+    c: f64,
+    d_values: &[f64],
+    eps: f64,
+    n_transient: usize,
+    n_iter: usize,
+    state0: &[f64],
+) -> Result<Vec<f64>, CoreError> {
+    if d_values.is_empty() {
+        return Err(CoreError::invalid_argument("d_values must not be empty"));
+    }
+    if n_iter == 0 {
+        return Err(CoreError::invalid_argument("n_iter must be at least 1"));
+    }
+    if state0.len() != 2 {
+        return Err(CoreError::invalid_argument(
+            "state0 must hold exactly 2 components (theta0, phi0)",
+        ));
+    }
+    if !a.is_finite() || !c.is_finite() || !eps.is_finite() {
+        return Err(CoreError::invalid_argument("A, C and eps must be finite"));
+    }
+    if d_values.iter().any(|d| !d.is_finite()) {
+        return Err(CoreError::invalid_argument("every D must be finite"));
+    }
+    if state0.iter().any(|v| !v.is_finite()) {
+        return Err(CoreError::invalid_argument("state0 must be finite"));
+    }
+
+    let increment = |state: [f64; 2], d: f64| -> [f64; 2] {
+        let [theta, phi] = state;
+        let dtheta = a * (2.0 * std::f64::consts::PI * theta).sin()
+            + d
+            + eps * (2.0 * std::f64::consts::PI * phi).sin();
+        [dtheta, c]
+    };
+
+    let mut out = Vec::with_capacity(d_values.len() * 2);
+    for &d in d_values {
+        let mut state = [state0[0], state0[1]];
+        for _ in 0..n_transient {
+            let step = increment(state, d);
+            state[0] += step[0];
+            state[1] += step[1];
+        }
+        let start = state;
+        for _ in 0..n_iter {
+            let step = increment(state, d);
+            state[0] += step[0];
+            state[1] += step[1];
+        }
+        out.push((state[0] - start[0]) / n_iter as f64);
+        out.push((state[1] - start[1]) / n_iter as f64);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,6 +530,65 @@ mod tests {
         assert!(torus_doubling_attractor_tile(1, 0.4, f64::INFINITY, 20, 8, &[0.5; 3]).is_err());
         assert!(
             torus_doubling_attractor_tile(4, 0.3, 1.5, 20, 8, &[0.5, 0.5, f64::NAN, 0.5]).is_err()
+        );
+    }
+
+    #[test]
+    fn modulated_circle_matches_python_exactly() {
+        // Expected values produced once from `rotation_numbers`
+        // (`src/dynachaos/maps/modulated_circle.py:48`) at A = 0.1,
+        // C = (sqrt(5) - 1) / 2, eps = 0.05, n_transient = 50, n_iter = 200,
+        // state0 = (0.1, 0.1); the test does not call Python. The Rust kernel
+        // evaluates the same increment in the same order, so equality is
+        // exact — including rho_phi, which is C plus accumulated rounding
+        // drift, not C itself.
+        let c = (5.0_f64.sqrt() - 1.0) / 2.0;
+        let out = modulated_circle_rotation_tile(0.1, c, &[0.3, 0.7], 0.05, 50, 200, &[0.1, 0.1])
+            .unwrap();
+        assert_eq!(out.len(), 4);
+        assert_eq!(out[0], 0.2890118498900553);
+        assert_eq!(out[1], 0.6180339887498952);
+        assert_eq!(out[2], 0.7107426428675732);
+        assert_eq!(out[3], 0.6180339887498952);
+    }
+
+    #[test]
+    fn modulated_circle_keeps_phases_unwrapped() {
+        // With n_transient = 0 and n_iter = 1, rho_theta is the increment
+        // evaluated at state0 itself: A * sin(2 pi theta0) + D + eps * sin(2 pi
+        // phi0). A kernel that reduced the phases modulo 1 would still pass
+        // this check; the exact-match test above is the one that pins the
+        // unwrapped accumulation over hundreds of steps.
+        let c = (5.0_f64.sqrt() - 1.0) / 2.0;
+        let out = modulated_circle_rotation_tile(0.1, c, &[0.3], 0.05, 0, 1, &[0.1, 0.1]).unwrap();
+        let expected = 0.1 * (2.0 * std::f64::consts::PI * 0.1).sin()
+            + 0.3
+            + 0.05 * (2.0 * std::f64::consts::PI * 0.1).sin();
+        assert_eq!(out[0], expected);
+        assert_eq!(out[1], c);
+    }
+
+    #[test]
+    fn modulated_circle_rejects_invalid_input() {
+        let c = (5.0_f64.sqrt() - 1.0) / 2.0;
+        assert!(modulated_circle_rotation_tile(0.1, c, &[], 0.05, 50, 200, &[0.1, 0.1]).is_err());
+        assert!(modulated_circle_rotation_tile(0.1, c, &[0.3], 0.05, 50, 0, &[0.1, 0.1]).is_err());
+        assert!(modulated_circle_rotation_tile(0.1, c, &[0.3], 0.05, 50, 200, &[0.1]).is_err());
+        assert!(
+            modulated_circle_rotation_tile(f64::NAN, c, &[0.3], 0.05, 50, 200, &[0.1, 0.1])
+                .is_err()
+        );
+        assert!(
+            modulated_circle_rotation_tile(0.1, c, &[0.3], f64::INFINITY, 50, 200, &[0.1, 0.1])
+                .is_err()
+        );
+        assert!(
+            modulated_circle_rotation_tile(0.1, c, &[f64::NAN], 0.05, 50, 200, &[0.1, 0.1])
+                .is_err()
+        );
+        assert!(
+            modulated_circle_rotation_tile(0.1, c, &[0.3], 0.05, 50, 200, &[0.1, f64::NAN])
+                .is_err()
         );
     }
 }

@@ -14,6 +14,14 @@ reconstructed from git history. 0.4.0 is the first public release.
   exports both for the browser, with every input clamped. The paper pipeline
   still uses the Python path.
 
+- The compiled extension exports `modulated_circle_rotation_tile` and
+  `cml_spacetime_tile`. They compute the modulated circle map's rotation
+  numbers and the coupled-map-lattice space-time field (models A, B and C)
+  in Rust and return the same results as the Python modules, bit for bit
+  where numpy and Rust call the same `sin` (Linux x86-64, checked).
+  The WebAssembly build exports both for the browser, with every input
+  clamped. The paper pipeline still uses the Python path.
+
 ### Changed
 
 - `zero_one_statistic` and `zero_one_series` run on the Rust core when the

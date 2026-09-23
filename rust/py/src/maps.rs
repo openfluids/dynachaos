@@ -79,3 +79,41 @@ pub fn torus_doubling_attractor_tile<'py>(
         .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))?;
     Ok(PyArray2::from_owned_array(py, tile))
 }
+
+/// Modulated-circle rotation numbers: one `(rho_theta, rho_phi)` pair per `D`.
+///
+/// Mirrors `rotation_numbers` in `dynachaos.maps.modulated_circle`: for each
+/// `d` in `d_values` the kernel accumulates the unwrapped increments of
+/// `theta' = theta + A * sin(2 pi theta) + D + eps * sin(2 pi phi)`,
+/// `phi' = phi + C` from `state0 = (theta0, phi0)` for `n_transient` steps,
+/// then returns the mean increments over the next `n_iter` steps.
+///
+/// Returns an array of shape `(n_D, 2)`.
+#[pyfunction]
+#[pyo3(signature = (A, C, d_values, eps, n_transient, n_iter, state0))]
+#[allow(non_snake_case, clippy::too_many_arguments)]
+pub fn modulated_circle_rotation_tile<'py>(
+    py: Python<'py>,
+    A: f64,
+    C: f64,
+    d_values: PyReadonlyArray1<'py, f64>,
+    eps: f64,
+    n_transient: usize,
+    n_iter: usize,
+    state0: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let flat = dynachaos_core::modulated_circle_rotation_tile(
+        A,
+        C,
+        d_values.as_slice()?,
+        eps,
+        n_transient,
+        n_iter,
+        state0.as_slice()?,
+    )
+    .map_err(crate::core_to_py)?;
+    let n_d = d_values.as_slice()?.len();
+    let tile = Array2::from_shape_vec((n_d, 2), flat)
+        .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))?;
+    Ok(PyArray2::from_owned_array(py, tile))
+}

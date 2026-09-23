@@ -26,7 +26,7 @@ The split landed in Phase 0 (2026-09).
 |---|---|---|
 | `rust/core` | every kernel; slices in, plain Rust out; no pyo3, no numpy | ndarray, rayon (optional) |
 | `rust/py` | `#[pyfunction]` wrappers, numpy conversion, `py.detach` around core calls | `dynachaos-core`, pyo3, numpy |
-| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; `rotation_number_tile` for the picture, `rotation_number_point` for the quoted readout, `zero_one_k` for the 0-1 test for chaos, `correlation_counts`, `apen_counts`, `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`, `vertical_lines`, `multifractal_moments`, `ami_histogram`, `select_dimension_cao`, `delayed_logistic_attractor_tile` and `torus_doubling_attractor_tile` for the diagnostics and map-attractor panels | `dynachaos-core` with `--no-default-features` |
+| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; `rotation_number_tile` for the picture, `rotation_number_point` for the quoted readout, `zero_one_k` for the 0-1 test for chaos, `correlation_counts`, `apen_counts`, `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`, `vertical_lines`, `multifractal_moments`, `ami_histogram`, `select_dimension_cao`, `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`, `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the diagnostics, map-attractor and space-time panels | `dynachaos-core` with `--no-default-features` |
 
 `rust/core` carries 1491 lines of kernel code; `rust/py` carries 629 lines of
 binding with no arithmetic in it. Keeping the arithmetic in exactly one place is

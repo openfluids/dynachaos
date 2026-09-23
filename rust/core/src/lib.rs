@@ -24,7 +24,7 @@ pub use circle_map::{
     ExitKind, rotation_number_full, rotation_number_point, rotation_number_tile,
     rotation_number_with_exit,
 };
-pub use cml::cml_jacobian_logistic;
+pub use cml::{cml_jacobian_logistic, cml_spacetime_tile};
 pub use comoving::comoving_lyapunov_logistic;
 pub use correlation_gp::correlation_counts;
 pub use coupled_logistic::coupled_logistic_basin_grid;
@@ -34,7 +34,9 @@ pub use intermittency::{
     logistic_type_i_oracle, on_off_oracle, on_off_skew_logistic_oracle, pm_type_i_oracle,
     pm_type_ii_oracle, pm_type_iii_oracle,
 };
-pub use maps::{delayed_logistic_attractor_tile, torus_doubling_attractor_tile};
+pub use maps::{
+    delayed_logistic_attractor_tile, modulated_circle_rotation_tile, torus_doubling_attractor_tile,
+};
 pub use multifractal::{MultifractalMoments, multifractal_moments};
 pub use permutation::ordinal_distribution;
 pub use recurrence::{count_line_lengths, diagonal_lines, vertical_lines};

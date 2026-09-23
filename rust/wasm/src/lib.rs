@@ -10,14 +10,15 @@
 //!
 //! The kernels themselves live in `dynachaos-core` and are the same code the
 //! published figures were computed with. This crate only converts and guards.
-//! Fourteen exports: `rotation_number_tile` for the picture,
+//! Sixteen exports: `rotation_number_tile` for the picture,
 //! `rotation_number_point` for the quoted readout, `zero_one_k` for the
 //! 0-1 test for chaos, `correlation_counts`, `apen_counts`,
 //! `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`,
 //! `vertical_lines`, `multifractal_moments`, `ami_histogram` and
 //! `select_dimension_cao` for the diagnostics panel, and
-//! `delayed_logistic_attractor_tile` and `torus_doubling_attractor_tile`
-//! for the map-attractor live figures.
+//! `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`,
+//! `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the
+//! map-attractor and space-time live figures.
 
 use wasm_bindgen::prelude::*;
 
@@ -124,6 +125,15 @@ const DELAYED_D_MAX: f64 = 3.5;
 const TORUS_D_MIN: f64 = 1.48;
 /// Largest torus-doubling D the browser may ask for.
 const TORUS_D_MAX: f64 = 2.25;
+/// Golden-mean inverse, the modulation frequency the paper's modulated-circle
+/// figure uses (`src/dynachaos/maps/modulated_circle.py:27`).
+const C_GOLDEN: f64 = 0.6180339887498949;
+/// Largest recorded field a CML space-time tile may be asked for, in rows.
+const MAX_CML_RECORD: usize = 2048;
+/// Fallback coupling for `cml_spacetime_tile` when `eps` is not finite: the
+/// middle value of each model's paper sweep
+/// (`src/dynachaos/cml/spatiotemporal.py:102,107,112`).
+const CML_EPS_FALLBACK: [f64; 3] = [0.07, 0.024, 0.2];
 
 /// Rotation numbers of the sine circle map over a tile of the (Omega, K) plane.
 ///
@@ -1137,6 +1147,179 @@ pub fn torus_doubling_attractor_tile(
     out
 }
 
+/// Modulated-circle rotation numbers over a `D` sweep.
+///
+/// This is the map `dynachaos.maps.modulated_circle` iterates
+/// (`src/dynachaos/maps/modulated_circle.py:35`): `theta` advances by
+/// `A * sin(2 pi theta) + D + eps * sin(2 pi phi)` while `phi` advances by
+/// `C`, both unwrapped. For each `D` in the sweep the export iterates
+/// `n_transient` steps from `(theta0, phi0)`, then returns the mean
+/// increments over the next `n_iter` steps — the pair `rotation_numbers`
+/// computes (`src/dynachaos/maps/modulated_circle.py:48`).
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_d * 2` values:
+///
+/// - `[0]` = `n_d` actually used, after clamping.
+/// - `[1]` = `n_transient` actually used.
+/// - `[2]` = `n_iter` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[3]` = 2, the pair width.
+/// - `[4 ..]` = the `(rho_theta, rho_phi)` pairs, D-major.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `n_d`: 1 to 512 values; `n_transient`: 0 to 20000 steps; `n_iter`: 1 to
+///   200000 steps, reduced further to respect the step budget.
+/// - `a`, `c`, `eps`, `d_min`, `d_max`, `theta0`, `phi0`: clamped to
+///   `[0, 1]`; a non-finite value falls back to the paper's setting (0.1,
+///   the golden-mean inverse, 0.05, the sweep endpoints 0 and 1, and 0.1 for
+///   the phases).
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn modulated_circle_rotation_tile(
+    a: f64,
+    c: f64,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    eps: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+    phi0: f64,
+) -> Vec<f64> {
+    let a = finite_or(a, 0.1).clamp(0.0, 1.0);
+    let c = finite_or(c, C_GOLDEN).clamp(0.0, 1.0);
+    let d_min = finite_or(d_min, 0.0).clamp(0.0, 1.0);
+    let d_max = finite_or(d_max, 1.0).clamp(0.0, 1.0);
+    let eps = finite_or(eps, 0.05).clamp(0.0, 1.0);
+    let n_d = n_d.clamp(1, MAX_SIDE);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(n_d, 1, n_transient, n_iter);
+    let state0 = [
+        finite_or(theta0, 0.1).clamp(0.0, 1.0),
+        finite_or(phi0, 0.1).clamp(0.0, 1.0),
+    ];
+
+    // Same spacing the kernel list fixes: d_min + (d_max - d_min) * k / (n - 1).
+    let d_values: Vec<f64> = (0..n_d)
+        .map(|k| d_min + (d_max - d_min) * (k as f64) / ((n_d - 1).max(1) as f64))
+        .collect();
+
+    // The kernel only fails on arguments this function has already ruled out,
+    // so an error here would be a bug in the clamping above. Report it as an
+    // empty tile rather than trapping and killing the worker.
+    let Ok(pairs) = dynachaos_core::modulated_circle_rotation_tile(
+        a,
+        c,
+        &d_values,
+        eps,
+        n_transient,
+        n_iter,
+        &state0,
+    ) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + pairs.len());
+    out.push(n_d as f64);
+    out.push(n_transient as f64);
+    out.push(n_iter as f64);
+    out.push(2.0);
+    out.extend_from_slice(&pairs);
+    out
+}
+
+/// CML space-time tile: the field of a coupled-map lattice after a transient.
+///
+/// These are the three models `dynachaos.cml.spatiotemporal` simulates
+/// (`src/dynachaos/cml/spatiotemporal.py:42-68`): `model` 0 is (A), the
+/// piecewise Kaneko map; `model` 1 is (B), the circle map coupled through
+/// `sin(2 pi u)`; `model` 2 is (C), the logistic map `1 - 1.752 u^2`. The
+/// export iterates `n_transient` periodic CML steps from `x0`, then records
+/// the state after each of the next `n_record` steps.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_record * n_sites` values:
+///
+/// - `[0]` = `model` actually used, after snapping to `{0, 1, 2}`.
+/// - `[1]` = `n_sites` actually used.
+/// - `[2]` = `n_transient` actually used.
+/// - `[3]` = `n_record` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[4 ..]` = the field, row-major by time then site: entry
+///   `4 + t * n_sites + i` is site `i` of the `t`-th recorded row.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `model`: snapped to `{0, 1, 2}`; anything above 2 is model (C).
+/// - `eps`: clamped to `[0, 1]`; a non-finite value falls back to the middle
+///   of the model's paper sweep (0.07, 0.024, 0.2).
+/// - `n_sites`: 2 to 512 sites; `n_transient`: 0 to 20000 steps; `n_record`:
+///   1 to 2048 rows, reduced further to respect the step budget.
+/// - `x0`: the first `n_sites` entries are used; a missing or non-finite
+///   entry falls back to 0.5, then every entry clamps to `[0, 1]`, the
+///   interval the paper draws its initial field from.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn cml_spacetime_tile(
+    model: usize,
+    eps: f64,
+    n_sites: usize,
+    n_transient: usize,
+    n_record: usize,
+    x0: &[f64],
+) -> Vec<f64> {
+    let model = model.min(2) as u8;
+    let eps = finite_or(eps, CML_EPS_FALLBACK[model as usize]).clamp(0.0, 1.0);
+    let n_sites = n_sites.clamp(2, MAX_SIDE);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_record = n_record.clamp(1, MAX_CML_RECORD);
+    let n_record = fit_step_budget(n_sites, 1, n_transient, n_record);
+    let start = cml_state(n_sites, x0);
+
+    // The kernel only fails on arguments this function has already ruled out,
+    // so an error here would be a bug in the clamping above. Report it as an
+    // empty tile rather than trapping and killing the worker.
+    let Ok(field) = dynachaos_core::cml_spacetime_tile(model, eps, n_transient, n_record, &start)
+    else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + field.len());
+    out.push(model as f64);
+    out.push(n_sites as f64);
+    out.push(n_transient as f64);
+    out.push(n_record as f64);
+    out.extend_from_slice(&field);
+    out
+}
+
+/// Build a clamped `n_sites`-entry CML initial field.
+///
+/// A missing or non-finite entry falls back to 0.5, then every entry clamps
+/// to `[0, 1]`, the interval `simulate_cml` draws `x0` from
+/// (`src/dynachaos/cml/spatiotemporal.py:74`).
+fn cml_state(n_sites: usize, x0: &[f64]) -> Vec<f64> {
+    let mut start = vec![0.5_f64; n_sites];
+    for (slot, &v) in start.iter_mut().zip(x0.iter()) {
+        *slot = finite_or(v, 0.5).clamp(0.0, 1.0);
+    }
+    start
+}
+
 /// Build a clamped `DIM`-component map initial state.
 ///
 /// A missing or non-finite component falls back to 0.5, then every component
@@ -2114,5 +2297,169 @@ mod tests {
         assert_eq!(out[3], 1212.0);
         assert_eq!(out.len(), HEADER + 1212 * 4);
         assert!(out[HEADER..].iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn modulated_circle_header_reports_the_values_actually_used() {
+        let out =
+            modulated_circle_rotation_tile(0.1, C_GOLDEN, 0.0, 1.0, 5, 0.05, 100, 500, 0.1, 0.1);
+        assert_eq!(out[0], 5.0);
+        assert_eq!(out[1], 100.0);
+        assert_eq!(out[2], 500.0);
+        assert_eq!(out[3], 2.0);
+        assert_eq!(out.len(), HEADER + 5 * 2);
+    }
+
+    #[test]
+    fn modulated_circle_counts_are_clamped_not_refused() {
+        // The D-list clamp with small counts stays cheap; the step clamps
+        // with n_d = 1 stay inside the budget.
+        let out = modulated_circle_rotation_tile(
+            0.1,
+            C_GOLDEN,
+            0.0,
+            1.0,
+            MAX_SIDE + 10,
+            0.05,
+            10,
+            50,
+            0.1,
+            0.1,
+        );
+        assert_eq!(out[0], MAX_SIDE as f64);
+        assert_eq!(out.len(), HEADER + MAX_SIDE * 2);
+        let out = modulated_circle_rotation_tile(
+            0.1,
+            C_GOLDEN,
+            0.0,
+            1.0,
+            1,
+            0.05,
+            MAX_TRANSIENT + 10_000,
+            MAX_ITER + 10,
+            0.1,
+            0.1,
+        );
+        assert_eq!(out[1], MAX_TRANSIENT as f64);
+        assert_eq!(out[2], MAX_ITER as f64);
+    }
+    #[test]
+    fn modulated_circle_parameters_are_clamped_to_unit_interval() {
+        // A = -2 clamps to 0, eps = 99 clamps to 1, and D endpoints outside
+        // [0, 1] clamp in. With n_transient = 0 and n_iter = 1 the returned
+        // rho_theta is the increment at state0 itself, so the clamps are
+        // visible in the value, not just the header.
+        let out =
+            modulated_circle_rotation_tile(-2.0, C_GOLDEN, -1.0, 99.0, 1, 99.0, 0, 1, 0.1, 0.1);
+        let expected = 0.0 + 1.0 * (2.0 * std::f64::consts::PI * 0.1).sin();
+        assert_eq!(out[HEADER], expected);
+        // The same request with the parameters already inside the ranges
+        // returns the same number.
+        let inside =
+            modulated_circle_rotation_tile(0.0, C_GOLDEN, 0.0, 1.0, 1, 1.0, 0, 1, 0.1, 0.1);
+        assert_eq!(out, inside);
+    }
+
+    #[test]
+    fn modulated_circle_c_is_clamped_to_unit_interval() {
+        // C = 2.0 clamps to 1.0: rho_phi is the mean increment of phi, so the
+        // clamp is visible in the value itself.
+        let out = modulated_circle_rotation_tile(0.1, 2.0, 0.3, 0.3, 1, 0.05, 10, 50, 0.1, 0.1);
+        let at_cap = modulated_circle_rotation_tile(0.1, 1.0, 0.3, 0.3, 1, 0.05, 10, 50, 0.1, 0.1);
+        assert_eq!(out, at_cap);
+        assert!(out[HEADER + 1] <= 1.0);
+    }
+
+    #[test]
+    fn modulated_circle_non_finite_arguments_fall_back() {
+        let fallback = modulated_circle_rotation_tile(
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+            3,
+            f64::NAN,
+            50,
+            200,
+            f64::NAN,
+            f64::NAN,
+        );
+        let explicit =
+            modulated_circle_rotation_tile(0.1, C_GOLDEN, 0.0, 1.0, 3, 0.05, 50, 200, 0.1, 0.1);
+        assert_eq!(fallback, explicit);
+    }
+
+    #[test]
+    fn modulated_circle_phases_are_clamped_to_unit_interval() {
+        // Non-integer out-of-range phases: 7.3 clamps to 1.0 and -3.4 to 0.0,
+        // so the request equals the clamped one. (Integer values would not
+        // distinguish the clamp: sin(2 pi k) is the same at every integer.)
+        let clamped =
+            modulated_circle_rotation_tile(0.1, C_GOLDEN, 0.3, 0.3, 1, 0.05, 50, 200, 7.3, -3.4);
+        let at_cap =
+            modulated_circle_rotation_tile(0.1, C_GOLDEN, 0.3, 0.3, 1, 0.05, 50, 200, 1.0, 0.0);
+        assert_eq!(clamped, at_cap);
+    }
+
+    #[test]
+    fn cml_header_reports_the_values_actually_used() {
+        let x0 = [0.1, 0.4, 0.7, 0.2];
+        let out = cml_spacetime_tile(2, 0.2, 4, 10, 8, &x0);
+        assert_eq!(out[0], 2.0);
+        assert_eq!(out[1], 4.0);
+        assert_eq!(out[2], 10.0);
+        assert_eq!(out[3], 8.0);
+        assert_eq!(out.len(), HEADER + 8 * 4);
+    }
+
+    #[test]
+    fn cml_model_snaps_to_a_b_or_c() {
+        let x0 = [0.1, 0.4, 0.7, 0.2];
+        for (model, expected) in [(0usize, 0.0), (1, 1.0), (2, 2.0), (usize::MAX, 2.0)] {
+            let out = cml_spacetime_tile(model, 0.2, 4, 10, 4, &x0);
+            assert_eq!(out[0], expected);
+        }
+    }
+
+    #[test]
+    fn cml_counts_are_clamped_not_refused() {
+        let x0 = [0.1, 0.4, 0.7, 0.2];
+        let out = cml_spacetime_tile(2, 0.2, 1, MAX_TRANSIENT + 10_000, MAX_CML_RECORD + 10, &x0);
+        assert_eq!(out[1], 2.0);
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        assert_eq!(out[3], MAX_CML_RECORD as f64);
+        assert_eq!(out.len(), HEADER + MAX_CML_RECORD * 2);
+    }
+
+    #[test]
+    fn cml_eps_is_clamped_and_falls_back_per_model() {
+        let x0 = [0.1, 0.4, 0.7, 0.2];
+        // eps = 99 clamps to 1: the same request at eps = 1 returns the same
+        // field.
+        let clamped = cml_spacetime_tile(2, 99.0, 4, 10, 4, &x0);
+        let at_cap = cml_spacetime_tile(2, 1.0, 4, 10, 4, &x0);
+        assert_eq!(clamped, at_cap);
+        // A non-finite eps falls back to the middle of the model's paper
+        // sweep: 0.07 for (A), 0.024 for (B), 0.2 for (C).
+        for (model, eps) in [(0usize, 0.07), (1, 0.024), (2, 0.2)] {
+            let fallback = cml_spacetime_tile(model, f64::NAN, 4, 10, 4, &x0);
+            let explicit = cml_spacetime_tile(model, eps, 4, 10, 4, &x0);
+            assert_eq!(fallback, explicit);
+        }
+    }
+
+    #[test]
+    fn cml_state_is_padded_truncated_and_clamped() {
+        // Fewer entries than n_sites pad with 0.5; more are truncated.
+        let padded = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[0.1, 0.4]);
+        let explicit = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[0.1, 0.4, 0.5, 0.5]);
+        assert_eq!(padded, explicit);
+        let truncated = cml_spacetime_tile(2, 0.2, 2, 10, 4, &[0.1, 0.4, 0.7, 0.2]);
+        let short = cml_spacetime_tile(2, 0.2, 2, 10, 4, &[0.1, 0.4]);
+        assert_eq!(truncated, short);
+        // Entries outside [0, 1] clamp in; non-finite entries fall back to 0.5.
+        let clamped = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[-1.0, 9.0, f64::NAN, 0.2]);
+        let at_cap = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[0.0, 1.0, 0.5, 0.2]);
+        assert_eq!(clamped, at_cap);
     }
 }

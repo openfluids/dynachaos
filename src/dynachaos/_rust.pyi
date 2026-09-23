@@ -137,3 +137,19 @@ def torus_doubling_attractor_tile(
     n_plot: int,
     state0: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def modulated_circle_rotation_tile(
+    A: float,
+    C: float,
+    d_values: npt.NDArray[np.float64],
+    eps: float,
+    n_transient: int,
+    n_iter: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def cml_spacetime_tile(
+    model: int,
+    eps: float,
+    n_transient: int,
+    n_record: int,
+    x0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...

@@ -1561,3 +1561,171 @@ class TestMapAttractorParity:
             initial,
         )
         np.testing.assert_array_equal(rust, python_trajectory)
+
+
+@rust_extension
+class TestModulatedCircleParity:
+    """Verify Rust modulated-circle rotation numbers against Python.
+
+    The kernel accumulates the same unwrapped increments in the same
+    operation order as ``rotation_numbers``, so the comparison is exact
+    (``np.array_equal``): ``np.sin`` and the platform ``sin`` the Rust build
+    calls agree bit for bit on this platform. ``rho_phi`` is the accumulated
+    drift of ``phi += C``, not ``C`` itself, so it is compared exactly too.
+    """
+
+    A = 0.1
+    C = (np.sqrt(5) - 1) / 2
+    EPS = 0.05
+    N_TRANSIENT = 3000
+    N_ITER = 20_000
+
+    def test_rotation_numbers_match_python_exactly(self):
+        from dynachaos._rust import modulated_circle_rotation_tile
+        from dynachaos.maps.modulated_circle import rotation_numbers
+
+        d_values = np.linspace(0.0, 1.0, 50)
+        state0 = np.array([0.1, 0.1], dtype=np.float64)
+        rust = modulated_circle_rotation_tile(
+            self.A,
+            self.C,
+            d_values,
+            self.EPS,
+            self.N_TRANSIENT,
+            self.N_ITER,
+            state0,
+        )
+        expected = np.array(
+            [
+                rotation_numbers(
+                    self.A,
+                    self.C,
+                    float(d),
+                    self.EPS,
+                    n_transient=self.N_TRANSIENT,
+                    n_iter=self.N_ITER,
+                    state0=state0,
+                )
+                for d in d_values
+            ]
+        )
+        np.testing.assert_array_equal(rust, expected)
+
+    def test_invalid_input_is_rejected(self):
+        from dynachaos._rust import modulated_circle_rotation_tile
+
+        state0 = np.array([0.1, 0.1], dtype=np.float64)
+        with pytest.raises(ValueError):
+            modulated_circle_rotation_tile(
+                self.A, self.C, np.array([]), self.EPS, 10, 10, state0
+            )
+        with pytest.raises(ValueError):
+            modulated_circle_rotation_tile(
+                self.A, self.C, np.array([0.3]), self.EPS, 10, 0, state0
+            )
+        with pytest.raises(ValueError):
+            modulated_circle_rotation_tile(
+                self.A, self.C, np.array([0.3]), self.EPS, 10, 10, np.array([0.1])
+            )
+
+
+@rust_extension
+class TestCmlSpacetimeParity:
+    """Verify Rust CML space-time fields against ``simulate_cml``.
+
+    The kernel evaluates ``f(x_i) + eps / 2 * (g(x_{i+1}) + g(x_{i-1}) -
+    2 g(x_i))`` in the same operation order as ``cml_step``, so the recorded
+    field is compared exactly (``np.array_equal``). Model B's ``sin`` agrees
+    bit for bit between NumPy and the platform ``sin`` the Rust build calls,
+    so the exact comparison holds for all three models at the paper's
+    settings.
+    """
+
+    N = 200
+    N_TRANSIENT = 2000
+    N_RECORD = 500
+
+    @pytest.fixture()
+    def x0(self):
+        return np.random.default_rng(42).uniform(0, 1, self.N)
+
+    @pytest.mark.parametrize("eps", [0.06, 0.07, 0.08])
+    def test_model_a_matches_python_exactly(self, x0, eps):
+        from dynachaos._rust import cml_spacetime_tile
+        from dynachaos.cml.spatiotemporal import model_A_f, simulate_cml
+
+        rust = cml_spacetime_tile(0, eps, self.N_TRANSIENT, self.N_RECORD, x0)
+        expected = simulate_cml(
+            model_A_f,
+            model_A_f,
+            eps,
+            N=self.N,
+            n_transient=self.N_TRANSIENT,
+            n_record=self.N_RECORD,
+            x0=x0,
+        )
+        np.testing.assert_array_equal(rust, expected)
+
+    @pytest.mark.parametrize("eps", [0.02, 0.024, 0.03])
+    def test_model_b_matches_python_exactly(self, x0, eps):
+        from dynachaos._rust import cml_spacetime_tile
+        from dynachaos.cml.spatiotemporal import model_B_f, model_B_g, simulate_cml
+
+        rust = cml_spacetime_tile(1, eps, self.N_TRANSIENT, self.N_RECORD, x0)
+        expected = simulate_cml(
+            model_B_f,
+            model_B_g,
+            eps,
+            N=self.N,
+            n_transient=self.N_TRANSIENT,
+            n_record=self.N_RECORD,
+            x0=x0,
+        )
+        np.testing.assert_array_equal(rust, expected)
+
+    @pytest.mark.parametrize("eps", [0.16, 0.20, 0.30])
+    def test_model_c_matches_python_exactly(self, x0, eps):
+        from dynachaos._rust import cml_spacetime_tile
+        from dynachaos.cml.spatiotemporal import model_C_f, simulate_cml
+
+        rust = cml_spacetime_tile(2, eps, self.N_TRANSIENT, self.N_RECORD, x0)
+        expected = simulate_cml(
+            model_C_f,
+            model_C_f,
+            eps,
+            N=self.N,
+            n_transient=self.N_TRANSIENT,
+            n_record=self.N_RECORD,
+            x0=x0,
+        )
+        np.testing.assert_array_equal(rust, expected)
+
+    def test_model_b_wraps_negative_state_with_floored_modulo(self):
+        """A negative site exercises the floored modulo in model B's map.
+
+        Python ``x % 1.0`` is floored, so ``f(-0.9)`` returns the wrapped
+        value 0.7675570504584948; Rust's truncating ``%`` would return the
+        raw value -0.23244294954150524. The kernel uses ``rem_euclid`` and
+        must match the Python field exactly.
+        """
+        from dynachaos._rust import cml_spacetime_tile
+        from dynachaos.cml.spatiotemporal import model_B_f, model_B_g, simulate_cml
+
+        x0 = np.array([-0.9, 0.2, 0.5, -0.3], dtype=np.float64)
+        rust = cml_spacetime_tile(1, 0.024, 0, 8, x0)
+        expected = simulate_cml(
+            model_B_f, model_B_g, 0.024, N=4, n_transient=0, n_record=8, x0=x0
+        )
+        np.testing.assert_array_equal(rust, expected)
+
+    def test_invalid_input_is_rejected(self, x0):
+        from dynachaos._rust import cml_spacetime_tile
+
+        with pytest.raises(ValueError):
+            cml_spacetime_tile(3, 0.2, 10, 4, x0)
+        with pytest.raises(ValueError):
+            cml_spacetime_tile(0, 0.07, 10, 4, np.array([]))
+        with pytest.raises(ValueError):
+            cml_spacetime_tile(0, 0.07, 10, 0, x0)
+        with pytest.raises(ValueError):
+            cml_spacetime_tile(0, np.nan, 10, 4, x0)
