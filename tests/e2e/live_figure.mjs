@@ -1065,6 +1065,132 @@ try {
     JSON.stringify(await atStats()),
   );
 
+  // ---- double devil's staircase: rho_theta and rho_phi over a D window ----
+  // The fifth live figure: two curves (rho_theta slate, rho_phi vermilion)
+  // plus the dashed rho_theta = D reference, drawn by one
+  // modulated_circle_rotation_tile call per parameter set. The eps slider
+  // moves the forcing, the dMin/dMax fields and the two preset buttons move
+  // the compute window, the hash carries all four, and one plotted
+  // rho_theta must equal the kernel's own output at the same D.
+  const M = "document.getElementById('fig:double_staircase')";
+  const mStats = () => ev(`${M} && ${M}._live ? ${M}._live.stats() : null`);
+  check(
+    "the double staircase is marked live-capable",
+    await ev(`!!${M} && ${M}.dataset.live === "double_staircase"`),
+    await ev(`${M} ? JSON.stringify(${M}.dataset) : "no figure"`),
+  );
+  await ev(`(${M}.querySelector(".act-interact").click(), true)`);
+  const mFirstPaint = await waitFor(
+    `!!${M}._live && ${M}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const mStats0 = await mStats();
+  check(
+    "the double staircase is painted at the defaults",
+    mFirstPaint && mStats0 && mStats0.points === 256,
+    JSON.stringify(mStats0),
+  );
+  check(
+    "the double staircase has an eps slider, window fields and presets",
+    await ev(
+      `!!(${M} && ${M}.querySelector(".live-params input[type=range]") && ${M}.querySelectorAll(".live-params input[type=number]").length >= 3 && ${M}.querySelectorAll(".live-presets button").length === 3)`,
+    ),
+  );
+
+  // One plotted rho_theta against the kernel computed the same way: the
+  // page's own glue module answers modulated_circle_rotation_tile at the
+  // figure's current (eps, window, n), and the trace's first point must be
+  // that tile's first pair — rho_theta first, then rho_phi.
+  const mCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${M}._live.params();
+    const tile = glue.modulated_circle_rotation_tile(0.1, 0.6180339887498949, p.dMin, p.dMax, p.n, p.eps, 3000, 20000, 0.1, 0.1);
+    const tr = ${M}._live.trace();
+    return { x: tr.x[0], y: tr.y[0], y2: tr.y2[0], kx: tile[4], ky2: tile[5], n: tr.x.length, nD: tile[0] };
+  })()`);
+  check(
+    "a plotted rho_theta equals the kernel's at the same D",
+    mCheck != null &&
+      mCheck.y === mCheck.kx &&
+      mCheck.y2 === mCheck.ky2 &&
+      mCheck.n === mCheck.nD,
+    JSON.stringify(mCheck),
+  );
+
+  // Move eps: the debounced apply must recompute, repaint, and write the
+  // new value into the hash. The range input snaps to its step, so the
+  // check reads back the snapped value rather than assuming it.
+  const mBefore = await mStats();
+  const mSet = await ev(`(() => {
+    const r = ${M}.querySelector(".live-params input[type=range]");
+    r.value = "0.12";
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return r.value;
+  })()`);
+  const mMoved = await waitFor(
+    `!!${M}._live && ${M}._live.stats().generation > ${mBefore ? mBefore.generation : -1} && ${M}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("eps=" + ${JSON.stringify(mSet)})`, 5_000);
+  const mHash = await ev("location.hash");
+  check(
+    "moving eps repaints a new generation",
+    Boolean(mBefore && mMoved),
+    JSON.stringify({ before: mBefore, after: await mStats() }),
+  );
+  check(
+    "moving eps writes the parameter into the hash",
+    mHash.includes(`fig:double_staircase.eps=${mSet}`),
+    JSON.stringify({ mSet, mHash }),
+  );
+
+  // Apply the first preset: the window must move into the 1/4 plateau's D
+  // range, repaint a new generation, and write the window into the hash.
+  const mBeforeP = await mStats();
+  await ev(`(() => {
+    const b = ${M}.querySelector(".live-presets button");
+    b.click();
+    return true;
+  })()`);
+  const mPreset = await waitFor(
+    `!!${M}._live && ${M}._live.stats().generation > ${mBeforeP ? mBeforeP.generation : -1} && ${M}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("dMin=0.25502630263026305")`, 5_000);
+  const mParamsP = await ev(`${M} && ${M}._live ? ${M}._live.params() : null`);
+  check(
+    "applying a preset repaints a new generation",
+    Boolean(mBeforeP && mPreset),
+    JSON.stringify({ before: mBeforeP, after: await mStats() }),
+  );
+  check(
+    "applying a preset moves the D window and writes the hash",
+    mParamsP != null &&
+      mParamsP.dMin === 0.25502630263026305 &&
+      mParamsP.dMax === 0.27372657265726574 &&
+      (await ev("location.hash")).includes("fig:double_staircase.dMin=0.25502630263026305"),
+    JSON.stringify({ mParamsP, hash: await ev("location.hash") }),
+  );
+  const mPresetCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const p = ${M}._live.params();
+    const tile = glue.modulated_circle_rotation_tile(0.1, 0.6180339887498949, p.dMin, p.dMax, p.n, p.eps, 3000, 20000, 0.1, 0.1);
+    const tr = ${M}._live.trace();
+    return { dMin: p.dMin, x: tr.x[0], y: tr.y[0], kx: tile[4] };
+  })()`);
+  check(
+    "after the preset the curve is the new window's sweep",
+    mPresetCheck != null &&
+      mPresetCheck.dMin === 0.25502630263026305 &&
+      mPresetCheck.x === mPresetCheck.dMin &&
+      mPresetCheck.y === mPresetCheck.kx,
+    JSON.stringify(mPresetCheck),
+  );
+
+
 
   const sEnd = await stats();
   check(
@@ -1206,6 +1332,30 @@ try {
       "under prefers-reduced-data the torus figure keeps its PNG and mounts no controls",
       Boolean(tReduced && tReduced.shown && !tReduced.liveCanvas && !tReduced.slider && !tReduced.selector && !tReduced.hasLive),
       JSON.stringify(tReduced),
+    );
+    // The double staircase under reduced data: same rule — the published
+    // PNG (or its JSON chart) stays, no controls, no live canvas, no wasm.
+    await ev(`(${M}.querySelector(".act-interact") && ${M}.querySelector(".act-interact").click(), true)`);
+    await sleep(REDUCED_WAIT_MS);
+    const mReduced = await ev(`(() => {
+      const fig = ${M};
+      if (!fig) return { missing: true };
+      const img = fig.querySelector(".fig-body img");
+      const imgShown = img && getComputedStyle(img).display !== "none";
+      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      return {
+        shown: Boolean(imgShown || jsonChart),
+        liveCanvas: !!fig.querySelector("canvas.plot.live"),
+        slider: !!fig.querySelector(".live-params input"),
+        presets: !!fig.querySelector(".live-presets button"),
+        hasLive: !!fig._live,
+        state: fig.dataset.state,
+      };
+    })()`);
+    check(
+      "under prefers-reduced-data the double staircase keeps its PNG and mounts no controls",
+      Boolean(mReduced && mReduced.shown && !mReduced.liveCanvas && !mReduced.slider && !mReduced.presets && !mReduced.hasLive),
+      JSON.stringify(mReduced),
     );
   }
   await pullDebug();

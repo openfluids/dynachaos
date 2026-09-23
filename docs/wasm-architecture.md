@@ -199,6 +199,27 @@ at every committed D in the wasm-parity CI job. Parameter state — the map
 included — rides the URL hash like the staircase's; under
 `prefers-reduced-data` no controls are created and the PNG stays.
 
+The double devil's staircase (`figure#fig:double_staircase`) is the fifth
+live figure and the second 1-D one: rho_theta and rho_phi of the modulated
+circle map against the bare frequency D, drawn by
+`modulated_circle_rotation_tile` on the main thread like the attractor
+clouds. A = 0.1 and C = (sqrt(5) - 1)/2 stay at the paper's values; the
+reader moves eps in [0, 0.2] (default 0.05), a point count bounded by the
+kernel's 512, and the D window itself — min/max fields, two preset buttons
+that reproduce the zoom panels' windows (the npz's longest plateaus near
+rho_theta = 1/4 and rho_theta = C, padded as `plot_zoom` pads them), or a
+drag zoom, since the plot's x domain is the compute window. The dashed
+rho_theta = D diagonal is the paper's rigid-rotation reference. The kernel
+returns (rho_theta, rho_phi) pairs after a 4-value header; the fold splits
+them into two curves sharing one D axis. Because A = 0.1 < 1/(2 pi) every
+fibre map is an orientation-preserving diffeomorphism, so the wasm sine's
+one-ulp difference cannot amplify: `scripts/check_wasm_modulated_circle.py`
+holds rho_theta to 1e-6 and rho_phi to 1e-12 at the npz's exact D values —
+five grid entries plus every D inside both zoom windows — in the
+wasm-parity CI job. Parameter state rides the URL hash like the other live
+figures; under `prefers-reduced-data` no controls are created and the PNG
+stays.
+
 ## WebGPU is a fast path, never the baseline
 
 As of 2026-09: Chromium ships WebGPU (113+, and Android 121+), Safari turned it

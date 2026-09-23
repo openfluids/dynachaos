@@ -7,7 +7,7 @@ import {
   serializeHash,
   writeParamsIntoHash,
 } from "../../site-src/live/params.js";
-import { createParamWiring, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
+import { createParamWiring, LIVE_MODULATED, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
 
 const SPECS = [
   { name: "D", min: 0, max: 0.5, step: 0.005, default: 0.25 },
@@ -140,4 +140,17 @@ test("setParams applies a hash state immediately and clamps it", () => {
   assert.equal(wiring.state.D, 0.5);
   assert.equal(applies, 1);
   assert.deepEqual(echoes, [["D", 0.5]]);
+});
+
+test("the double staircase's hash state round-trips through the URL fragment", () => {
+  // eps, the D window and the point count all ride the hash; the preset
+  // window's full precision must survive the String()/Number() round trip.
+  const state = { eps: 0.12, dMin: 0.25502630263026305, dMax: 0.6270621062106211, n: 384 };
+  const frag = serializeHash("fig:double_staircase", state);
+  const parsed = parseHash(
+    `#sec:three_torus&${frag}`,
+    LIVE_MODULATED.paramSpecs,
+    "fig:double_staircase",
+  );
+  assert.deepEqual(parsed, state);
 });

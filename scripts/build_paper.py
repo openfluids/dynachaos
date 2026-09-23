@@ -838,6 +838,7 @@ LIVE_FIGURES = {
     "fig:devils_staircase": "devils_staircase",
     "fig:delayed_logistic_attractors": "delayed_logistic_attractors",
     "fig:map_I_attractors": "torus_doubling_attractors",
+    "fig:double_staircase": "double_staircase",
 }
 
 

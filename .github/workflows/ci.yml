@@ -126,6 +126,14 @@ jobs:
         # component. The maps use only +, -, * so the check is bit-exact;
         # the reasoning is in the script's docstring.
         run: uv run python scripts/check_wasm_torus_doubling.py
+      - name: Check the live double staircase against the published npz
+        # The double devil's staircase recomputes in the browser over a
+        # reader-chosen D window; this compares the wasm tile against the
+        # committed npz at its exact D values — five grid entries plus every
+        # D inside both zoom windows. A = 0.1 is subcritical, so the bound is
+        # 1e-6 on rho_theta and 1e-12 on rho_phi; the reasoning is in the
+        # script's docstring.
+        run: uv run python scripts/check_wasm_modulated_circle.py
       - name: Check the diagnostics exports against the native build
         # Counts must match exactly; the fuzzy-entropy sum has a stated
         # tolerance, justified in the script's docstring.

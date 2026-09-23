@@ -127,6 +127,44 @@ export const LIVE_TORUS = Object.freeze({
 });
 
 /**
+ * The double devil's staircase figure: rho_theta and rho_phi against D for
+ * the modulated circle map (Kaneko Eq. 3.1). The paper computes A = 0.1,
+ * C = (sqrt(5) - 1) / 2, eps = 0.05, theta0 = phi0 = 0.1, n_transient 3000,
+ * n_iter 20000 over D on np.linspace(0, 1, 10000)
+ * (maps/modulated_circle.py compute); the live figure recomputes the same
+ * pair over a reader-chosen D window with modulated_circle_rotation_tile.
+ * eps is the one free parameter (0 to 0.2, the paper's moderate-forcing
+ * neighbourhood); A and C stay at the paper values, so rho_phi is C to
+ * numerical precision and the curve is a flat line the reader can check.
+ * `dMin`/`dMax` are the compute window and the plot's x domain at once —
+ * the number fields, the two presets and a drag zoom all move the same
+ * pair. `presets` reproduce the D windows of the zoom panels in
+ * modulated_circle.py plot_zoom: longest_plateau_window(D, rho_theta,
+ * target, 5e-4) on the committed npz padded by 0.008 (target 1/4) and
+ * 0.006 (target C) — computed once from
+ * figures/sec06_three_torus/double_staircase.npz and hard-coded here.
+ * `n` is the D count, bounded by the kernel's 512 cap.
+ */
+export const LIVE_MODULATED = Object.freeze({
+  A: 0.1,
+  C: 0.6180339887498949,
+  theta0: 0.1,
+  phi0: 0.1,
+  nTransient: 3000,
+  nIter: 20000,
+  presets: Object.freeze([
+    Object.freeze({ name: "zoom (a): plateau near 1/4", dMin: 0.25502630263026305, dMax: 0.27372657265726574 }),
+    Object.freeze({ name: "zoom (b): plateau near C", dMin: 0.5987604760476047, dMax: 0.6270621062106211 }),
+  ]),
+  paramSpecs: Object.freeze([
+    Object.freeze({ name: "eps", label: "forcing \u03b5", min: 0, max: 0.2, step: 0.005, default: 0.05 }),
+    Object.freeze({ name: "dMin", label: "D range min", min: 0, max: 1, step: 0.001, default: 0, numberOnly: true }),
+    Object.freeze({ name: "dMax", label: "D range max", min: 0, max: 1, step: 0.001, default: 1, numberOnly: true }),
+    Object.freeze({ name: "n", label: "points n", min: 16, max: 512, step: 16, default: 256 }),
+  ]),
+});
+
+/**
  * data-live kind -> live figure config. The hash-restore path in the page
  * reads paramSpecs from here so a shared link can name its figure.
  */
@@ -135,6 +173,7 @@ export const LIVE_FIGURES = Object.freeze({
   devils_staircase: LIVE_STAIRCASE,
   delayed_logistic_attractors: LIVE_ATTRACTORS,
   torus_doubling_attractors: LIVE_TORUS,
+  double_staircase: LIVE_MODULATED,
 });
 
 /**
@@ -540,6 +579,8 @@ export function attractorTrace(tile) {
 }
 
 const kernelPromises = new Map();
+const kernelCache = new Map();
+
 
 /**
  * Lazily load the wasm glue and return one named export. The module is the
@@ -567,6 +608,7 @@ function loadWasmExport(name) {
         const bytes = await readFile(new URL("dynachaos_wasm_bg.wasm", ATTRACTOR_GLUE_HREF));
         glue.initSync({ module: bytes });
       }
+      kernelCache.set(name, glue[name]);
       return glue[name];
     })();
     promise.catch(() => {
@@ -575,6 +617,18 @@ function loadWasmExport(name) {
     kernelPromises.set(name, promise);
   }
   return promise;
+}
+
+/**
+ * The already-resolved export, or null while the glue is still loading.
+ * The double staircase's readout samples through this synchronously — a
+ * per-pointermove await would lag the cursor.
+ *
+ * @param {string} name the wasm-bindgen export
+ * @returns {Function | null}
+ */
+export function loadedKernel(name) {
+  return kernelCache.get(name) || null;
 }
 
 /**
@@ -593,6 +647,15 @@ export function loadAttractorKernel() {
  */
 export function loadTorusKernel() {
   return loadWasmExport("torus_doubling_attractor_tile");
+}
+
+/**
+ * modulated_circle_rotation_tile, loaded through the shared loader.
+ *
+ * @returns {Promise<(a: number, c: number, dMin: number, dMax: number, nD: number, eps: number, nTransient: number, nIter: number, theta0: number, phi0: number) => Float64Array>}
+ */
+export function loadModulatedKernel() {
+  return loadWasmExport("modulated_circle_rotation_tile");
 }
 
 
@@ -639,10 +702,16 @@ function createKernelRunner({ store, getState, request, fold, call, onTrace, onE
       if (mySeq !== seq) return; // a newer request superseded this one
       const trace = fold(tile, req);
       // Splice into the store's arrays instead of replacing them: the
-      // page's panel.traces captured these two arrays at mount, and a
-      // fresh object would orphan the plot's view of the cloud.
-      store.trace.x.splice(0, store.trace.x.length, ...trace.x);
-      store.trace.y.splice(0, store.trace.y.length, ...trace.y);
+      // page's panel.traces captured these arrays at mount, and a fresh
+      // object would orphan the plot's view of the cloud. Every channel
+      // the fold returns is spliced — the double staircase carries a
+      // second curve in trace.y2 beside x and y.
+      for (const key of Object.keys(trace)) {
+        const target = store.trace[key];
+        const source = trace[key];
+        if (Array.isArray(target)) target.splice(0, target.length, ...source);
+        else store.trace[key] = source;
+      }
       store.generation = mySeq;
       store.painted = trace.x.length;
       if (onTrace) onTrace(store, trace, req);
@@ -880,6 +949,250 @@ export function createTorusFigure({
   return {
     state: wiring.state,
     store,
+    onInput: wiring.onInput,
+    setParams: wiring.setParams,
+    refresh: () => {
+      runner.run();
+    },
+    ready: runner.ready,
+  };
+}
+
+/**
+ * The kernel request for one double-staircase sweep: A and C first, then
+ * the D window, the point count, eps, the iteration counts and the start
+ * phases — the order modulated_circle_rotation_tile takes them. A, C and
+ * the phases come from the figure's config; eps, the window and n are the
+ * reader's. dMin <= dMax is an invariant of the wiring's syncRange, so the
+ * request never sees an inverted window.
+ *
+ * @param {object} state name -> value, from the parameter wiring
+ * @param {{ A: number, C: number, theta0: number, phi0: number, nTransient: number, nIter: number }} [params]
+ * @returns {{ a: number, c: number, dMin: number, dMax: number, nD: number, eps: number, nTransient: number, nIter: number, theta0: number, phi0: number }}
+ */
+export function modulatedRequest(state, params = LIVE_MODULATED) {
+  return {
+    a: params.A,
+    c: params.C,
+    dMin: state.dMin,
+    dMax: state.dMax,
+    nD: Math.round(state.n),
+    eps: state.eps,
+    nTransient: params.nTransient,
+    nIter: params.nIter,
+    theta0: params.theta0,
+    phi0: params.phi0,
+  };
+}
+
+/**
+ * Fold a modulated-circle tile into the two rotation-number curves. The
+ * layout is the kernel's: a 4-element header [n_d, n_transient, n_iter,
+ * 2], then n_d (rho_theta, rho_phi) pairs, D-major. The D axis is the
+ * request's window on the kernel's own grid — dMin + (dMax - dMin) k /
+ * (n_d - 1) — so a plotted point sits at exactly the D the kernel
+ * iterated. A tile that does not match its header yields empty curves
+ * rather than a misread buffer.
+ *
+ * @param {ArrayLike<number> | null | undefined} tile
+ * @param {ReturnType<typeof modulatedRequest>} req
+ * @returns {{ x: number[], y: number[], y2: number[] }}
+ */
+export function modulatedTrace(tile, req) {
+  const x = [];
+  const y = [];
+  const y2 = [];
+  if (!tile || tile.length < HEADER) return { x, y, y2 };
+  const nD = Math.floor(Number(tile[0]));
+  if (!(nD >= 1) || tile.length < HEADER + nD * 2) return { x, y, y2 };
+  const step = nD > 1 ? (req.dMax - req.dMin) / (nD - 1) : 0;
+  for (let k = 0; k < nD; k++) {
+    const rt = tile[HEADER + 2 * k];
+    const rp = tile[HEADER + 2 * k + 1];
+    if (!Number.isFinite(rt) || !Number.isFinite(rp)) continue;
+    x.push(req.dMin + k * step);
+    y.push(rt);
+    y2.push(rp);
+  }
+  return { x, y, y2 };
+}
+
+/**
+ * The default kernel call: load the glue, then invoke the export with the
+ * request's fields in the kernel's own order — A, C, the D window, n_d,
+ * eps, the counts, and the start phases. `kernel` is injectable so a node
+ * test can check the argument order without the wasm build.
+ *
+ * @param {ReturnType<typeof modulatedRequest>} req
+ * @param {Function} [kernel]
+ * @returns {Promise<Float64Array>}
+ */
+export async function modulatedKernelCall(req, kernel) {
+  const fn = kernel || (await loadModulatedKernel());
+  return fn(req.a, req.c, req.dMin, req.dMax, req.nD, req.eps, req.nTransient, req.nIter, req.theta0, req.phi0);
+}
+
+/**
+ * The double-staircase readout: rho_theta at the cursor's D, computed by
+ * the loaded kernel at the figure's current eps — the same value the e2e
+ * check recomputes. Until the glue resolves, the nearest plotted point of
+ * the rho_theta trace answers instead, so the tip never shows a gap while
+ * the module loads.
+ *
+ * @param {object} deps
+ * @param {object} deps.store
+ * @param {() => number} deps.getEps
+ * @param {{ nTransient: number, nIter: number, A: number, C: number, theta0: number, phi0: number }} [deps.params]
+ * @returns {(d: number) => number | null}
+ */
+export function createModulatedReadout({ store, getEps, params = LIVE_MODULATED }) {
+  return function sampleStaircase(d) {
+    const kernel = loadedKernel("modulated_circle_rotation_tile");
+    if (kernel) {
+      try {
+        const tile = kernel(
+          params.A, params.C, d, d, 1, getEps(),
+          params.nTransient, params.nIter, params.theta0, params.phi0,
+        );
+        if (tile && tile.length >= HEADER + 2 && Number.isFinite(tile[HEADER])) {
+          return tile[HEADER];
+        }
+      } catch (_) {}
+    }
+    const xs = store.trace.x;
+    const ys = store.trace.y;
+    let best = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < xs.length; i++) {
+      const dist = Math.abs(xs[i] - d);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = ys[i];
+      }
+    }
+    return best;
+  };
+}
+
+/**
+ * The double staircase's view hook and range sync. The plot's x domain IS
+ * the compute window: a drag zoom or a reset pushes the new [x0, x1] into
+ * the dMin/dMax inputs through `onRange` (the debounced input path), and
+ * `syncView` — run once per painted trace — moves the domain onto the
+ * current range when the change came from the inputs, a preset or a hash
+ * restore instead. The two directions cannot loop: onView only fires when
+ * the domain's x range differs from the state, and syncView only calls
+ * setDomain when it does.
+ *
+ * @param {object} deps
+ * @param {() => { dMin: number, dMax: number }} deps.getRange
+ * @param {(dMin: number, dMax: number) => void} deps.onRange
+ * @param {() => object | null} deps.getPlot
+ * @returns {{ onView: (d: { x0: number, x1: number }) => void, syncView: () => void }}
+ */
+export function createRangeView({ getRange, onRange, getPlot }) {
+  return {
+    onView(d) {
+      const r = getRange();
+      if (d.x0 === r.dMin && d.x1 === r.dMax) return;
+      onRange(d.x0, d.x1);
+    },
+    syncView() {
+      const plot = getPlot();
+      if (!plot) return;
+      const r = getRange();
+      const dom = plot.getDomain();
+      if (dom.x0 === r.dMin && dom.x1 === r.dMax) return;
+      plot.setDomain({ x0: r.dMin, x1: r.dMax, y0: dom.y0, y1: dom.y1 });
+    },
+  };
+}
+
+/**
+ * The double-staircase figure's parameter wiring and recompute path,
+ * sharing the attractor figures' runner. The page (mountDoubleStaircase
+ * in scripts/paper_shell.py) builds the inputs and hands in the DOM
+ * callbacks; the decisions live here so node tests can drive them.
+ *
+ * The dMin/dMax pair is one logical window: editing one end past the
+ * other moves the far end to meet it (the edited value always wins), so
+ * the kernel never sees an inverted window and a two-step edit lands
+ * where the reader meant it. The view sync runs inside the runner's
+ * onTrace — after the new curves are spliced, before the page redraws —
+ * so the domain and the data move together.
+ *
+ * @param {object} deps
+ * @param {object} [deps.params]
+ * @param {number} deps.debounceMs
+ * @param {(name: string, value: number) => void} deps.echo
+ * @param {(req: object) => Promise<ArrayLike<number>>} [deps.call]
+ * @param {(store: object, trace: object, req: object) => void} deps.onTrace
+ * @param {() => void} deps.writeHash
+ * @param {() => object | null} deps.getPlot
+ * @param {(err: unknown) => void} [deps.onError]
+ * @param {{ set?: (fn: () => void, ms: number) => unknown, clear?: (id: unknown) => void }} [deps.timers]
+ * @returns {{ state: object, store: object, view: object, onInput: (name: string, raw: number) => void, setParams: (values: object) => void, refresh: () => void, ready: () => boolean }}
+ */
+export function createModulatedFigure({
+  params = LIVE_MODULATED,
+  debounceMs,
+  echo,
+  call = modulatedKernelCall,
+  onTrace,
+  writeHash,
+  getPlot,
+  onError,
+  timers,
+}) {
+  const store = { trace: { x: [], y: [], y2: [] }, generation: 0, painted: 0 };
+  const fitY = createLineYFit({ store, getPlot });
+  const view = createRangeView({
+    getRange: () => ({ dMin: wiring.state.dMin, dMax: wiring.state.dMax }),
+    onRange: (dMin, dMax) => {
+      wiring.onInput("dMin", dMin);
+      wiring.onInput("dMax", dMax);
+    },
+    getPlot,
+  });
+  const runner = createKernelRunner({
+    store,
+    getState: () => wiring.state,
+    request: (state) => modulatedRequest(state, params),
+    fold: (tile, req) => modulatedTrace(tile, req),
+    call,
+    onTrace: (s, trace, req) => {
+      view.syncView();
+      fitY();
+      if (onTrace) onTrace(s, trace, req);
+    },
+    onError,
+  });
+  function syncRange(name) {
+    // The edited end wins: pushing dMin past dMax moves dMax up to meet
+    // it, and vice versa, so the window never inverts.
+    if (name === "dMin" && wiring.state.dMin > wiring.state.dMax) {
+      wiring.state.dMax = wiring.state.dMin;
+      echo("dMax", wiring.state.dMax);
+    } else if (name === "dMax" && wiring.state.dMax < wiring.state.dMin) {
+      wiring.state.dMin = wiring.state.dMax;
+      echo("dMin", wiring.state.dMin);
+    }
+  }
+  const wiring = createParamWiring({
+    specs: params.paramSpecs,
+    debounceMs,
+    echo,
+    apply: () => {
+      runner.run();
+    },
+    writeHash,
+    onSet: (name) => syncRange(name),
+    timers,
+  });
+  return {
+    state: wiring.state,
+    store,
+    view,
     onInput: wiring.onInput,
     setParams: wiring.setParams,
     refresh: () => {

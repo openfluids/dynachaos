@@ -359,6 +359,11 @@ canvas.plot.live{touch-action:none;}
 .live-param input[type="range"]{width:9rem;accent-color:var(--chaotic);}
 .live-param input[type="number"]{width:4.2rem;font:inherit;color:var(--ink);
   background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padding:0.1rem 0.3rem;}
+.live-presets{display:flex;flex-wrap:wrap;gap:0.4rem;padding:0 0.8rem 0.4rem;}
+.live-presets button{appearance:none;background:none;border:1px solid var(--rule);border-radius:4px;
+  color:var(--ink-mid);font-family:var(--mono);font-size:0.6rem;letter-spacing:0.08em;
+  text-transform:uppercase;padding:0.24rem 0.45rem;cursor:pointer;transition:all .15s;}
+.live-presets button:hover{color:var(--chaotic);border-color:var(--chaotic);}
 /* research-arc overview: a timeline, not a table */
 figure.arc{background:var(--raised);}
 .arc-track{list-style:none;margin:0;padding:1.4rem 1rem 1.2rem;display:grid;
@@ -1277,7 +1282,11 @@ function Plot(canvas,panel,meta){
           // finite point) instead of drawing straight through the gap --
           // otherwise sx()/sy() of a null coerces to (0-domain) and a stray
           // segment shoots across the whole plot.
-          ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.lineJoin="round";ctx.beginPath();
+          ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.lineJoin="round";
+          // A dashed trace (the double staircase's rho_theta = D
+          // reference) carries its dash pattern; every other trace resets
+          // to solid so the pattern never leaks between traces.
+          ctx.setLineDash(s.dash||[]);ctx.beginPath();
           let open=false;
           for(let i=0;i<s.x.length;i++){
             if(!finite(s.x[i])||!finite(s.y[i])){open=false;continue;}
@@ -1686,6 +1695,10 @@ async function mountLive(fig){
     await mountTorus(fig,body,{liveFigure,paramsMod,capText});
     return;
   }
+  if(fig.dataset.live==="double_staircase"){
+    await mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText});
+    return;
+  }
   const title="Rotation number over the circle-map parameter plane";
   // Five levels keep the finest tile small. A zoom then waits on less in-flight work.
   const liveLevels=5;
@@ -1796,6 +1809,17 @@ function buildParamControls(specs){
       lab.appendChild(name);lab.appendChild(sel);
       ctrls.appendChild(lab);
       inputs[spec.name]={select:sel};
+      continue;
+    }
+    if(spec.numberOnly){
+      // A range the reader types rather than slides (the double
+      // staircase's D window endpoints): a number field alone, no slider.
+      const num=document.createElement("input");
+      num.type="number";num.min=spec.min;num.max=spec.max;num.step=spec.step;
+      num.value=spec.default;num.setAttribute("aria-label",spec.label);
+      lab.appendChild(name);lab.appendChild(num);
+      ctrls.appendChild(lab);
+      inputs[spec.name]={num};
       continue;
     }
     const range=document.createElement("input");
@@ -2132,6 +2156,122 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
         generation:tf.store.generation,
         painted:tf.store.painted,
         points:tf.store.trace.x.length
+      })
+    };
+    fig.dataset.state="live";
+  }catch(err){
+    unmountPlot(fig);
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
+    throw err;
+  }
+}
+
+/* The double devil's staircase: rho_theta and rho_phi against D for the
+   modulated circle map, live above the published PNG. One direct
+   modulated_circle_rotation_tile call per parameter set — no tile pool,
+   same as the attractor figures. The D window is the compute range and
+   the plot's x domain at once: the min/max fields, the two zoom presets
+   and a drag zoom all move the same pair through live-figure.js's range
+   view. This function only builds DOM; the request shape, the trace fold,
+   the window sync and the hash live in live-figure.js for node tests. */
+async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
+  const cfg=liveFigure.LIVE_MODULATED;
+  const title="Double devil's staircase";
+  try{
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    c.setAttribute("aria-label",capText+" — "+title);
+    const h=document.createElement("p");h.className="plot-title";
+    const setTitle=()=>{h.textContent=title+" — \u03b5 = "+df.state.eps;};
+    w.appendChild(h);
+    w.appendChild(c);
+    const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
+    w.appendChild(ctrls);
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    w.appendChild(hint);
+    body.insertBefore(w,body.firstChild);
+    const note=document.createElement("p");note.className="hint";
+    note.textContent="the image below is the published figure — the curves above are computed in your browser at the \u03b5 and D window you choose; the two preset buttons reproduce the zoom panels' windows";
+    body.insertBefore(note,w.nextSibling);
+    let plot=null;
+    const writeHash=()=>{
+      const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,df.state);
+      history.replaceState(null,"",location.pathname+location.search+(frag?"#"+frag:""));
+    };
+    const df=liveFigure.createModulatedFigure({
+      params:cfg,
+      debounceMs:150,
+      echo:(name,v)=>{
+        const f=inputs[name];
+        if(f){if(f.range)f.range.value=v;if(f.num)f.num.value=v;}
+        if(name==="eps") setTitle();
+      },
+      onTrace:(store,trace,req)=>{
+        if(plot) plot.redraw();
+      },
+      onError:()=>{
+        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+      },
+      writeHash,
+      getPlot:()=>plot
+    });
+    // The preset row: the two zoom-panel windows from the config plus a
+    // reset to the full [0, 1] sweep. A click is a discrete choice, so it
+    // applies through setParams — no debounce.
+    const presets=document.createElement("div");presets.className="live-presets";
+    for(const p of cfg.presets){
+      const b=document.createElement("button");
+      b.type="button";b.textContent=p.name;
+      b.addEventListener("click",()=>df.setParams({dMin:p.dMin,dMax:p.dMax}));
+      presets.appendChild(b);
+    }
+    const reset=document.createElement("button");
+    reset.type="button";reset.textContent="full D range";
+    reset.addEventListener("click",()=>df.setParams({dMin:0,dMax:1}));
+    presets.appendChild(reset);
+    ctrls.appendChild(presets);
+    const trace=df.store.trace;
+    const panel={title,traces:[
+      {name:"\u03c1\u03b8",x:trace.x,y:trace.y,color:"--slate"},
+      {name:"\u03c1\u03c6",x:trace.x,y:trace.y2,color:"--vermilion"},
+      {name:"\u03c1\u03b8 = D",x:[0,1],y:[0,1],color:"--ink-low",dash:[5,4]}
+    ]};
+    const live={
+      base:{x0:0,x1:1,y0:0,y1:1},
+      generation:()=>df.store.generation,
+      onView:df.view.onView
+    };
+    plot=Plot(c,panel,{
+      kind:"line",
+      live,
+      xlabel:"Bare frequency D",
+      ylabel:"Observed rotation \u03c1\u03b8",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    setTitle();
+    for(const spec of cfg.paramSpecs){
+      const f=inputs[spec.name];
+      if(f.range) f.range.addEventListener("input",()=>df.onInput(spec.name,Number(f.range.value)));
+      if(f.num) f.num.addEventListener("change",()=>df.onInput(spec.name,Number(f.num.value)));
+    }
+    df.refresh();
+    const readout=liveFigure.createModulatedReadout({store:df.store,getEps:()=>df.state.eps});
+    live.sample=readout;
+    fig._live={
+      setParams:(values)=>{df.setParams(values);},
+      params:()=>({...df.state}),
+      trace:()=>({x:df.store.trace.x.slice(),y:df.store.trace.y.slice(),y2:df.store.trace.y2.slice()}),
+      sample:readout,
+      ready:()=>df.ready(),
+      stats:()=>({
+        generation:df.store.generation,
+        painted:df.store.painted,
+        points:df.store.trace.x.length
       })
     };
     fig.dataset.state="live";

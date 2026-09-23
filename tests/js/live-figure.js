@@ -4,13 +4,17 @@ import {
   LIVE_ARNOLD,
   LIVE_ATTRACTORS,
   LIVE_FIGURES,
+  LIVE_MODULATED,
   LIVE_STAIRCASE,
   LIVE_TORUS,
   attractorFixedPoint,
   attractorRequest,
   attractorTrace,
   createAttractorFigure,
+  createModulatedFigure,
+  createModulatedReadout,
   createPaintHandler,
+  createRangeView,
   createRasterSample,
   createReadout,
   createSchedulerOptions,
@@ -19,6 +23,9 @@ import {
   createStore,
   createTorusFigure,
   createViewHandler,
+  modulatedKernelCall,
+  modulatedRequest,
+  modulatedTrace,
   tilesToTrace,
   torusMapKind,
   torusRequest,
@@ -801,4 +808,233 @@ test("a D outside the active map's window clamps into it", () => {
   // active window rather than asking the kernel for a D it would move.
   fig.onInput("D", 2.0);
   assert.equal(fig.state.D, 1.53);
+});
+
+
+test("LIVE_MODULATED is frozen, registered, and holds the paper's parameters", () => {
+  assert.equal(LIVE_FIGURES.double_staircase, LIVE_MODULATED);
+  assert.ok(Object.isFrozen(LIVE_MODULATED));
+  // The paper's constants (maps/modulated_circle.py compute): A = 0.1,
+  // C = (sqrt(5) - 1) / 2, eps = 0.05, theta0 = phi0 = 0.1,
+  // n_transient 3000, n_iter 20000.
+  assert.equal(LIVE_MODULATED.A, 0.1);
+  assert.equal(LIVE_MODULATED.C, 0.6180339887498949);
+  assert.equal(LIVE_MODULATED.nTransient, 3000);
+  assert.equal(LIVE_MODULATED.nIter, 20000);
+  const [eps, dMin, dMax, n] = LIVE_MODULATED.paramSpecs;
+  assert.deepEqual(
+    { name: eps.name, min: eps.min, max: eps.max, default: eps.default },
+    { name: "eps", min: 0, max: 0.2, default: 0.05 },
+  );
+  assert.deepEqual(
+    { name: dMin.name, min: dMin.min, max: dMin.max, default: dMin.default, numberOnly: dMin.numberOnly },
+    { name: "dMin", min: 0, max: 1, default: 0, numberOnly: true },
+  );
+  assert.deepEqual(
+    { name: dMax.name, min: dMax.min, max: dMax.max, default: dMax.default, numberOnly: dMax.numberOnly },
+    { name: "dMax", min: 0, max: 1, default: 1, numberOnly: true },
+  );
+  // The point count is bounded by the kernel's 512 cap.
+  assert.equal(n.name, "n");
+  assert.equal(n.max, 512);
+  assert.equal(n.default, 256);
+});
+
+test("the modulated presets reproduce the zoom panels' D windows", () => {
+  // The windows of modulated_circle.py plot_zoom: longest_plateau_window
+  // on the committed npz padded by 0.008 (target 1/4) and 0.006 (target
+  // C). A window off by one grid step (1/9999 ~ 1.0001e-4) fails the exact
+  // equality below.
+  assert.equal(LIVE_MODULATED.presets.length, 2);
+  const [a, b] = LIVE_MODULATED.presets;
+  assert.equal(a.dMin, 0.25502630263026305);
+  assert.equal(a.dMax, 0.27372657265726574);
+  assert.equal(b.dMin, 0.5987604760476047);
+  assert.equal(b.dMax, 0.6270621062106211);
+  // Each preset sits inside [0, 1] and contains its unpadded plateau
+  // window — the pad widens the window in both directions.
+  assert.ok(a.dMin < 0.26302630263026305 && a.dMax > 0.26572657265726574);
+  assert.ok(b.dMin < 0.6047604760476047 && b.dMax > 0.6210621062106211);
+});
+
+test("the modulated request passes A, C, the window, n and eps in the kernel's order", () => {
+  // modulated_circle_rotation_tile(a, c, d_min, d_max, n_d, eps,
+  // n_transient, n_iter, theta0, phi0): swapping A and D here sends the
+  // window into the map's A slot, and dropping eps leaves the forcing at
+  // the kernel's 0.05 fallback — this test catches both.
+  const req = modulatedRequest({ eps: 0.12, dMin: 0.2, dMax: 0.6, n: 128 });
+  assert.equal(req.a, 0.1);
+  assert.equal(req.c, 0.6180339887498949);
+  assert.equal(req.dMin, 0.2);
+  assert.equal(req.dMax, 0.6);
+  assert.equal(req.nD, 128);
+  assert.equal(req.eps, 0.12);
+  assert.equal(req.nTransient, 3000);
+  assert.equal(req.nIter, 20000);
+  assert.equal(req.theta0, 0.1);
+  assert.equal(req.phi0, 0.1);
+});
+
+test("modulatedKernelCall invokes the export in the kernel's argument order", async () => {
+  const seen = [];
+  const kernel = (...args) => {
+    seen.push(args);
+    return new Float64Array([1, 3000, 20000, 2, 0.25, 0.6]);
+  };
+  const req = modulatedRequest({ eps: 0.12, dMin: 0.2, dMax: 0.6, n: 128 });
+  const out = await modulatedKernelCall(req, kernel);
+  assert.deepEqual(seen, [[0.1, 0.6180339887498949, 0.2, 0.6, 128, 0.12, 3000, 20000, 0.1, 0.1]]);
+  assert.equal(out[4], 0.25);
+});
+
+test("modulatedTrace unpacks (rho_theta, rho_phi) pairs after the 4-value header", () => {
+  // Header [n_d, n_transient, n_iter, 2], then n_d pairs D-major. Swapping
+  // the pair order lands rho_phi on the rho_theta curve, which this test
+  // catches.
+  const req = modulatedRequest({ eps: 0.05, dMin: 0.2, dMax: 0.6, n: 3 });
+  const tile = new Float64Array([3, 3000, 20000, 2, 0.21, 0.61, 0.25, 0.62, 0.29, 0.63]);
+  const t = modulatedTrace(tile, req);
+  // The x axis is the kernel's own grid: dMin + (dMax - dMin) k / (n - 1).
+  assert.deepEqual(t.x, [0.2, 0.4, 0.6]);
+  assert.deepEqual(t.y, [0.21, 0.25, 0.29]);
+  assert.deepEqual(t.y2, [0.61, 0.62, 0.63]);
+});
+test("modulatedTrace rejects a short or malformed tile", () => {
+  const req = modulatedRequest({ eps: 0.05, dMin: 0, dMax: 1, n: 4 });
+  assert.deepEqual(modulatedTrace(null, req), { x: [], y: [], y2: [] });
+  assert.deepEqual(modulatedTrace(new Float64Array([4, 3000, 20000, 2, 0.1, 0.6]), req).x, []);
+  assert.deepEqual(modulatedTrace(new Float64Array([0, 3000, 20000, 2]), req).x, []);
+  // A non-finite pair is skipped, not plotted.
+  const t = modulatedTrace(new Float64Array([2, 3000, 20000, 2, NaN, 0.6, 0.3, 0.62]), req);
+  assert.deepEqual(t.x, [1]);
+  assert.deepEqual(t.y, [0.3]);
+  assert.deepEqual(t.y2, [0.62]);
+});
+
+test("the modulated figure recomputes once per debounced burst and drops stale results", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const deferreds = [];
+  const fig = createModulatedFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return new Promise((r) => deferreds.push(r));
+    },
+    onTrace: () => {},
+    writeHash: () => {},
+    getPlot: () => null,
+    timers,
+  });
+  for (const v of [0.05, 0.08, 0.12]) fig.onInput("eps", v);
+  timers.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].eps, 0.12);
+
+  fig.setParams({ eps: 0.06 });
+  fig.setParams({ eps: 0.09 });
+  assert.equal(calls.length, 3);
+  const tileFor = (e) => new Float64Array([1, 3000, 20000, 2, e, 0.6]);
+  deferreds[2](tileFor(0.09));
+  await tick();
+  deferreds[1](tileFor(0.06));
+  await tick();
+  assert.deepEqual(fig.store.trace.y, [0.09]);
+  assert.deepEqual(fig.store.trace.y2, [0.6]);
+  assert.equal(fig.store.generation, 3);
+});
+
+test("the modulated figure's window endpoints never invert", () => {
+  const echoed = [];
+  const fig = createModulatedFigure({
+    debounceMs: 150,
+    echo: (name, v) => echoed.push([name, v]),
+    call: () => Promise.resolve(new Float64Array([1, 3000, 20000, 2, 0.25, 0.6])),
+    onTrace: () => {},
+    writeHash: () => {},
+    getPlot: () => null,
+    timers: manualTimers(),
+  });
+  // Pushing dMin past dMax moves dMax up to meet it — the edited value
+  // wins, so a two-step edit lands where the reader meant it.
+  fig.onInput("dMax", 0.5);
+  assert.deepEqual([fig.state.dMin, fig.state.dMax], [0, 0.5]);
+  fig.onInput("dMin", 0.6);
+  assert.deepEqual([fig.state.dMin, fig.state.dMax], [0.6, 0.6]);
+  fig.onInput("dMax", 0.8);
+  assert.deepEqual([fig.state.dMin, fig.state.dMax], [0.6, 0.8]);
+  fig.onInput("dMax", 0.3);
+  assert.deepEqual([fig.state.dMin, fig.state.dMax], [0.3, 0.3]);
+  assert.ok(echoed.some(([n, v]) => n === "dMax" && v === 0.6));
+  assert.ok(echoed.some(([n, v]) => n === "dMin" && v === 0.3));
+});
+
+test("a preset applies through setParams and reaches the kernel request", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const fig = createModulatedFigure({
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return Promise.resolve(new Float64Array([2, 3000, 20000, 2, 0.25, 0.6, 0.26, 0.6]));
+    },
+    onTrace: () => {},
+    writeHash: () => {},
+    getPlot: () => null,
+    timers,
+  });
+  const p = LIVE_MODULATED.presets[0];
+  fig.setParams({ dMin: p.dMin, dMax: p.dMax });
+  await tick();
+  assert.equal(fig.state.dMin, p.dMin);
+  assert.equal(fig.state.dMax, p.dMax);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].dMin, p.dMin);
+  assert.equal(calls[0].dMax, p.dMax);
+});
+
+test("the range view pushes a drag into the inputs and syncs the domain after a recompute", () => {
+  const ranges = [];
+  const domains = [];
+  let dom = { x0: 0, x1: 1, y0: 0, y1: 1 };
+  let range = { dMin: 0, dMax: 1 };
+  const view = createRangeView({
+    getRange: () => range,
+    onRange: (dMin, dMax) => {
+      ranges.push([dMin, dMax]);
+      range = { dMin, dMax };
+    },
+    getPlot: () => ({
+      getDomain: () => dom,
+      setDomain: (d) => {
+        dom = { ...dom, ...d };
+        domains.push(dom);
+      },
+    }),
+  });
+  // A drag zoom pushes the new window into the inputs. Plot sets the
+  // domain before onView fires, so dom already carries the dragged range.
+  dom = { x0: 0.26, x1: 0.27, y0: 0, y1: 1 };
+  view.onView({ x0: 0.26, x1: 0.27 });
+  assert.deepEqual(ranges, [[0.26, 0.27]]);
+  // The same domain again (the setDomain echo) does not re-push.
+  view.onView({ x0: 0.26, x1: 0.27 });
+  assert.equal(ranges.length, 1);
+  // After the recompute the domain already matches — syncView is a no-op.
+  view.syncView();
+  assert.equal(domains.length, 0);
+  // A range change from the inputs moves the domain onto it.
+  range = { dMin: 0.6, dMax: 0.62 };
+  view.syncView();
+  assert.deepEqual(domains, [{ x0: 0.6, x1: 0.62, y0: 0, y1: 1 }]);
+});
+
+test("the modulated readout falls back to the nearest plotted rho_theta", () => {
+  const store = { trace: { x: [0.2, 0.4, 0.6], y: [0.21, 0.25, 0.29], y2: [0.6, 0.6, 0.6] } };
+  const readout = createModulatedReadout({ store, getEps: () => 0.05 });
+  // No kernel is loaded in the test process, so the trace answers.
+  assert.equal(readout(0.41), 0.25);
+  assert.equal(readout(0.55), 0.29);
 });

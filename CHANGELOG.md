@@ -35,6 +35,17 @@ reconstructed from git history. 0.4.0 is the first public release.
   (`scripts/check_wasm_torus_doubling.py`, run in CI). The published
   three-panel figure stays below the live cloud.
 
+- The paper page computes the double devil's staircase live: the rotation
+  numbers rho_theta and rho_phi of the modulated circle map are drawn in
+  the browser over a bare-frequency window the reader sets with min/max
+  fields, two preset buttons that reproduce the zoom panels' D windows, or
+  a drag zoom, plus a forcing-strength slider (eps in [0, 0.2], default
+  0.05) and a point-count control bounded at 512. The values go into the
+  page address, so a link reproduces the view. A = 0.1 is subcritical, so
+  the browser curve matches the published sweep to 1e-6 in rho_theta and
+  1e-12 in rho_phi (`scripts/check_wasm_modulated_circle.py`, run in CI).
+  The published figure stays below the live curves.
+
 - The compiled extension exports `delayed_logistic_attractor_tile` and
   `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
   the torus-doubling maps (I) and (IV) in Rust and return the same
