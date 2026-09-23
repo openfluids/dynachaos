@@ -84,6 +84,18 @@ jobs:
       - run: uv sync --all-extras
       - name: Build the WebAssembly bundle
         run: uv run python scripts/build_wasm.py
+      - name: Build the vendored wasm package
+        # pkg/ is what chaos-atlas copies into vendor/dynachaos-wasm. Building
+        # it here proves the package builds from a clean checkout, and the
+        # upload below hands chaos-atlas a stamped artifact to vendor.
+        run: uv run python scripts/build_wasm_pkg.py
+      - name: Test the vendored package
+        # Node is already on the runner image, so this needs no setup-node step.
+        run: node --test tests/js/pkg.js
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dynachaos-wasm-pkg
+          path: pkg/
       - name: Run the binding's own tests
         # rust/wasm is its own workspace, so the root `cargo test` never reaches
         # it. These tests cover the clamping the browser depends on.
