@@ -5,6 +5,15 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 ## Unreleased
 
+### Added
+
+- The compiled extension exports `delayed_logistic_attractor_tile` and
+  `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
+  the torus-doubling maps (I) and (IV) in Rust and return the same
+  trajectories as the Python modules, bit for bit. The WebAssembly build
+  exports both for the browser, with every input clamped. The paper pipeline
+  still uses the Python path.
+
 ### Changed
 
 - `zero_one_statistic` and `zero_one_series` run on the Rust core when the

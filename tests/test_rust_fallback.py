@@ -1471,3 +1471,93 @@ class TestZeroOneScaling:
             f"{best[100_000]:.3f}s at N = 100000: ratio {ratio:.2f} "
             "approaches the 16x of an N^2 kernel"
         )
+
+
+@rust_extension
+class TestMapAttractorParity:
+    """Verify delayed-logistic and torus trajectories against Python."""
+
+    N_TRANSIENT = 2000
+    N_PLOT = 4096
+
+    def test_delayed_logistic_trajectory_parity(self):
+        from dynachaos._rust import delayed_logistic_attractor_tile
+        from dynachaos.maps._iter import trajectory_after_transient
+        from dynachaos.maps.delayed_logistic import delayed_logistic
+
+        state0 = np.array([0.4, 0.35], dtype=np.float64)
+        d_values = np.array([1.55, 1.95, 2.16], dtype=np.float64)
+        rust = delayed_logistic_attractor_tile(
+            0.3, d_values, self.N_TRANSIENT, self.N_PLOT, state0
+        )
+
+        expected = []
+        for d in d_values:
+            trajectory = trajectory_after_transient(
+                state0,
+                lambda state, d=d: delayed_logistic(state, 0.3, float(d)),
+                self.N_TRANSIENT,
+                self.N_PLOT,
+                diverged_fn=lambda state: np.any(np.abs(state) > 1e10),
+            )
+            assert trajectory is not None
+            expected.append(trajectory)
+        np.testing.assert_array_equal(rust, np.stack(expected))
+
+    @pytest.mark.parametrize(
+        ("map_kind", "A", "D", "state0", "map_function"),
+        [
+            (1, 0.4, 2.19, [0.5, 0.5, 0.5], "map_I"),
+            (4, 0.3, 1.5212, [0.5, 0.45, 0.52, 0.48], "map_IV"),
+        ],
+    )
+    def test_torus_doubling_trajectory_parity(
+        self, map_kind, A, D, state0, map_function
+    ):
+        from dynachaos._rust import torus_doubling_attractor_tile
+        from dynachaos.maps import torus_doubling
+
+        initial = np.array(state0, dtype=np.float64)
+        python_trajectory = torus_doubling.iterate_map(
+            getattr(torus_doubling, map_function),
+            initial,
+            A,
+            D,
+            n_transient=self.N_TRANSIENT,
+            n_plot=self.N_PLOT,
+        )
+        assert python_trajectory is not None
+        rust = torus_doubling_attractor_tile(
+            map_kind,
+            A,
+            D,
+            self.N_TRANSIENT,
+            self.N_PLOT,
+            initial,
+        )
+        np.testing.assert_array_equal(rust, python_trajectory)
+
+    def test_torus_doubling_record_divergence_is_partial(self):
+        from dynachaos._rust import torus_doubling_attractor_tile
+        from dynachaos.maps import torus_doubling
+
+        initial = np.array([0.5, 0.45, 0.52, 0.48], dtype=np.float64)
+        python_trajectory = torus_doubling.iterate_map(
+            torus_doubling.map_IV,
+            initial,
+            0.3,
+            2.12,
+            n_transient=self.N_TRANSIENT,
+            n_plot=self.N_PLOT,
+        )
+        assert python_trajectory is not None
+        assert len(python_trajectory) < self.N_PLOT
+        rust = torus_doubling_attractor_tile(
+            4,
+            0.3,
+            2.12,
+            self.N_TRANSIENT,
+            self.N_PLOT,
+            initial,
+        )
+        np.testing.assert_array_equal(rust, python_trajectory)

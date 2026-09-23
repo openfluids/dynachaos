@@ -1,12 +1,15 @@
 """Check that the diagnostics WebAssembly exports match the native build.
 
-Nine exports are compared on fixed inputs: ``correlation_counts``,
-``apen_counts``, ``fuzzy_entropy_sum``, ``ordinal_distribution``,
-``diagonal_lines``, ``vertical_lines``, ``multifractal_moments``,
-``ami_histogram`` and ``select_dimension_cao``, plus ``zero_one_k``. The
-native side is the pyo3 extension, which runs the same ``rust/core`` code;
+Two trajectory exports are compared in addition to the diagnostics exports:
+``delayed_logistic_attractor_tile`` and ``torus_doubling_attractor_tile``.
+The native side is the pyo3 extension, which runs the same ``rust/core`` code;
 the browser side is the ``site/wasm`` bundle driven through node. Both sides
 receive the same inputs, built once below.
+
+The diagnostics exports are ``correlation_counts``, ``apen_counts``,
+``fuzzy_entropy_sum``, ``ordinal_distribution``, ``diagonal_lines``,
+``vertical_lines``, ``multifractal_moments``, ``ami_histogram``,
+``select_dimension_cao`` and ``zero_one_k``.
 
 The tolerance is set per export by what the kernel computes:
 
@@ -54,11 +57,13 @@ from dynachaos._rust import (
     ami_histogram,
     apen_counts,
     correlation_counts,
+    delayed_logistic_attractor_tile,
     diagonal_lines,
     fuzzy_entropy_sum,
     multifractal_moments,
     ordinal_distribution,
     select_dimension_cao,
+    torus_doubling_attractor_tile,
     vertical_lines,
     zero_one_k,  # type: ignore[attr-defined]
 )
@@ -103,6 +108,20 @@ AMI_BINS = 16
 CAO_E1 = [0.35, 0.62, 0.97, 1.0, 1.0, 1.0, 1.0, 1.0]
 
 # zero_one_k: a handful of frequencies over the same series.
+
+# Map-attractor trajectories: bounded, evenly spaced D values keep JSON finite
+# and exercise the flat headers without making this diagnostic heavyweight.
+MAP_TRANSIENT = 100
+MAP_PLOT = 64
+DELAYED_A = 0.3
+DELAYED_D_MIN = 1.55
+DELAYED_D_MAX = 2.16
+DELAYED_N_D = 3
+DELAYED_STATE = [0.4, 0.35]
+TORUS_KIND = 4
+TORUS_A = 0.3
+TORUS_D = 1.5212
+TORUS_STATE = [0.5, 0.45, 0.52, 0.48]
 ZERO_ONE_C = [0.7, 1.1, 1.9, 2.6, 3.3]
 ZERO_ONE_N_CUT = 100
 
@@ -153,6 +172,12 @@ process.stdout.write(JSON.stringify({
     spec.cao_span, spec.cao_smooth, spec.cao_min, spec.cao_max)),
   zero_one_k: Array.from(mod.zero_one_k(
     x, new Float64Array(spec.zero_one_c), spec.zero_one_n_cut)),
+  delayed_logistic_attractor_tile: Array.from(mod.delayed_logistic_attractor_tile(
+    spec.delayed_a, spec.delayed_d_min, spec.delayed_d_max, spec.delayed_n_d,
+    spec.map_transient, spec.map_plot, new Float64Array(spec.delayed_state))),
+  torus_doubling_attractor_tile: Array.from(mod.torus_doubling_attractor_tile(
+    spec.torus_kind, spec.torus_a, spec.torus_d, spec.map_transient, spec.map_plot,
+    new Float64Array(spec.torus_state))),
 }));
 """
 
@@ -279,6 +304,17 @@ def main() -> int:
         "cao_max": 0.0,
         "zero_one_c": ZERO_ONE_C,
         "zero_one_n_cut": ZERO_ONE_N_CUT,
+        "map_transient": MAP_TRANSIENT,
+        "map_plot": MAP_PLOT,
+        "delayed_a": DELAYED_A,
+        "delayed_d_min": DELAYED_D_MIN,
+        "delayed_d_max": DELAYED_D_MAX,
+        "delayed_n_d": DELAYED_N_D,
+        "delayed_state": DELAYED_STATE,
+        "torus_kind": TORUS_KIND,
+        "torus_a": TORUS_A,
+        "torus_d": TORUS_D,
+        "torus_state": TORUS_STATE,
     }
     wasm = wasm_results(spec)
 
@@ -525,6 +561,89 @@ def main() -> int:
             failed = True
         elif not self_check("zero_one_k", native, wasm_k, ZERO_ONE_ABS_TOLERANCE, 0.5):
             print("FAIL: zero_one_k self-check did not trip")
+            failed = True
+
+    # delayed_logistic_attractor_tile: [n_D, n_plot, n_transient, dim, samples...].
+    delayed_d_values = [
+        DELAYED_D_MIN
+        + (DELAYED_D_MAX - DELAYED_D_MIN) * k / (DELAYED_N_D - 1)
+        for k in range(DELAYED_N_D)
+    ]
+    delayed_native = delayed_logistic_attractor_tile(
+        DELAYED_A,
+        np.array(delayed_d_values, dtype=np.float64),
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array(DELAYED_STATE, dtype=np.float64),
+    )
+    out = wasm["delayed_logistic_attractor_tile"]
+    delayed_expected_header = [
+        float(DELAYED_N_D),
+        float(MAP_PLOT),
+        float(MAP_TRANSIENT),
+        2.0,
+    ]
+    if not check_header("delayed_logistic_attractor_tile", out[:4], delayed_expected_header):
+        failed = True
+    else:
+        bad, worst = compare(
+            "delayed_logistic_attractor_tile",
+            [float(v) for v in np.asarray(delayed_native).ravel()],
+            out[4:],
+            0.0,
+        )
+        print(
+            f"delayed_logistic_attractor_tile: {DELAYED_N_D} D values x "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: delayed_logistic_attractor_tile differs")
+            failed = True
+        elif not self_check(
+            "delayed_logistic_attractor_tile",
+            [float(v) for v in np.asarray(delayed_native).ravel()],
+            out[4:],
+            0.0,
+            1.0,
+        ):
+            print("FAIL: delayed_logistic_attractor_tile self-check did not trip")
+            failed = True
+
+    # torus_doubling_attractor_tile: [kind, dim, n_transient, n_produced, samples...].
+    torus_native = torus_doubling_attractor_tile(
+        TORUS_KIND,
+        TORUS_A,
+        TORUS_D,
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array(TORUS_STATE, dtype=np.float64),
+    )
+    out = wasm["torus_doubling_attractor_tile"]
+    torus_expected_header = [float(TORUS_KIND), 4.0, float(MAP_TRANSIENT), float(MAP_PLOT)]
+    if not check_header("torus_doubling_attractor_tile", out[:4], torus_expected_header):
+        failed = True
+    else:
+        bad, worst = compare(
+            "torus_doubling_attractor_tile",
+            [float(v) for v in np.asarray(torus_native).ravel()],
+            out[4:],
+            0.0,
+        )
+        print(
+            f"torus_doubling_attractor_tile: map {TORUS_KIND}, "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: torus_doubling_attractor_tile differs")
+            failed = True
+        elif not self_check(
+            "torus_doubling_attractor_tile",
+            [float(v) for v in np.asarray(torus_native).ravel()],
+            out[4:],
+            0.0,
+            1.0,
+        ):
+            print("FAIL: torus_doubling_attractor_tile self-check did not trip")
             failed = True
 
     if failed:

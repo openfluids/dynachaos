@@ -13,6 +13,7 @@ pub mod embedding;
 pub mod entropy;
 mod fft;
 pub mod intermittency;
+pub mod maps;
 pub mod multifractal;
 pub mod permutation;
 pub mod recurrence;
@@ -33,6 +34,7 @@ pub use intermittency::{
     logistic_type_i_oracle, on_off_oracle, on_off_skew_logistic_oracle, pm_type_i_oracle,
     pm_type_ii_oracle, pm_type_iii_oracle,
 };
+pub use maps::{delayed_logistic_attractor_tile, torus_doubling_attractor_tile};
 pub use multifractal::{MultifractalMoments, multifractal_moments};
 pub use permutation::ordinal_distribution;
 pub use recurrence::{count_line_lengths, diagonal_lines, vertical_lines};

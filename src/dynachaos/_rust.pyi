@@ -121,3 +121,19 @@ def logistic_type_i_oracle(
     x0: float,
     r: float,
 ) -> npt.NDArray[np.float64]: ...
+
+def delayed_logistic_attractor_tile(
+    A: float,
+    d_values: npt.NDArray[np.float64],
+    n_transient: int,
+    n_plot: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def torus_doubling_attractor_tile(
+    map_kind: int,
+    A: float,
+    D: float,
+    n_transient: int,
+    n_plot: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...

@@ -10,10 +10,14 @@
 //!
 //! The kernels themselves live in `dynachaos-core` and are the same code the
 //! published figures were computed with. This crate only converts and guards.
-//! Seven exports: `rotation_number_tile` for the picture,
+//! Fourteen exports: `rotation_number_tile` for the picture,
 //! `rotation_number_point` for the quoted readout, `zero_one_k` for the
-//! 0-1 test for chaos, and `correlation_counts`, `apen_counts`,
-//! `fuzzy_entropy_sum` and `ordinal_distribution` for the diagnostics panel.
+//! 0-1 test for chaos, `correlation_counts`, `apen_counts`,
+//! `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`,
+//! `vertical_lines`, `multifractal_moments`, `ami_histogram` and
+//! `select_dimension_cao` for the diagnostics panel, and
+//! `delayed_logistic_attractor_tile` and `torus_doubling_attractor_tile`
+//! for the map-attractor live figures.
 
 use wasm_bindgen::prelude::*;
 
@@ -99,6 +103,27 @@ const LINES_HEADER: usize = 3;
 const MULTIFRACTAL_HEADER: usize = 4;
 /// Number of leading `f64` values that describe an `ami_histogram` result.
 const AMI_HEADER: usize = 3;
+/// Largest D list `delayed_logistic_attractor_tile` may be asked to sweep.
+const MAX_MAP_D_LIST: usize = 64;
+/// Largest recorded run a map-attractor tile may be asked for, in samples.
+const MAX_MAP_PLOT: usize = 4096;
+/// Largest magnitude a map-attractor initial-state component may carry.
+const MAP_STATE_ABS: f64 = 4.0;
+/// Smallest delayed-logistic D the browser may ask for.
+///
+/// The paper sweeps D over [1.4, 3.5] for the attractor animation
+/// (`src/dynachaos/maps/delayed_logistic.py:461`).
+const DELAYED_D_MIN: f64 = 1.4;
+/// Largest delayed-logistic D the browser may ask for.
+const DELAYED_D_MAX: f64 = 3.5;
+/// Smallest torus-doubling D the browser may ask for.
+///
+/// The paper sweeps map I over [1.9, 2.25] and map IV over [1.48, 1.53]
+/// (`src/dynachaos/maps/torus_doubling.py:388,420`); the union is the
+/// documented range.
+const TORUS_D_MIN: f64 = 1.48;
+/// Largest torus-doubling D the browser may ask for.
+const TORUS_D_MAX: f64 = 2.25;
 
 /// Rotation numbers of the sine circle map over a tile of the (Omega, K) plane.
 ///
@@ -956,6 +981,173 @@ pub fn select_dimension_cao(
         dim as f64,
     ]
 }
+/// Delayed-logistic attractor tile: one `(x, y)` trajectory per D value.
+///
+/// This is the map `dynachaos.maps.delayed_logistic` iterates
+/// (`delayed_logistic`, `src/dynachaos/maps/delayed_logistic.py:82`):
+/// `x' = A * x + (1 - A) * (1 - D * y * y)`, `y' = x`. The export sweeps `n_D`
+/// evenly spaced D values from `d_min` to `d_max` and, for each, iterates
+/// `n_transient` steps from `state0` then records `n_plot` states.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_D * n_plot * 2` values:
+///
+/// - `[0]` = `n_D` actually used, after clamping.
+/// - `[1]` = `n_plot` actually used, after clamping and the step budget.
+/// - `[2]` = `n_transient` actually used.
+/// - `[3]` = the state dimension, always 2.
+/// - `[4 ..]` = the samples, D-major: `n_D` blocks of `n_plot` `(x, y)`
+///   pairs each.
+///
+/// A D whose orbit diverges (any `|state| > 1e10`) yields a block of `NaN`
+/// pairs, matching the `None` the Python pipeline stores for that D. Read the
+/// header rather than assuming the values you passed were honoured. A kernel
+/// error — impossible after the clamps below — returns an empty array,
+/// never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to 0.3.
+/// - `d_min`, `d_max`: clamped to `[1.4, 3.5]`, the range the paper sweeps;
+///   non-finite values fall back to the full range.
+/// - `n_D`: clamped to `[1, 64]`; `n_transient` to `[0, 20000]`; `n_plot` to
+///   `[1, 4096]`, reduced further to respect the step budget.
+/// - `state0`: the first two entries are used; a missing or non-finite
+///   component falls back to 0.5, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn delayed_logistic_attractor_tile(
+    a: f64,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    n_transient: usize,
+    n_plot: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let a = finite_or(a, 0.3).clamp(0.0, 1.0);
+    let d_min = finite_or(d_min, DELAYED_D_MIN).clamp(DELAYED_D_MIN, DELAYED_D_MAX);
+    let d_max = finite_or(d_max, DELAYED_D_MAX).clamp(DELAYED_D_MIN, DELAYED_D_MAX);
+    let n_d = n_d.clamp(1, MAX_MAP_D_LIST);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_plot = n_plot.clamp(1, MAX_MAP_PLOT);
+    let n_plot = fit_step_budget(n_d, 1, n_transient, n_plot);
+    let start = map_state::<2>(state0);
+
+    // Same spacing the kernel list fixes: d_min + (d_max - d_min) * k / (n - 1).
+    let d_values: Vec<f64> = (0..n_d)
+        .map(|k| d_min + (d_max - d_min) * (k as f64) / ((n_d - 1).max(1) as f64))
+        .collect();
+
+    // The kernel only fails on arguments this function has already ruled out,
+    // so an error here would be a bug in the clamping above. Report it as an
+    // empty tile rather than trapping and killing the worker.
+    let Ok(samples) =
+        dynachaos_core::delayed_logistic_attractor_tile(a, &d_values, n_transient, n_plot, &start)
+    else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(n_d as f64);
+    out.push(n_plot as f64);
+    out.push(n_transient as f64);
+    out.push(2.0);
+    out.extend_from_slice(&samples);
+    out
+}
+
+/// Torus-doubling attractor tile: one trajectory of map I or map IV.
+///
+/// These are the maps `dynachaos.maps.torus_doubling` iterates
+/// (`src/dynachaos/maps/torus_doubling.py:46,63`): with
+/// `L_D(u) = 1 - D * u * u`, map I (`map_kind` 1) steps `(X, Y, Z)` to
+/// `(A * X + (1 - A) * L_D(Y), Z, X)` and map IV (`map_kind` 4) steps
+/// `(X, Y, Z, W)` to `(A * X + (1 - A) * L_D(Y), Z, A * Z + (1 - A) * L_D(W), X)`.
+/// The export iterates `n_transient` steps from `state0`, then records up to
+/// `n_plot` states.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_produced * dim` values:
+///
+/// - `[0]` = `map_kind` actually used, after snapping to `{1, 4}`.
+/// - `[1]` = the state dimension: 3 for map I, 4 for map IV.
+/// - `[2]` = `n_transient` actually used.
+/// - `[3]` = `n_produced`, the number of samples actually recorded.
+/// - `[4 ..]` = the samples, `dim` values each, in iteration order.
+///
+/// Divergence (any `|state| > 1e10`) stops the record and returns the samples
+/// produced so far — possibly zero when the transient itself diverged —
+/// exactly as `iterate_map` does in Python. Read the header rather than
+/// assuming `n_plot` samples came back. A kernel error — impossible after
+/// the clamps below — returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `map_kind`: snapped to the nearer of `{1, 4}`: 2 and below is map I,
+///   3 and above is map IV.
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to 0.4.
+/// - `d`: clamped to `[1.48, 2.25]`, the union of the paper's map-I and
+///   map-IV sweeps; a non-finite value falls back to 1.9.
+/// - `n_transient`: clamped to `[0, 20000]`; `n_plot` to `[1, 4096]`,
+///   reduced further to respect the step budget.
+/// - `state0`: the first `dim` entries are used; a missing or non-finite
+///   component falls back to 0.5, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn torus_doubling_attractor_tile(
+    map_kind: usize,
+    a: f64,
+    d: f64,
+    n_transient: usize,
+    n_plot: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let map_kind = if map_kind <= 2 { 1 } else { 4 };
+    let dim = if map_kind == 1 { 3 } else { 4 };
+    let a = finite_or(a, 0.4).clamp(0.0, 1.0);
+    let d = finite_or(d, 1.9).clamp(TORUS_D_MIN, TORUS_D_MAX);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_plot = n_plot.clamp(1, MAX_MAP_PLOT);
+    let n_plot = fit_step_budget(1, 1, n_transient, n_plot);
+
+    // The kernel only fails on arguments this function has already ruled out,
+    // so an error here would be a bug in the clamping above. Report it as an
+    // empty tile rather than trapping and killing the worker.
+    let samples = if map_kind == 1 {
+        let start = map_state::<3>(state0);
+        dynachaos_core::torus_doubling_attractor_tile(1, a, d, n_transient, n_plot, &start)
+    } else {
+        let start = map_state::<4>(state0);
+        dynachaos_core::torus_doubling_attractor_tile(4, a, d, n_transient, n_plot, &start)
+    };
+    let Ok(samples) = samples else {
+        return Vec::new();
+    };
+
+    let n_produced = samples.len() / dim;
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(map_kind as f64);
+    out.push(dim as f64);
+    out.push(n_transient as f64);
+    out.push(n_produced as f64);
+    out.extend_from_slice(&samples);
+    out
+}
+
+/// Build a clamped `DIM`-component map initial state.
+///
+/// A missing or non-finite component falls back to 0.5, then every component
+/// clamps to `[-MAP_STATE_ABS, MAP_STATE_ABS]`.
+fn map_state<const DIM: usize>(state0: &[f64]) -> [f64; DIM] {
+    let mut start = [0.5; DIM];
+    for (slot, &v) in start.iter_mut().zip(state0.iter()) {
+        *slot = finite_or(v, 0.5).clamp(-MAP_STATE_ABS, MAP_STATE_ABS);
+    }
+    start
+}
 
 /// Reduce `n_pts` until `pairs x dim` fits the diagnostics pair-term budget.
 ///
@@ -1764,5 +1956,163 @@ mod tests {
     #[test]
     fn cao_unusable_requests_return_an_empty_result() {
         assert!(select_dimension_cao(&[], 0.95, 1.05, 0.02, 3, 1, 2, f64::NAN).is_empty());
+    }
+
+    #[test]
+    fn delayed_header_reports_the_values_actually_used() {
+        let out = delayed_logistic_attractor_tile(0.3, 1.55, 2.16, 3, 200, 64, &[0.4, 0.35]);
+        assert_eq!(out[0], 3.0);
+        assert_eq!(out[1], 64.0);
+        assert_eq!(out[2], 200.0);
+        assert_eq!(out[3], 2.0);
+        assert_eq!(out.len(), HEADER + 3 * 64 * 2);
+    }
+
+    #[test]
+    fn delayed_counts_are_clamped_not_refused() {
+        let out = delayed_logistic_attractor_tile(
+            0.3,
+            1.55,
+            2.16,
+            MAX_MAP_D_LIST + 10,
+            MAX_TRANSIENT + 10_000,
+            MAX_MAP_PLOT + 10,
+            &[0.4, 0.35],
+        );
+        assert_eq!(out[0], MAX_MAP_D_LIST as f64);
+        assert_eq!(out[1], MAX_MAP_PLOT as f64);
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        assert_eq!(out.len(), HEADER + MAX_MAP_D_LIST * MAX_MAP_PLOT * 2);
+    }
+
+    #[test]
+    fn delayed_a_is_clamped_to_the_paper_range() {
+        // A = -2 clamps to 0, so x' = 1 - D * y * y and y' = x. With
+        // n_transient = 0 the first sample is (1 - d * y0^2, x0); d_min = 0
+        // clamps to DELAYED_D_MIN = 1.4.
+        let out = delayed_logistic_attractor_tile(-2.0, 0.0, 0.0, 1, 0, 1, &[0.4, 0.35]);
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 1.0);
+        let expected_x = 1.0 - DELAYED_D_MIN * 0.35 * 0.35;
+        assert_eq!(out[HEADER], expected_x);
+        assert_eq!(out[HEADER + 1], 0.4);
+    }
+
+    #[test]
+    fn delayed_d_endpoints_are_clamped_to_the_paper_range() {
+        // d_max = 99 clamps to DELAYED_D_MAX = 3.5. With no transient and
+        // two D values, the second block exposes the clamped endpoint directly.
+        let out = delayed_logistic_attractor_tile(0.3, 1.4, 99.0, 2, 0, 1, &[0.4, 0.35]);
+        let expected_x = 0.3 * 0.4 + (1.0 - 0.3) * (1.0 - DELAYED_D_MAX * 0.35 * 0.35);
+        assert_eq!(out.len(), HEADER + 4);
+        assert_eq!(out[HEADER + 2], expected_x);
+        assert_eq!(out[HEADER + 3], 0.4);
+    }
+
+    #[test]
+    fn delayed_state_is_clamped_and_padded() {
+        // Missing components fall back to 0.5; oversized ones clamp to 4.
+        let padded = delayed_logistic_attractor_tile(0.3, 1.55, 1.55, 1, 20, 8, &[]);
+        let default_state = delayed_logistic_attractor_tile(0.3, 1.55, 1.55, 1, 20, 8, &[0.5, 0.5]);
+        assert_eq!(padded, default_state);
+        let clamped = delayed_logistic_attractor_tile(0.3, 1.55, 1.55, 1, 0, 1, &[99.0, -99.0]);
+        let at_cap = delayed_logistic_attractor_tile(0.3, 1.55, 1.55, 1, 0, 1, &[4.0, -4.0]);
+        assert_eq!(clamped, at_cap);
+
+        let nan_state = delayed_logistic_attractor_tile(0.3, 1.55, 1.55, 1, 20, 8, &[f64::NAN]);
+        assert_eq!(nan_state, default_state);
+    }
+
+    #[test]
+    fn delayed_divergence_marks_one_block_nan() {
+        // D = 3.0 is inside the clamped range and diverges; the first block
+        // stays finite, the second is all NaN.
+        let out = delayed_logistic_attractor_tile(0.3, 1.55, 3.0, 2, 2000, 8, &[0.4, 0.35]);
+        assert_eq!(out.len(), HEADER + 2 * 8 * 2);
+        assert!(out[HEADER..HEADER + 16].iter().all(|v| v.is_finite()));
+        assert!(out[HEADER + 16..].iter().all(|v| v.is_nan()));
+    }
+
+    #[test]
+    fn torus_header_reports_the_values_actually_used() {
+        let out = torus_doubling_attractor_tile(1, 0.4, 2.19, 200, 64, &[0.5, 0.5, 0.5]);
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 3.0);
+        assert_eq!(out[2], 200.0);
+        assert_eq!(out[3], 64.0);
+        assert_eq!(out.len(), HEADER + 64 * 3);
+    }
+
+    #[test]
+    fn torus_map_kind_snaps_to_one_or_four() {
+        for (kind, dim) in [(0usize, 3.0), (2, 3.0), (3, 4.0), (usize::MAX, 4.0)] {
+            let state = [0.5, 0.45, 0.52, 0.48];
+            let out = torus_doubling_attractor_tile(kind, 0.4, 2.19, 10, 4, &state);
+            assert_eq!(out[0], if dim == 3.0 { 1.0 } else { 4.0 });
+            assert_eq!(out[1], dim);
+        }
+    }
+
+    #[test]
+    fn torus_counts_are_clamped_not_refused() {
+        let out = torus_doubling_attractor_tile(
+            1,
+            0.4,
+            2.19,
+            MAX_TRANSIENT + 10_000,
+            MAX_MAP_PLOT + 10,
+            &[0.5, 0.5, 0.5],
+        );
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        assert!(out[3] <= MAX_MAP_PLOT as f64);
+        // n_plot = 0 clamps up to 1, so a bounded orbit still yields a sample.
+        let out = torus_doubling_attractor_tile(1, 0.4, 2.19, 10, 0, &[0.5, 0.5, 0.5]);
+        assert_eq!(out[3], 1.0);
+        assert_eq!(out.len(), HEADER + 3);
+    }
+
+    #[test]
+    fn torus_a_and_d_are_clamped_to_the_paper_ranges() {
+        // A = -2 clamps to 0, so X' = L_D(Y) and Y' = Z; with n_transient = 0
+        // the first sample is (1 - d * y0^2, z0, x0). d = 99 clamps to
+        // TORUS_D_MAX = 2.25.
+        let out = torus_doubling_attractor_tile(1, -2.0, 99.0, 0, 1, &[0.4, 0.35, 0.3]);
+        assert_eq!(out[3], 1.0);
+        let expected_x = 1.0 - TORUS_D_MAX * 0.35 * 0.35;
+        assert_eq!(out[HEADER], expected_x);
+        assert_eq!(out[HEADER + 1], 0.3);
+        assert_eq!(out[HEADER + 2], 0.4);
+    }
+
+    #[test]
+    fn torus_state_is_clamped_and_padded() {
+        let padded = torus_doubling_attractor_tile(1, 0.4, 2.19, 20, 8, &[]);
+        let default_state = torus_doubling_attractor_tile(1, 0.4, 2.19, 20, 8, &[0.5, 0.5, 0.5]);
+        assert_eq!(padded, default_state);
+
+        let clamped = torus_doubling_attractor_tile(1, 0.4, 2.19, 0, 1, &[99.0, -99.0, 0.5]);
+        let at_cap = torus_doubling_attractor_tile(1, 0.4, 2.19, 0, 1, &[4.0, -4.0, 0.5]);
+        assert_eq!(clamped, at_cap);
+
+        // Extra entries beyond the map dimension are ignored.
+        let long = torus_doubling_attractor_tile(1, 0.4, 2.19, 20, 8, &[0.5, 0.5, 0.5, 99.0]);
+        assert_eq!(long, default_state);
+    }
+
+    #[test]
+    fn torus_divergence_returns_partial_samples() {
+        // Map IV at D = 2.12 escapes 1212 steps into the record after a
+        // 2000-step transient, so the header reports 1212 samples, not 4096.
+        let out = torus_doubling_attractor_tile(
+            4,
+            0.3,
+            2.12,
+            2000,
+            MAX_MAP_PLOT,
+            &[0.5, 0.45, 0.52, 0.48],
+        );
+        assert_eq!(out[3], 1212.0);
+        assert_eq!(out.len(), HEADER + 1212 * 4);
+        assert!(out[HEADER..].iter().all(|v| v.is_finite()));
     }
 }
