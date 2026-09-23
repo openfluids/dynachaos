@@ -1,0 +1,143 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  clampValue,
+  debounce,
+  parseHash,
+  serializeHash,
+  writeParamsIntoHash,
+} from "../../site-src/live/params.js";
+import { createParamWiring, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
+
+const SPECS = [
+  { name: "D", min: 0, max: 0.5, step: 0.005, default: 0.25 },
+  { name: "n", min: 1, max: 9, step: 1, default: 4 },
+];
+
+// A manual timer pair: scheduled callbacks queue up and run only when the
+// test flushes them, so debounce behaviour is checked without real time.
+function manualTimers() {
+  const queue = [];
+  return {
+    queue,
+    set: (fn) => {
+      queue.push(fn);
+      return queue.length - 1;
+    },
+    clear: (id) => {
+      queue[id] = null;
+    },
+    flush() {
+      const fns = queue.splice(0);
+      for (const fn of fns) if (fn) fn();
+    },
+  };
+}
+
+test("clampValue clamps to the spec and falls back to the default", () => {
+  const spec = SPECS[0];
+  assert.equal(clampValue(0.3, spec), 0.3);
+  assert.equal(clampValue(-1, spec), 0);
+  assert.equal(clampValue(2, spec), 0.5);
+  assert.equal(clampValue(NaN, spec), 0.25);
+  assert.equal(clampValue("not a number", spec), 0.25);
+  assert.equal(clampValue(Infinity, spec), 0.25);
+});
+
+test("hash serialise and parse round-trip the parameter state", () => {
+  const state = { D: 0.4, n: 7 };
+  const frag = serializeHash("fig:devils_staircase", state);
+  assert.equal(frag, "fig:devils_staircase.D=0.4&fig:devils_staircase.n=7");
+  const parsed = parseHash(`#sec:circle_map&${frag}`, SPECS, "fig:devils_staircase");
+  assert.deepEqual(parsed, { D: 0.4, n: 7 });
+});
+
+test("parseHash clamps out-of-range values and skips junk", () => {
+  const parsed = parseHash(
+    "#sec:x&fig:devils_staircase.D=9&fig:devils_staircase.n=oops&other=1",
+    SPECS,
+    "fig:devils_staircase",
+  );
+  assert.deepEqual(parsed, { D: 0.5 });
+  assert.deepEqual(parseHash("", SPECS, "fig:devils_staircase"), {});
+  assert.deepEqual(parseHash("#sec:x", SPECS, "fig:devils_staircase"), {});
+});
+
+test("the prefixed key wins over a bare key", () => {
+  const parsed = parseHash("#D=0.1&fig:devils_staircase.D=0.4", SPECS, "fig:devils_staircase");
+  assert.equal(parsed.D, 0.4);
+});
+
+test("writeParamsIntoHash keeps the section id and replaces only this figure's tokens", () => {
+  const hash = "#sec:circle_map&fig:devils_staircase.D=0.9&fig:other.D=0.1";
+  const next = writeParamsIntoHash(hash, "fig:devils_staircase", { D: 0.4 });
+  assert.equal(next, "sec:circle_map&fig:other.D=0.1&fig:devils_staircase.D=0.4");
+  // Round-trip: parsing the written hash returns the state that was written.
+  const parsed = parseHash(`#${next}`, SPECS, "fig:devils_staircase");
+  assert.equal(parsed.D, 0.4);
+});
+
+test("debounce collapses a burst into one trailing call", () => {
+  const timers = manualTimers();
+  let calls = 0;
+  const fire = debounce(() => {
+    calls += 1;
+  }, 150, timers);
+  fire();
+  fire();
+  fire();
+  assert.equal(timers.queue.length, 3);
+  timers.flush();
+  assert.equal(calls, 1);
+});
+
+test("a slider burst recomputes once through the wiring, not once per input", () => {
+  // This drives createParamWiring, the code the page's inputs call — a
+  // debounce dropped there fires apply per input event, which this catches.
+  const timers = manualTimers();
+  let applies = 0;
+  let hashes = 0;
+  const echoes = [];
+  const wiring = createParamWiring({
+    specs: LIVE_STAIRCASE.paramSpecs,
+    debounceMs: 150,
+    echo: (name, v) => echoes.push([name, v]),
+    apply: () => {
+      applies += 1;
+    },
+    writeHash: () => {
+      hashes += 1;
+    },
+    timers,
+  });
+  for (const v of [0.3, 0.35, 0.4, 0.45]) wiring.onInput("D", v);
+  timers.flush();
+  assert.equal(applies, 1);
+  assert.equal(hashes, 1);
+  assert.equal(wiring.state.D, 0.45);
+  assert.deepEqual(echoes, [
+    ["D", 0.3],
+    ["D", 0.35],
+    ["D", 0.4],
+    ["D", 0.45],
+  ]);
+});
+
+test("setParams applies a hash state immediately and clamps it", () => {
+  let applies = 0;
+  const echoes = [];
+  const wiring = createParamWiring({
+    specs: LIVE_STAIRCASE.paramSpecs,
+    debounceMs: 150,
+    echo: (name, v) => echoes.push([name, v]),
+    apply: () => {
+      applies += 1;
+    },
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  wiring.setParams({ D: 0.9 });
+  assert.equal(wiring.state.D, 0.5);
+  assert.equal(applies, 1);
+  assert.deepEqual(echoes, [["D", 0.5]]);
+});

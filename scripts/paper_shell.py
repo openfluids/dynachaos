@@ -347,6 +347,13 @@ details.fig-code code.fig-snippet{font-family:var(--mono);font-size:0.72rem;line
 canvas.plot{width:100%;display:block;touch-action:pan-y;}
 canvas.plot.live{touch-action:none;}
 .hint{margin:0;padding:0 0.8rem 0.6rem;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;color:var(--ink-low);}
+.live-params{display:flex;flex-wrap:wrap;gap:0.4rem 1.2rem;padding:0.2rem 0.8rem 0.4rem;
+  font-family:var(--mono);font-size:0.66rem;color:var(--ink-low);}
+.live-param{display:flex;align-items:center;gap:0.45rem;}
+.live-param-name{letter-spacing:0.08em;}
+.live-param input[type="range"]{width:9rem;accent-color:var(--chaotic);}
+.live-param input[type="number"]{width:4.2rem;font:inherit;color:var(--ink);
+  background:var(--sunken);border:1px solid var(--rule);border-radius:4px;padding:0.1rem 0.3rem;}
 /* research-arc overview: a timeline, not a table */
 figure.arc{background:var(--raised);}
 .arc-track{list-style:none;margin:0;padding:1.4rem 1rem 1.2rem;display:grid;
@@ -1351,13 +1358,21 @@ function Plot(canvas,panel,meta){
       lines.push((bestS.name||meta.ylabel||"y")+" = "+fmt(bestS.y[bestI]));
     }else{
       lines.push((meta.xlabel||"x")+" = "+fmt(xv));
-      for(const s of panel.traces){
-        let b=0,d=Infinity;
-        for(let i=0;i<s.x.length;i++){
-          if(!finite(s.x[i])||!finite(s.y[i]))continue;
-          const q=Math.abs(s.x[i]-xv);if(q<d){d=q;b=i;}
+      if(live&&live.sample){
+        // The 1-D live figure quotes the point kernel at (D, x), the same
+        // value its e2e test recomputes; the tile-derived curve is only the
+        // fallback while the module loads.
+        const rho=live.sample(xv);
+        lines.push((meta.ylabel||"y")+" = "+(rho===null?"…":fmt(rho)));
+      }else{
+        for(const s of panel.traces){
+          let b=0,d=Infinity;
+          for(let i=0;i<s.x.length;i++){
+            if(!finite(s.x[i])||!finite(s.y[i]))continue;
+            const q=Math.abs(s.x[i]-xv);if(q<d){d=q;b=i;}
+          }
+          lines.push((s.name||"y")+" = "+(d===Infinity?"—":fmt(s.y[b])));
         }
-        lines.push((s.name||"y")+" = "+(d===Infinity?"—":fmt(s.y[b])));
       }
     }
     tip.textContent=lines.join("\n");tip.classList.add("on");
@@ -1532,7 +1547,7 @@ function Plot(canvas,panel,meta){
   // readout the pointer uses, +/- (or Up/Down) zoom around it, 0 or Escape
   // resets -- the same domain reset as dblclick.
   function xValues(){
-    if(heat&&live){
+    if(live){
       if(!dom) return [];
       const n=32;
       const xs=new Array(n);
@@ -1639,15 +1654,20 @@ function liveModuleUrl(name){
 
 async function mountLive(fig){
   const body=fig.querySelector(".fig-body");
-  const [poolMod, raster, point, liveFigure]=await Promise.all([
+  const [poolMod, raster, point, liveFigure, paramsMod]=await Promise.all([
     import(liveModuleUrl("pool.js")),
     import(liveModuleUrl("raster.js")),
     import(liveModuleUrl("point.js")),
     import(liveModuleUrl("live-figure.js")),
+    import(liveModuleUrl("params.js")),
   ]);
   const fc=fig.querySelector("figcaption");
   let capText=fc?fc.textContent.trim():"";
   capText=capText.replace(/^Figure\s*\d+\.\s*/i,"");
+  if(fig.dataset.live==="devils_staircase"){
+    await mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMod,capText});
+    return;
+  }
   const title="Rotation number over the circle-map parameter plane";
   // Five levels keep the finest tile small. A zoom then waits on less in-flight work.
   const liveLevels=5;
@@ -1727,6 +1747,143 @@ async function mountLive(fig){
     fig.dataset.state="live";
   }catch(err){
     // Unmount the live figure if this setup throws. Then the caller reports the error.
+    unmountPlot(fig);
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
+    throw err;
+  }
+}
+
+/* The devil's staircase: rho(A) live at a reader-chosen D, above the PNG.
+   The PNG's lower panel (the Lyapunov exponent) has no wasm kernel yet, so
+   the image stays and a note says which part is live. This function only
+   builds DOM and hands collaborators to live-figure.js; the decisions
+   (viewport mapping, trace, debounce, hash) live there for node tests. */
+async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMod,capText}){
+  const cfg=liveFigure.LIVE_STAIRCASE;
+  const title="Rotation number \u03c1(A) at drive frequency D";
+  try{
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    c.setAttribute("aria-label",capText+" — "+title);
+    const h=document.createElement("p");h.className="plot-title";
+    h.textContent=title;w.appendChild(h);
+    w.appendChild(c);
+    const ctrls=document.createElement("div");ctrls.className="live-params";
+    const inputs={};
+    for(const spec of cfg.paramSpecs){
+      const lab=document.createElement("label");lab.className="live-param";
+      const name=document.createElement("span");name.className="live-param-name";
+      name.textContent=spec.name;
+      const range=document.createElement("input");
+      range.type="range";range.min=spec.min;range.max=spec.max;range.step=spec.step;
+      range.value=spec.default;range.setAttribute("aria-label",spec.label);
+      const num=document.createElement("input");
+      num.type="number";num.min=spec.min;num.max=spec.max;num.step=spec.step;
+      num.value=spec.default;num.setAttribute("aria-label",spec.label+" (number)");
+      lab.appendChild(name);lab.appendChild(range);lab.appendChild(num);
+      ctrls.appendChild(lab);
+      inputs[spec.name]={range,num};
+    }
+    w.appendChild(ctrls);
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · computed live in this browser";
+    w.appendChild(hint);
+    body.insertBefore(w,body.firstChild);
+    const note=document.createElement("p");note.className="hint";
+    note.textContent="the image below is the published figure — its lower panel (Lyapunov exponent) is not live; only the \u03c1(A) curve above is computed in your browser";
+    body.insertBefore(note,w.nextSibling);
+    const store=liveFigure.createStore(cfg);
+    let pool=null,plot=null;
+    point.ensureLoaded().catch(()=>{});
+    const trace=store.trace;
+    const panel={title,traces:[{name:"\u03c1",x:trace.x,y:trace.y,color:"--ink"}]};
+    const live={
+      base:{x0:0,x1:0.25,y0:0,y1:1},
+      tiles:store.tiles,
+      generation:()=>store.generation,
+      onView:null
+    };
+    plot=Plot(c,panel,{
+      kind:"line",
+      live,
+      marks:[{axis:"x",value:1/(2*Math.PI),label:"K_c = 1/2\u03c0"}],
+      xlabel:"Nonlinearity A",
+      ylabel:"Rotation number \u03c1",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    const dpr=Math.min(devicePixelRatio||1,2);
+    const tileCells=raster.tileCellsFor((c.clientWidth||1)*dpr,(c.clientHeight||1)*dpr,{
+      levels:5,nIter:cfg.nIter,nTransient:cfg.nTransient
+    });
+    const view=liveFigure.createStaircaseView({
+      store,
+      getPool:()=>pool,
+      getPlot:()=>plot,
+      getD:()=>wiring.state.D
+    });
+    live.onView=view.onView;
+    const fitY=liveFigure.createLineYFit({store,getPlot:()=>plot});
+    const writeHash=()=>{
+      const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,wiring.state);
+      history.replaceState(null,"",location.pathname+location.search+(frag?"#"+frag:""));
+    };
+    const wiring=liveFigure.createParamWiring({
+      specs:cfg.paramSpecs,
+      debounceMs:150,
+      echo:(name,v)=>{const f=inputs[name];if(f){f.range.value=v;f.num.value=v;}},
+      apply:view.applyD,
+      writeHash
+    });
+    for(const spec of cfg.paramSpecs){
+      const f=inputs[spec.name];
+      f.range.addEventListener("input",()=>wiring.onInput(spec.name,Number(f.range.value)));
+      f.num.addEventListener("change",()=>wiring.onInput(spec.name,Number(f.num.value)));
+    }
+    pool=poolMod.createPool({
+      workerUrl:new URL("live/tile-worker.js", document.baseURI),
+      scheduler:liveFigure.createSchedulerOptions({levels:5,tileCells,params:cfg,lockOmega:true}),
+      onCapacityLost(){
+        hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
+      },
+      onPaint:liveFigure.createPaintHandler({store,raster,getPool:()=>pool,getPlot:()=>plot,onStore:(s)=>{
+        // Fold the new tile into the polyline in place: panel.traces[0]
+        // holds these two arrays, so replacing them would orphan the plot.
+        const t=liveFigure.tilesToTrace(s.tiles,s.generation);
+        s.trace.x.splice(0,s.trace.x.length,...t.x);
+        s.trace.y.splice(0,s.trace.y.length,...t.y);
+        fitY();
+      }})
+    });
+    fig._pool=pool;
+    const d0=plot.getDomain();
+    pool.setViewport({omegaMin:wiring.state.D,omegaMax:wiring.state.D,kMin:d0.x0,kMax:d0.x1});
+    store.generation=pool.getState().generation;
+    const readout=liveFigure.createStaircaseReadout({store,point,raster,getD:()=>wiring.state.D});
+    live.sample=readout;
+    fig._live={
+      sample:readout,
+      rasterSample:(a)=>raster.sampleAt(store.tiles,store.generation,wiring.state.D,a),
+      pointReady:()=>point.isReady(),
+      setParams:(values)=>{wiring.setParams(values);},
+      setView(v){
+        const cur=plot.getDomain();
+        plot.setDomain({x0:v.x0!==undefined?v.x0:v.kMin,x1:v.x1!==undefined?v.x1:v.kMax,y0:cur.y0,y1:cur.y1});
+      },
+      stats:()=>({
+        generation:store.generation,
+        painted:store.painted,
+        points:trace.x.length,
+        workerCount:pool.workerCount,
+        liveWorkers:pool.liveWorkers,
+        nIter:store.nIter
+      })
+    };
+    fig.dataset.state="live";
+  }catch(err){
     unmountPlot(fig);
     const img=body.querySelector("img");
     if(img) img.style.display="";
@@ -1947,6 +2104,30 @@ document.querySelectorAll("figure").forEach(fig=>{
       syncBadge(fig);
     });
   });
+
+  // Live-figure parameters ride the hash (#section&fig:<id>.<name>=<value>),
+  // not the ?fig= search param: live figures carry no data-src, so the block
+  // above never sees them. Read the hash captured at parse time — the
+  // scroll-spy may already have rewritten it — then mount through the same
+  // interact path and push the parsed values in without the debounce.
+  (function(){
+    const frag=location.hash;
+    if(frag.indexOf("=")<0) return;
+    document.querySelectorAll("figure[data-live]").forEach(fig=>{
+      import(liveModuleUrl("params.js")).then(paramsMod=>
+        import(liveModuleUrl("live-figure.js")).then(liveFigure=>{
+          const cfg=liveFigure.LIVE_FIGURES[fig.dataset.live];
+          if(!cfg||!cfg.paramSpecs) return;
+          const values=paramsMod.parseHash(frag,cfg.paramSpecs,fig.id);
+          if(!Object.keys(values).length) return;
+          const mounted=fig.dataset.state==="live"?Promise.resolve():mountInteractive(fig);
+          mounted.then(()=>{
+            if(fig._live&&fig._live.setParams) fig._live.setParams(values);
+          });
+        })
+      ).catch(()=>{});
+    });
+  })();
 })();
 
 /* ---------------- lightbox + figure nav ---------------- */
@@ -2672,7 +2853,7 @@ document.querySelectorAll("figure").forEach(fig=>{
 
 /* ---------------- cross-references into folded back matter ---------------- */
 function revealTarget(){
-  const id=decodeURIComponent(location.hash.slice(1));
+  const id=decodeURIComponent(location.hash.slice(1)).split("&")[0];
   if(!id) return;
   const el=document.getElementById(id);
   if(!el) return;
@@ -2724,8 +2905,14 @@ const spy=new IntersectionObserver(es=>{
     if(id){
       clearTimeout(hashTimer);
       hashTimer=setTimeout(()=>{
-        if(location.hash.slice(1)!==id){
-          history.replaceState(null,"",location.pathname+location.search+"#"+id);
+        // Live-figure params share the hash as &key=value tokens; keep them
+        // when the spy rewrites the section id or a scroll would silently
+        // drop a shared view's parameters.
+        const cur=location.hash.slice(1);
+        const params=cur.split("&").filter(t=>t.indexOf("=")>=0).join("&");
+        const next=id+(params?"&"+params:"");
+        if(cur!==next){
+          history.replaceState(null,"",location.pathname+location.search+"#"+next);
         }
       },500);
     }

@@ -2,12 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   LIVE_ARNOLD,
+  LIVE_STAIRCASE,
   createPaintHandler,
   createRasterSample,
   createReadout,
   createSchedulerOptions,
+  createStaircaseReadout,
+  createStaircaseView,
   createStore,
   createViewHandler,
+  tilesToTrace,
 } from "../../site-src/live/live-figure.js";
 import {
   HEADER,
@@ -15,6 +19,7 @@ import {
   sampleAt,
   tileWorld,
 } from "../../site-src/live/raster.js";
+import { visibleTiles } from "../../site-src/live/scheduler.js";
 import { createPool } from "../../site-src/live/pool.js";
 
 const VIEWPORT = { omegaMin: 0, omegaMax: 1, kMin: 0, kMax: 0.3 };
@@ -368,5 +373,114 @@ test("one params object reaches both the readout and the scheduler options", () 
     nTransient: 200,
     nIter: 2000,
     theta0: 0.1,
+  });
+});
+
+test("lockOmega tiles fix Omega at the viewport value and sweep only K", () => {
+  // The staircase's tile request: Omega = D with nOmega = 1, K = A over the
+  // visible range. Swapping Omega and K in the request is caught here: the
+  // tile would carry the A range on the Omega axis instead.
+  const viewport = { omegaMin: 0.25, omegaMax: 0.25, kMin: 0, kMax: 0.25 };
+  const tiles = visibleTiles(viewport, { levels: 3, tileCells: 8, lockOmega: true });
+  // 1 + 2 + 4 tiles: the pyramid refines K only.
+  assert.equal(tiles.length, 7);
+  for (const t of tiles) {
+    assert.equal(t.omegaMin, 0.25);
+    assert.equal(t.omegaMax, 0.25);
+    assert.equal(t.nOmega, 1);
+    assert.ok(t.kMin >= 0 && t.kMax <= 0.25 && t.kMax > t.kMin);
+  }
+  const finest = tiles.filter((t) => t.level === 2);
+  assert.equal(finest.length, 4);
+  assert.equal(finest[0].kMin, 0);
+  assert.equal(finest[3].kMax, 0.25);
+  // A degenerate Omega range is still rejected without lockOmega.
+  assert.equal(visibleTiles(viewport, { levels: 3, tileCells: 8 }).length, 0);
+});
+
+test("the staircase view pushes (D, A range) and resets the store once", () => {
+  const store = createStore(LIVE_STAIRCASE);
+  store.generation = 1;
+  store.tiles.push({ id: "0:0:0" });
+  const seen = [];
+  let gen = 1;
+  const pool = {
+    setViewport: (v) => {
+      seen.push(v);
+      gen += 1;
+    },
+    getState: () => ({ generation: gen }),
+  };
+  let D = 0.25;
+  const dom = { x0: 0, x1: 0.25, y0: 0, y1: 1 };
+  const view = createStaircaseView({
+    store,
+    getPool: () => pool,
+    getPlot: () => ({ getDomain: () => dom, redraw: () => {} }),
+    getD: () => D,
+  });
+  view.onView({ x0: 0, x1: 0.25 });
+  assert.deepEqual(seen, [{ omegaMin: 0.25, omegaMax: 0.25, kMin: 0, kMax: 0.25 }]);
+  assert.equal(store.generation, 2);
+  assert.equal(store.tiles.length, 0);
+  // A y-only domain change must not recompute.
+  view.onView({ x0: 0, x1: 0.25 });
+  assert.equal(seen.length, 1);
+  // Moving D pushes the same A range at the new Omega.
+  D = 0.4;
+  view.applyD();
+  assert.deepEqual(seen[1], { omegaMin: 0.4, omegaMax: 0.4, kMin: 0, kMax: 0.25 });
+  assert.equal(store.generation, 3);
+});
+
+test("tilesToTrace folds 1-D tiles into a sorted polyline, finest level winning", () => {
+  const viewport = { omegaMin: 0.25, omegaMax: 0.25, kMin: 0, kMax: 0.25 };
+  const issued = visibleTiles(viewport, { levels: 2, tileCells: 4, lockOmega: true });
+  const tiles = issued.map((t) => {
+    const nK = t.nK;
+    const data = new Float64Array(HEADER + nK);
+    for (let iy = 0; iy < nK; iy++) {
+      const a = nK > 1 ? t.kMin + (iy * (t.kMax - t.kMin)) / (nK - 1) : t.kMin;
+      data[HEADER + iy] = a * 10 + t.level; // level-tagged value
+    }
+    return { ...t, generation: 1, header: [1, nK, 5000, 50000], data };
+  });
+  const trace = tilesToTrace(tiles, 1);
+  assert.equal(trace.x.length, trace.y.length);
+  assert.ok(trace.x.length > 4);
+  for (let i = 1; i < trace.x.length; i++) assert.ok(trace.x[i] > trace.x[i - 1]);
+  // A shared boundary coordinate keeps the finer tile's value (level 1).
+  const mid = trace.x.indexOf(0.125);
+  assert.ok(mid >= 0);
+  assert.equal(trace.y[mid], 0.125 * 10 + 1);
+  // Stale-generation tiles are ignored.
+  assert.equal(tilesToTrace(tiles, 2).x.length, 0);
+});
+
+test("the staircase readout samples (D, A) through the point kernel", () => {
+  const store = createStore(LIVE_STAIRCASE);
+  const calls = [];
+  const point = {
+    isReady: () => true,
+    sample: (...args) => {
+      calls.push(args);
+      return 0.2;
+    },
+  };
+  const raster = { sampleAt: () => 0.9 };
+  const readout = createStaircaseReadout({ store, point, raster, getD: () => 0.4 });
+  assert.equal(readout(0.12), 0.2);
+  assert.deepEqual(calls, [[0.4, 0.12, 5000, 50000, 0.1]]);
+});
+
+test("the staircase scheduler options carry lockOmega and the paper's counts", () => {
+  const opts = createSchedulerOptions({ levels: 5, tileCells: 64, params: LIVE_STAIRCASE, lockOmega: true });
+  assert.deepEqual(opts, {
+    levels: 5,
+    tileCells: 64,
+    nTransient: 5000,
+    nIter: 50000,
+    theta0: 0.1,
+    lockOmega: true,
   });
 });

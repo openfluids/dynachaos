@@ -108,6 +108,11 @@ jobs:
         # stays rare where the orbit is chaotic. The reasoning is in the
         # script's docstring; do not loosen it to make a red run pass.
         run: uv run python scripts/check_wasm_parity.py
+      - name: Check the live staircase against the published npz
+        # The devil's staircase panel recomputes in the browser at D = 0.25;
+        # this compares the wasm tile against the committed npz at the same A
+        # values, with the parity script's own thresholds.
+        run: uv run python scripts/check_wasm_staircase.py
       - name: Check the diagnostics exports against the native build
         # Counts must match exactly; the fuzzy-entropy sum has a stated
         # tolerance, justified in the script's docstring.
@@ -148,7 +153,7 @@ jobs:
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
         # Name each file. A bare directory made node skip one of the two files.
-        run: node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js
+        run: node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js tests/js/params.js
       - name: Run the live-figure end-to-end test
         # Node and Chrome are already on the runner image, so this needs no
         # setup-node step and no npm toolchain.

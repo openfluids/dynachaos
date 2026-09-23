@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 
 const SITE = resolve(process.argv[2] || "site");
 const F = "document.getElementById('fig:arnold_tongues')";
+const S = "document.getElementById('fig:devils_staircase')";
 const CHROME_CMDS = ["google-chrome", "google-chrome-stable"];
 const PAGE_READY_MS = 20_000;
 const FIGURE_MS = 20_000;
@@ -34,7 +35,7 @@ const DEADLINE_SUM_MS =
   6 * SAMPLE_MS +
   VIEW_MS +
   REDUCED_WAIT_MS;
-const WATCHDOG_MS = DEADLINE_SUM_MS + 90_000;
+const WATCHDOG_MS = DEADLINE_SUM_MS + 180_000;
 const WASM_RE = /dynachaos_wasm_bg\.wasm/;
 const TELEMETRY_EVENTS = ["paint", "drop", "error", "cancel"];
 const failures = [];
@@ -678,6 +679,153 @@ try {
     JSON.stringify({ degOmega, tip: await ev(`(${liveCanvasSel}) ? ${F}.querySelector(".readout").textContent : null`) }),
   );
 
+  // ---- devil's staircase: rho(A) live at a slider-chosen D ----
+  // The second live figure on the page: a 1-D curve (not a heatmap) whose
+  // tiles carry Omega = D with n_omega = 1 and K = A. The slider moves D,
+  // the hash carries it, and the readout must equal the point kernel at the
+  // same (D, A).
+  check(
+    "the staircase figure is marked live-capable",
+    await ev(`!!${S} && ${S}.dataset.live === "devils_staircase"`),
+    await ev(`${S} ? JSON.stringify(${S}.dataset) : "no figure"`),
+  );
+  await ev(`(${S}.querySelector(".act-interact").click(), true)`);
+  const stFirstPaint = await waitFor(
+    `!!${S}._live && ${S}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const stStats = await ev(`${S} && ${S}._live ? ${S}._live.stats() : null`);
+  check(
+    "the staircase's first tile is painted",
+    stFirstPaint && stStats && stStats.painted >= 1,
+    JSON.stringify(stStats),
+  );
+  const stRefined = await waitFor(
+    `!!${S}._live && ${S}._live.stats().points > 64`,
+    REFINE_MS,
+    150,
+  );
+  check(
+    "the staircase curve refines past the coarse tile",
+    Boolean(stFirstPaint && stRefined),
+    JSON.stringify(await ev(`${S} && ${S}._live ? ${S}._live.stats() : null`)),
+  );
+  check(
+    "the staircase has a D slider and a number field",
+    await ev(
+      `!!(${S} && ${S}.querySelector(".live-params input[type=range]") && ${S}.querySelector(".live-params input[type=number]"))`,
+    ),
+  );
+  check(
+    "the staircase note says the Lyapunov panel is not live",
+    await ev(
+      `!!(${S} && Array.from(${S}.querySelectorAll(".hint")).some(n => /not live/i.test(n.textContent)))`,
+    ),
+  );
+
+  // The readout at (D, A) must be the point kernel's value at that exact
+  // pair — the same demand the flagship's wired check makes.
+  await waitFor(`${S}._live && ${S}._live.pointReady && ${S}._live.pointReady()`, SAMPLE_MS);
+  const stWired = await ev(`(async () => {
+    const m = await import(new URL("live/point.js", document.baseURI).href);
+    const direct = m.sample(0.25, 0.12, 5000, 50000, 0.1);
+    return { ready: m.isReady(), direct, readout: ${S}._live.sample(0.12) };
+  })()`);
+  check(
+    "the staircase readout is the point kernel at (D, A)",
+    stWired != null && stWired.ready === true && stWired.direct !== null && stWired.readout === stWired.direct,
+    JSON.stringify(stWired),
+  );
+
+  // Focus the live canvas and step the keyboard cursor: the tip must show a
+  // finite A and a rho that matches the point kernel at that A.
+  const stFocused = await ev(`(() => {
+    const c = ${S} && ${S}.querySelector("canvas.plot.live");
+    if (!c) return false;
+    c.focus();
+    return document.activeElement === c;
+  })()`);
+  if (stFocused) {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowRight", code: "ArrowRight" });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowRight", code: "ArrowRight" });
+  }
+  const stTip = stFocused
+    ? await waitFor(
+        `(() => {
+          const tip = ${S} && ${S}.querySelector(".readout.on");
+          if (!tip) return false;
+          const lines = tip.textContent.split("\\n");
+          return lines.length >= 2 && lines.every(l => /=\\s*\\S+\\s*$/.test(l));
+        })()`,
+        SAMPLE_MS,
+      )
+    : false;
+  const stTipVals = stTip
+    ? await ev(`(() => {
+        const tip = ${S}.querySelector(".readout.on");
+        const lines = tip.textContent.split("\\n");
+        const num = l => { const m = l.match(/=\\s*(\\S+)\\s*$/); return m ? parseFloat(m[1]) : null; };
+        return { a: num(lines[0]), rho: num(lines[1]) };
+      })()`)
+    : null;
+  const stExpected =
+    stTipVals && Number.isFinite(stTipVals.a)
+      ? await ev(`(() => {
+          const m = ${S}._live;
+          return m ? m.sample(${stTipVals.a}) : null;
+        })()`)
+      : null;
+  check(
+    "the staircase tip reads the point value at the cursor's A",
+    Boolean(
+      stTipVals &&
+        Number.isFinite(stTipVals.a) &&
+        Number.isFinite(stTipVals.rho) &&
+        stExpected !== null &&
+        Math.abs(stTipVals.rho - stExpected) < 5e-3,
+    ),
+    JSON.stringify({ stTipVals, stExpected }),
+  );
+
+  // Move D: the debounced apply must bump the generation, repaint, and write
+  // the new value into the hash.
+  const stBefore = await ev(`${S} && ${S}._live ? ${S}._live.stats() : null`);
+  const hashBefore = await ev("location.hash");
+  await ev(`(() => {
+    const r = ${S}.querySelector(".live-params input[type=range]");
+    r.value = "0.4";
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  const stMoved = await waitFor(
+    `!!${S}._live && ${S}._live.stats().generation > ${stBefore ? stBefore.generation : -1} && ${S}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("D=0.4")`, 5_000);
+  const hashAfter = await ev("location.hash");
+  check(
+    "moving D repaints a new generation",
+    Boolean(stBefore && stMoved),
+    JSON.stringify({ before: stBefore, after: await ev(`${S}._live ? ${S}._live.stats() : null`) }),
+  );
+  check(
+    "moving D writes the parameter into the hash",
+    hashAfter !== hashBefore && hashAfter.includes("D=0.4"),
+    JSON.stringify({ hashBefore, hashAfter }),
+  );
+  const stNewD = await ev(`(async () => {
+    const m = await import(new URL("live/point.js", document.baseURI).href);
+    const direct = m.sample(0.4, 0.12, 5000, 50000, 0.1);
+    return { direct, readout: ${S}._live.sample(0.12) };
+  })()`);
+  check(
+    "after the move the readout samples at the new D",
+    stNewD != null && stNewD.direct !== null && stNewD.readout === stNewD.direct,
+    JSON.stringify(stNewD),
+  );
+
   const sEnd = await stats();
   check(
     "every worker is still alive",
@@ -749,6 +897,28 @@ try {
         jsonChart,
         state: await ev(`${F} && ${F}.dataset.state`),
       }),
+    );
+    // The staircase under reduced data: no slider, no live canvas, no wasm —
+    // the published PNG (both panels) is all the reader gets.
+    await ev(`(${S}.querySelector(".act-interact") && ${S}.querySelector(".act-interact").click(), true)`);
+    await sleep(REDUCED_WAIT_MS);
+    const stReduced = await ev(`(() => {
+      const fig = ${S};
+      if (!fig) return { missing: true };
+      const img = fig.querySelector(".fig-body img");
+      const shown = img && getComputedStyle(img).display !== "none";
+      return {
+        shown,
+        liveCanvas: !!fig.querySelector("canvas.plot.live"),
+        slider: !!fig.querySelector(".live-params input"),
+        hasLive: !!fig._live,
+        state: fig.dataset.state,
+      };
+    })()`);
+    check(
+      "under prefers-reduced-data the staircase keeps its PNG and mounts no slider",
+      Boolean(stReduced && stReduced.shown && !stReduced.liveCanvas && !stReduced.slider && !stReduced.hasLive),
+      JSON.stringify(stReduced),
     );
   }
   await pullDebug();

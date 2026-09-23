@@ -833,7 +833,7 @@ def figure_code_block(section: str, name: str) -> tuple[str, bool]:
     ), True
 
 
-LIVE_FIGURES = {"fig:arnold_tongues": "arnold_tongues"}
+LIVE_FIGURES = {"fig:arnold_tongues": "arnold_tongues", "fig:devils_staircase": "devils_staircase"}
 
 
 def figure_block(

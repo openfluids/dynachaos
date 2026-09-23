@@ -105,16 +105,17 @@ the first time they arrive, which is a poor trade for figures that tile cleanly.
 ### Live JS runtime
 
 The worker pool is hand-written ESM in `site-src/live/`, copied verbatim by
-`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Six files:
+`scripts/build_paper.py` into `site/live/`. No bundler, no npm. Seven files:
 
 | file | job |
 |---|---|
-| `scheduler.js` | Pure function: state in, commands out. No DOM, no Worker, no timer. Node unit-tests this. |
+| `scheduler.js` | Pure function: state in, commands out. No DOM, no Worker, no timer. Node unit-tests this. `lockOmega` switches it to a 1-D mode for the staircase: tiles carry `nOmega = 1` at the viewport's fixed Omega and the pyramid refines K only. |
 | `pool.js` | `N = min(navigator.hardwareConcurrency, 8)` workers, each with its own wasm instance. A pan or zoom bumps the generation; workers stay alive so the in-flight tile can finish, and a late result is dropped. `terminate()` runs only in `destroy()`. |
 | `tile-worker.js` | Loads `site/wasm/dynachaos_wasm.js`, calls `rotation_number_tile`, transfers the `Float64Array` back. Reads the 4-element header rather than trusting the request. |
 | `raster.js` | Pure tile→pixel mapping, `liveTileColorKey`, and the tile lookup used as the readout fallback. Row 0 of a tile is `kMin`, the bottom; the canvas y axis points down. Node unit-tests this. |
 | `point.js` | Main-thread lazy load of the wasm glue; synchronous `sample()` of one (Omega, K) point with lock detection on and the display stop off. Hover and keyboard readout share this path. |
-| `live-figure.js` | The glue mountLive calls: the onPaint store update with its paint-sequence stamp, the readout fallback (point kernel, else the raster lookup), and the onView generation reset. No DOM at import time; node unit-tests this. |
+| `live-figure.js` | The glue mountLive calls: the onPaint store update with its paint-sequence stamp, the readout fallback (point kernel, else the raster lookup), the onView generation reset, and the staircase's 1-D pieces (view mapping, tile→trace fold, y-fit, parameter wiring). No DOM at import time; node unit-tests this. |
+| `params.js` | Pure parameter plumbing: spec clamping, debounce, and URL-hash serialise/parse (`#section&fig:<id>.<name>=<value>`). Node unit-tests this. |
 
 The paper page loads `pool.js` from `app.js` with a dynamic `import()` when the
 reader presses interact on `figure#fig:arnold_tongues`. `Plot()` keeps axes,
@@ -145,6 +146,22 @@ Debug telemetry (`?debug=1` or `localStorage.dynachaosDebug`) logs per-tile
 compute milliseconds, worker count, queue depth, dropped generations (viewport
 changes that abandoned work), and dropped tiles (stale or error results).
 There is no `SharedArrayBuffer` anywhere in this path.
+
+The devil's staircase (`figure#fig:devils_staircase`) is the second live
+figure and the first 1-D one: ρ(A) at a reader-chosen drive frequency D,
+drawn as a line with `Plot()`'s axes and readout rather than a heatmap. A
+slider (range + number field, keyboard accessible) sets D ∈ [0, 0.5],
+default 0.25; a debounced apply pushes `{omegaMin: D, omegaMax: D, kMin,
+kMax}` into the pool — the scheduler's `lockOmega` mode emits `nOmega = 1`
+tiles, so Omega = D and K = A exactly — and the generation drop clears the
+stale curve. Painted tiles fold into one sorted polyline; the first paint
+of a generation refits the y domain. The readout quotes `point.sample(D, A)`
+at the cursor's A. The Lyapunov panel has no wasm kernel yet, so the
+published PNG stays below the live curve with a note saying it is not live.
+Parameter state serialises into the URL hash (`#section&fig:<id>.D=<v>`) so
+a shared link restores the exact view; the scroll-spy preserves the
+`&key=value` tokens when it rewrites the section id. Under
+`prefers-reduced-data` no slider is created and the PNG stays.
 
 ## WebGPU is a fast path, never the baseline
 
@@ -264,11 +281,17 @@ rather than assumed:
 - playwright-python would add a dev dependency and a browser download to get
   capabilities this repository does not need.
 
-The CI job builds the WebAssembly bundle, builds the page, exports this
-figure's chart JSON, then runs `node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js`
+figure's chart JSON, then runs `node --test tests/js/index.js tests/js/raster.js tests/js/point.js tests/js/live-figure.js tests/js/params.js`
 and the end-to-end script. A missing Chrome fails the job; the script prints
 the command it tried and exits non-zero. The job does not skip the browser
 check.
+
+`scripts/check_wasm_staircase.py` is the staircase's parity sibling, run in
+the wasm-parity CI job: the wasm tile at D = 0.25 against the committed
+`devils_staircase.npz` rho at exactly the npz A values (tile K ranges chosen
+so their linspace reproduces npz points bit for bit, asserted before the
+comparison). Below K_c every point stays within the display tolerance; above
+it divergence is allowed but bounded by the same share limit.
 
 ## Measuring performance honestly
 

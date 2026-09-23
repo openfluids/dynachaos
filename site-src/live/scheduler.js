@@ -34,6 +34,10 @@ export function initialState(options = {}) {
       nTransient: optionInt(options.nTransient, DEFAULTS.nTransient, 0),
       nIter: optionInt(options.nIter, DEFAULTS.nIter, 1),
       theta0: Number.isFinite(options.theta0) ? options.theta0 : DEFAULTS.theta0,
+      // A 1-D figure (the devil's staircase) fixes Omega and sweeps only K:
+      // tiles then carry nOmega = 1 and the viewport's omegaMin is the fixed
+      // value, so a degenerate Omega range is the signal, not a rejection.
+      lockOmega: options.lockOmega === true,
     },
     generation: 0,
     viewport: null,
@@ -75,7 +79,8 @@ export function tileCellsAtLevel(level, options = {}) {
  * @returns {object[]}
  */
 export function visibleTiles(viewport, options = {}) {
-  if (!isViewport(viewport)) return [];
+  const lockOmega = options.lockOmega === true;
+  if (!isViewport(viewport, lockOmega)) return [];
   const levels = optionInt(options.levels, DEFAULTS.levels, 1);
   const tileCells = optionInt(options.tileCells, DEFAULTS.tileCells, 1);
   const nTransient = optionInt(options.nTransient, DEFAULTS.nTransient, 0);
@@ -88,20 +93,22 @@ export function visibleTiles(viewport, options = {}) {
     const dOmega = (omegaMax - omegaMin) / n;
     const dK = (kMax - kMin) / n;
     const cells = tileCellsAtLevel(level, { levels, tileCells });
+    // lockOmega: one column at the fixed Omega; the pyramid refines K only.
+    const nx = lockOmega ? 1 : n;
     for (let iy = 0; iy < n; iy++) {
-      for (let ix = 0; ix < n; ix++) {
+      for (let ix = 0; ix < nx; ix++) {
         tiles.push({
           id: tileId(level, ix, iy),
           level,
           ix,
           iy,
-          nx: n,
+          nx,
           ny: n,
           omegaMin: omegaMin + ix * dOmega,
-          omegaMax: omegaMin + (ix + 1) * dOmega,
+          omegaMax: lockOmega ? omegaMin : omegaMin + (ix + 1) * dOmega,
           kMin: kMin + iy * dK,
           kMax: kMin + (iy + 1) * dK,
-          nOmega: cells,
+          nOmega: lockOmega ? 1 : cells,
           nK: cells,
           nTransient,
           nIter,
@@ -143,7 +150,8 @@ export function reduce(state, event) {
 }
 
 function applyViewport(state, viewport) {
-  if (!isViewport(viewport)) {
+  const lockOmega = state.options.lockOmega === true;
+  if (!isViewport(viewport, lockOmega)) {
     return { state, commands: [] };
   }
   const hadWork = state.pending.length + state.inFlight.length > 0;
@@ -306,14 +314,14 @@ function applyWorkerError(state, event) {
   };
 }
 
-function isViewport(viewport) {
+function isViewport(viewport, lockOmega = false) {
   return (
     viewport != null &&
     Number.isFinite(viewport.omegaMin) &&
     Number.isFinite(viewport.omegaMax) &&
     Number.isFinite(viewport.kMin) &&
     Number.isFinite(viewport.kMax) &&
-    viewport.omegaMax > viewport.omegaMin &&
+    (lockOmega ? viewport.omegaMax === viewport.omegaMin : viewport.omegaMax > viewport.omegaMin) &&
     viewport.kMax > viewport.kMin
   );
 }

@@ -7,6 +7,14 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 ### Added
 
+- The paper page computes the devil's staircase live: the rotation number
+  rho(A) is drawn in the browser at a drive frequency D the reader sets with a
+  slider or number field (default 0.25). The values go into the page address,
+  so a link reproduces the view. At D = 0.25 the live curve matches the
+  published data within 1/256 below K_c = 1/(2 pi)
+  (`scripts/check_wasm_staircase.py`, run in CI). The Lyapunov panel stays a
+  static image.
+
 - The compiled extension exports `delayed_logistic_attractor_tile` and
   `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
   the torus-doubling maps (I) and (IV) in Rust and return the same
