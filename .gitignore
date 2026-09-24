@@ -86,6 +86,3 @@ coverage.xml
 
 # bv (beads viewer) local config and caches
 .bv/
-
-# Generated knowledge-graph cache: 15 MB of regenerable markdown, not shipped
-/graft/
