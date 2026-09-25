@@ -9,6 +9,7 @@ from dynachaos.utils import system
 
 
 def test_get_rss_mb_returns_zero_when_resource_module_unavailable(monkeypatch):
+    monkeypatch.setattr(system.sys, "platform", "linux")
     monkeypatch.setattr(system, "resource", None)
 
     assert system.get_rss_mb() == 0.0
