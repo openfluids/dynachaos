@@ -6,6 +6,7 @@ import {
   LIVE_FIGURES,
   LIVE_MODULATED,
   LIVE_STAIRCASE,
+  LIVE_SPACETIME,
   LIVE_TORUS,
   attractorFixedPoint,
   attractorRequest,
@@ -26,6 +27,14 @@ import {
   modulatedKernelCall,
   modulatedRequest,
   modulatedTrace,
+  cmlAppend,
+  cmlChunkRequest,
+  cmlColorLimits,
+  cmlField,
+  cmlKernelCall,
+  cmlModelKind,
+  cmlRequest,
+  createSpacetimeFigure,
   tilesToTrace,
   torusMapKind,
   torusRequest,
@@ -1037,4 +1046,331 @@ test("the modulated readout falls back to the nearest plotted rho_theta", () => 
   // No kernel is loaded in the test process, so the trace answers.
   assert.equal(readout(0.41), 0.25);
   assert.equal(readout(0.55), 0.29);
+});
+
+// ---- CML space-time figure ----
+
+// A small deterministic field: values[r * nSites + i] = r + i / nSites,
+// so a transposed or shifted read lands on a different number.
+function cmlTile(model, nSites, nRows, fill) {
+  const tile = new Float64Array(HEADER + nSites * nRows);
+  tile[0] = model;
+  tile[1] = nSites;
+  tile[2] = 0;
+  tile[3] = nRows;
+  for (let k = 0; k < nSites * nRows; k++) tile[HEADER + k] = fill(k);
+  return tile;
+}
+const cmlFill = (nSites) => (k) => Math.floor(k / nSites) + (k % nSites) / nSites;
+
+test("LIVE_SPACETIME is frozen, registered, and holds the paper's parameters", () => {
+  assert.equal(LIVE_FIGURES.spacetime_diagrams, LIVE_SPACETIME);
+  assert.ok(Object.isFrozen(LIVE_SPACETIME));
+  // The paper's counts (cml/spatiotemporal.py simulate_cml): n_transient
+  // 2000, n_record 500, N = 200 default inside the kernel's [2, 512] cap.
+  assert.equal(LIVE_SPACETIME.nTransient, 2000);
+  assert.equal(LIVE_SPACETIME.nRecord, 500);
+  const [model, eps, sites] = LIVE_SPACETIME.paramSpecs;
+  assert.equal(model.name, "model");
+  assert.equal(model.options.length, 3);
+  assert.deepEqual(
+    { min: eps.min, max: eps.max, step: eps.step, default: eps.default },
+    { min: 0, max: 0.5, step: 0.001, default: 0.07 },
+  );
+  assert.deepEqual(
+    { min: sites.min, max: sites.max, default: sites.default },
+    { min: 16, max: 512, default: 200 },
+  );
+  // Each model's eps window is its published sweep's range and middle
+  // value (spatiotemporal.py compute).
+  assert.deepEqual(
+    [LIVE_SPACETIME.models[0].epsMin, LIVE_SPACETIME.models[0].epsMax, LIVE_SPACETIME.models[0].epsDefault],
+    [0, 0.2, 0.07],
+  );
+  assert.deepEqual(
+    [LIVE_SPACETIME.models[1].epsMin, LIVE_SPACETIME.models[1].epsMax, LIVE_SPACETIME.models[1].epsDefault],
+    [0, 0.1, 0.024],
+  );
+  assert.deepEqual(
+    [LIVE_SPACETIME.models[2].epsMin, LIVE_SPACETIME.models[2].epsMax, LIVE_SPACETIME.models[2].epsDefault],
+    [0, 0.5, 0.2],
+  );
+});
+
+test("cmlModelKind snaps the selector the way the kernel does", () => {
+  assert.equal(cmlModelKind(0), 0);
+  assert.equal(cmlModelKind(1), 1);
+  assert.equal(cmlModelKind(2), 2);
+  assert.equal(cmlModelKind(9), 2);
+  assert.equal(cmlModelKind(-3), 0);
+  assert.equal(cmlModelKind(NaN), 0);
+});
+
+test("the spacetime request passes model, eps, sites and counts in the kernel's order", () => {
+  // cml_spacetime_tile(model, eps, n_sites, n_transient, n_record, x0):
+  // dropping eps leaves the coupling at the kernel's fallback, and a model
+  // read from the wrong field runs the wrong lattice — this test catches
+  // both.
+  const x0 = Array.from({ length: 512 }, (_, i) => i / 512);
+  const req = cmlRequest({ model: 2, eps: 0.3, sites: 64 }, LIVE_SPACETIME, x0);
+  assert.equal(req.model, 2);
+  assert.equal(req.eps, 0.3);
+  assert.equal(req.nSites, 64);
+  assert.equal(req.nTransient, 2000);
+  assert.equal(req.nRecord, 500);
+  assert.equal(req.x0.length, 64);
+  assert.equal(req.x0[63], 63 / 512);
+});
+
+test("the spacetime request slices x0 to the site count", () => {
+  // uniform(0, 1, N) draws the first N values of the seed-42 stream, so
+  // the paper's x0 at N = 200 is a prefix of the file's 512 — slicing, not
+  // reseeding. A request that passed the whole array would hand the
+  // kernel 512 values for a 200-site lattice.
+  const x0 = Array.from({ length: 512 }, (_, i) => 0.5 + i / 1000);
+  const req = cmlRequest({ model: 0, eps: 0.07, sites: 200 }, LIVE_SPACETIME, x0);
+  assert.equal(req.x0.length, 200);
+  assert.equal(req.x0[199], 0.5 + 199 / 1000);
+});
+
+test("the spacetime request clamps eps into the active model's window", () => {
+  const req = cmlRequest({ model: 1, eps: 0.4, sites: 32 }, LIVE_SPACETIME, [0.5]);
+  assert.equal(req.eps, 0.1);
+});
+
+test("cmlKernelCall invokes the export in the kernel's argument order", async () => {
+  const seen = [];
+  const kernel = (...args) => {
+    seen.push(args);
+    return new Float64Array([2, 4, 0, 1, 0.1, 0.2, 0.3, 0.4]);
+  };
+  const req = cmlRequest({ model: 2, eps: 0.2, sites: 4 }, LIVE_SPACETIME, [0.1, 0.2, 0.3, 0.4]);
+  const out = await cmlKernelCall(req, kernel);
+  assert.equal(seen[0][0], 2);
+  assert.equal(seen[0][1], 0.2);
+  assert.equal(seen[0][2], 4);
+  assert.equal(seen[0][3], 2000);
+  assert.equal(seen[0][4], 500);
+  assert.deepEqual(Array.from(seen[0][5]), [0.1, 0.2, 0.3, 0.4]);
+  assert.equal(out[4], 0.1);
+});
+
+test("cmlField unpacks rows x sites after the 4-value header", () => {
+  // values[t * n_sites + i] is site i of the t-th recorded field — a
+  // transposed read lands site and row on each other's axis, which the
+  // distinct fill catches.
+  const req = cmlRequest({ model: 1, eps: 0.024, sites: 3 }, LIVE_SPACETIME, []);
+  const tile = cmlTile(1, 3, 4, cmlFill(3));
+  const f = cmlField(tile, req);
+  assert.equal(f.nSites, 3);
+  assert.equal(f.nRows, 4);
+  assert.equal(f.model, 1);
+  assert.equal(f.eps, 0.024);
+  assert.equal(f.values[2 * 3 + 1], 2 + 1 / 3);
+  assert.equal(f.values[0], 0);
+});
+
+test("cmlField rejects a short or malformed tile", () => {
+  const req = cmlRequest({ model: 0, eps: 0.07, sites: 4 }, LIVE_SPACETIME, []);
+  assert.equal(cmlField(null, req), null);
+  assert.equal(cmlField(new Float64Array([0, 4, 0, 2, 0.1]), req), null);
+  assert.equal(cmlField(new Float64Array([0, 4, 0, 0]), req), null);
+  assert.equal(cmlField(cmlTile(0, 4, 3, () => 0.5).slice(0, HEADER + 5), req), null);
+});
+
+test("the chunk request continues from the window's last row", () => {
+  // Play appends n_transient 0 rows starting at the last recorded field —
+  // continuing from the first row instead would restart the window.
+  const field = {
+    values: Float64Array.from({ length: 12 }, (_, k) => 100 + k),
+    nSites: 4,
+    nRows: 3,
+    model: 2,
+    eps: 0.2,
+  };
+  const req = cmlChunkRequest({ model: 0, eps: 0.07, sites: 4 }, field);
+  assert.equal(req.model, 2);
+  assert.equal(req.eps, 0.2);
+  assert.equal(req.nTransient, 0);
+  assert.equal(req.nRecord, 250);
+  assert.deepEqual(Array.from(req.x0), [108, 109, 110, 111]);
+});
+
+test("cmlAppend drops the oldest rows and keeps the window at nRecord", () => {
+  const field = {
+    values: Float64Array.from({ length: 20 }, (_, k) => k),
+    nSites: 4,
+    nRows: 5,
+    model: 0,
+    eps: 0.07,
+  };
+  const chunk = cmlTile(0, 4, 2, (k) => 100 + k);
+  const next = cmlAppend(field, chunk, 5);
+  assert.equal(next.nRows, 5);
+  assert.equal(next.nSites, 4);
+  // Rows 2-4 of the old window survive (keep = min(5, 5-2) = 3); rows
+  // 0-1 are dropped.
+  assert.deepEqual(Array.from(next.values.slice(0, 12)), [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  assert.deepEqual(Array.from(next.values.slice(12)), [100, 101, 102, 103, 104, 105, 106, 107]);
+});
+
+test("cmlAppend rejects a chunk from a different run", () => {
+  const field = { values: new Float64Array(8), nSites: 4, nRows: 2, model: 0, eps: 0.07 };
+  assert.equal(cmlAppend(field, cmlTile(1, 4, 2, () => 0), 5), null);
+  assert.equal(cmlAppend(field, cmlTile(0, 8, 2, () => 0), 5), null);
+  assert.equal(cmlAppend(field, null, 5), null);
+});
+
+test("cmlColorLimits are the shown field's 1st and 99th percentiles", () => {
+  // The same rule plot() applies per row: linear interpolation on the
+  // sorted values, with the +-0.5 pad when the field is constant.
+  const values = Float64Array.from({ length: 100 }, (_, i) => i);
+  const [lo, hi] = cmlColorLimits(values);
+  assert.equal(lo, 0.99);
+  assert.equal(hi, 98.01);
+  const [clo, chi] = cmlColorLimits(new Float64Array([0.4, 0.4, 0.4]));
+  assert.ok(Math.abs(clo - -0.1) < 1e-12);
+  assert.ok(Math.abs(chi - 0.9) < 1e-12);
+  assert.deepEqual(cmlColorLimits([]), [0, 1]);
+});
+
+test("the spacetime figure snaps eps to its decimal literal", () => {
+  // A range input's stepped value is a double like 0.07000000000000001;
+  // the kernel must see 0.07 exactly — a one-ulp eps change moves a
+  // chaotic orbit.
+  const echoed = [];
+  const fig = createSpacetimeFigure({
+    x0: [0.5],
+    debounceMs: 150,
+    echo: (name, v) => echoed.push([name, v]),
+    call: () => Promise.resolve(cmlTile(0, 16, 2, () => 0.5)),
+    onField: () => {},
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  fig.onInput("eps", 0.07000000000000001);
+  assert.equal(fig.state.eps, 0.07);
+  fig.onInput("eps", 0.1234567);
+  assert.equal(fig.state.eps, 0.123);
+  fig.onInput("sites", 200.7);
+  assert.equal(fig.state.sites, 201);
+  assert.ok(echoed.some(([n, v]) => n === "eps" && v === 0.07));
+});
+
+test("switching the spacetime model resets eps to the new model's default", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const fig = createSpacetimeFigure({
+    x0: [0.5],
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      return Promise.resolve(cmlTile(req.model, req.nSites, 2, () => 0.5));
+    },
+    onField: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  fig.onInput("model", 2);
+  timers.flush();
+  await tick();
+  assert.equal(fig.state.model, 2);
+  assert.equal(fig.state.eps, 0.2);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].model, 2);
+  assert.equal(calls[0].eps, 0.2);
+});
+
+test("a hash state with model, eps and sites restores all three", async () => {
+  const fig = createSpacetimeFigure({
+    x0: [0.5],
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => Promise.resolve(cmlTile(req.model, req.nSites, 2, () => 0.5)),
+    onField: () => {},
+    writeHash: () => {},
+    timers: manualTimers(),
+  });
+  fig.setParams({ model: 1, eps: 0.03, sites: 64 });
+  await tick();
+  assert.equal(fig.state.model, 1);
+  assert.equal(fig.state.eps, 0.03);
+  assert.equal(fig.state.sites, 64);
+  assert.equal(fig.store.field.nSites, 64);
+});
+
+test("play appends a chunk from the last row and pause stops the transport", async () => {
+  const timers = manualTimers();
+  const calls = [];
+  const fig = createSpacetimeFigure({
+    x0: [0.5],
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => {
+      calls.push(req);
+      // A fresh run answers with a small field; a play chunk answers with
+      // its own row count, so the window arithmetic is exercised.
+      const rows = req.nTransient === 0 ? req.nRecord : 2;
+      return Promise.resolve(
+        cmlTile(req.model, req.nSites, rows, (k) => 1000 + k),
+      );
+    },
+    onField: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  fig.setParams({ sites: 16 });
+  await tick();
+  const first = fig.store.field;
+  assert.equal(first.nRows, 2);
+  fig.play();
+  assert.equal(fig.playing(), true);
+  timers.flush();
+  await tick();
+  // One chunk of 250 rows appended to the 2-row fake field; the window
+  // cap (500) does not bind yet.
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].nTransient, 0);
+  assert.equal(calls[1].nRecord, 250);
+  assert.deepEqual(Array.from(calls[1].x0), Array.from(first.values.slice(16, 32)));
+  assert.equal(fig.store.field.nRows, 252);
+  fig.pause();
+  assert.equal(fig.playing(), false);
+  const gen = fig.store.generation;
+  timers.flush();
+  await tick();
+  assert.equal(fig.store.generation, gen);
+  assert.equal(calls.length, 2);
+});
+
+test("a chunk that resolves after a parameter change is dropped", async () => {
+  const timers = manualTimers();
+  const deferreds = [];
+  const fig = createSpacetimeFigure({
+    x0: [0.5],
+    debounceMs: 150,
+    echo: () => {},
+    call: (req) => new Promise((r) => deferreds.push([req, r])),
+    onField: () => {},
+    writeHash: () => {},
+    timers,
+  });
+  fig.setParams({ sites: 16 });
+  deferreds[0][1](cmlTile(0, 16, 2, () => 0.5));
+  await tick();
+  const first = fig.store.field;
+  fig.play();
+  timers.flush();
+  assert.equal(deferreds.length, 2);
+  // A model switch starts a fresh run before the chunk resolves.
+  fig.setParams({ model: 2 });
+  deferreds[2][1](cmlTile(2, 16, 2, () => 0.7));
+  await tick();
+  assert.equal(fig.store.field.model, 2);
+  // The stale chunk resolves now: it must not merge into the new field.
+  deferreds[1][1](cmlTile(0, 16, 250, () => 0.9));
+  await tick();
+  assert.equal(fig.store.field.nRows, 2);
+  assert.equal(fig.store.field.values[0], 0.7);
 });

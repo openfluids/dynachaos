@@ -46,6 +46,18 @@ reconstructed from git history. 0.4.0 is the first public release.
   1e-12 in rho_phi (`scripts/check_wasm_modulated_circle.py`, run in CI).
   The published figure stays below the live curves.
 
+- The paper page computes the CML space-time diagrams live: the field
+  x_i^n of the chosen coupled-map lattice is drawn in the browser as one
+  heat map (site i across, time n up, magma at the shown field's 1st/99th
+  percentiles). A model selector switches between models A, B and C, an
+  eps slider moves the coupling inside the chosen model's published
+  window (A [0, 0.2] default 0.07; B [0, 0.1] default 0.024; C [0, 0.5]
+  default 0.2), a site-count control sets N in [16, 512] (default 200),
+  and a play button appends 250-row chunks computed from the window's
+  last row while the oldest rows drop off. The values go into the page
+  address, so a link reproduces the view. The published nine-panel figure
+  stays below the live field.
+
 - The compiled extension exports `delayed_logistic_attractor_tile` and
   `torus_doubling_attractor_tile`. They iterate the delayed logistic map and
   the torus-doubling maps (I) and (IV) in Rust and return the same

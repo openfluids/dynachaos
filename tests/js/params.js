@@ -5,9 +5,10 @@ import {
   debounce,
   parseHash,
   serializeHash,
+  snapToStep,
   writeParamsIntoHash,
 } from "../../site-src/live/params.js";
-import { createParamWiring, LIVE_MODULATED, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
+import { createParamWiring, LIVE_MODULATED, LIVE_SPACETIME, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
 
 const SPECS = [
   { name: "D", min: 0, max: 0.5, step: 0.005, default: 0.25 },
@@ -151,6 +152,33 @@ test("the double staircase's hash state round-trips through the URL fragment", (
     `#sec:three_torus&${frag}`,
     LIVE_MODULATED.paramSpecs,
     "fig:double_staircase",
+  );
+  assert.deepEqual(parsed, state);
+});
+
+test("snapToStep lands on the decimal literal the slider shows", () => {
+  // A range input's stepped value is a double like 0.07000000000000001;
+  // the CML figure's eps must reach the kernel as 0.07 exactly — a one-ulp
+  // difference moves a chaotic orbit.
+  const eps = { name: "eps", min: 0, max: 0.5, step: 0.001, default: 0.07 };
+  assert.equal(snapToStep(0.07000000000000001, eps), 0.07);
+  assert.equal(snapToStep(0.1234567, eps), 0.123);
+  assert.equal(snapToStep(0.4999, eps), 0.5);
+  assert.equal(snapToStep(-0.2, eps), 0);
+  assert.equal(snapToStep(NaN, eps), 0.07);
+  // A spec without a step passes through clamped but unsnapped.
+  assert.equal(snapToStep(0.1234567, { name: "x", min: 0, max: 1, default: 0.5 }), 0.1234567);
+});
+
+test("the spacetime figure's hash state round-trips through the URL fragment", () => {
+  // Model, eps and sites ride the hash; the play position does not — it
+  // is not part of the parameter state.
+  const state = { model: 2, eps: 0.2, sites: 384 };
+  const frag = serializeHash("fig:spacetime_diagrams", state);
+  const parsed = parseHash(
+    `#sec:sti&${frag}`,
+    LIVE_SPACETIME.paramSpecs,
+    "fig:spacetime_diagrams",
   );
   assert.deepEqual(parsed, state);
 });

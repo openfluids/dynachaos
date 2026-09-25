@@ -220,6 +220,32 @@ wasm-parity CI job. Parameter state rides the URL hash like the other live
 figures; under `prefers-reduced-data` no controls are created and the PNG
 stays.
 
+The CML space-time diagrams (`figure#fig:spacetime_diagrams`) are the
+sixth live figure and the first field: the lattice state x_i^n of the
+chosen model, site i across and time n up, drawn by
+`cml_spacetime_tile` on the main thread like the attractor clouds. A
+model selector switches between models A, B and C; each model's eps
+slider window is its published sweep's range (A [0, 0.2] default 0.07,
+B [0, 0.1] default 0.024, C [0, 0.5] default 0.2) and a site-count
+control sets N in [16, 512] (default 200). The colour limits are the
+shown field's 1st and 99th percentiles, the same rule `plot()` applies
+per row, and the ramp is magma — the paper's `CMAP_SPACETIME`. A play
+button appends 250-row chunks computed from the window's last row with
+n_transient 0 and drops the oldest rows, so the window is a rolling
+500-row view of one continuing orbit. The initial field is not
+reproduced in JS — PCG64 is not cheap there — so `build_paper.py` writes
+the first 512 values of `default_rng(42).uniform(0, 1, 512)` to
+`site/live/cml-x0.json` and the request slices it to N. At N = 200,
+`scripts/check_wasm_cml_spacetime.py` compares all nine npz fields —
+bit for bit for A and C, and for B against eight numpy runs with every
+sin result moved one ulp (sample-by-sample within 1e-9 when those runs
+stay on the npz orbit, a value-histogram L1 no larger than the worst
+run's when they leave it, as at eps 0.024) — checks the x0 JSON
+against the paper's seed-42 field, and proves a play chunk continues
+the run bit for bit, in the wasm-parity CI job. Parameter state rides the
+URL hash like the other live figures; under `prefers-reduced-data` no
+controls are created and the PNG stays.
+
 ## WebGPU is a fast path, never the baseline
 
 As of 2026-09: Chromium ships WebGPU (113+, and Android 121+), Safari turned it

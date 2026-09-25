@@ -28,6 +28,33 @@ export function clampValue(value, spec) {
   return Math.min(spec.max, Math.max(spec.min, v));
 }
 
+
+/**
+ * Snap a value onto a spec's `min + k * step` grid, then round to the
+ * step's own decimal places. A range input's stepped value is a double
+ * like 0.07000000000000001; the kernel must see the decimal literal the
+ * reader picked (0.07), because a one-ulp eps change moves a chaotic
+ * orbit. Specs without a `step` (or with a non-positive one) pass through
+ * clamped but unsnapped.
+ *
+ * @param {number} value
+ * @param {{ min: number, max: number, step?: number, default: number }} spec
+ * @returns {number}
+ */
+export function snapToStep(value, spec) {
+  const v = clampValue(value, spec);
+  const step = Number(spec.step);
+  if (!Number.isFinite(step) || step <= 0) return v;
+  const k = Math.round((v - spec.min) / step);
+  let snapped = spec.min + k * step;
+  const text = String(step);
+  const dot = text.indexOf(".");
+  if (dot >= 0 && text.indexOf("e") < 0 && text.indexOf("E") < 0) {
+    snapped = Number(snapped.toFixed(text.length - dot - 1));
+  }
+  return Math.min(spec.max, Math.max(spec.min, snapped));
+}
+
 /**
  * Collapse a burst of calls into one trailing call after `ms` quiet.
  * `set`/`clear` are injectable so a node test can drive the timer by hand.

@@ -1026,9 +1026,15 @@ function Plot(canvas,panel,meta){
       if(v<zmin)zmin=v;if(v>zmax)zmax=v;}}
   const hex=c=>[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];
   // Same viridis the matplotlib figures use, so toggling to the interactive
-  // view never changes what a colour means.
+  // view never changes what a colour means. Magma is the space-time
+  // figures' cmap (CMAP_SPACETIME in utils/style.py), sampled at the same
+  // eleven stops.
   const VIRIDIS=[[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
                  [31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
+  const MAGMA=[[0,0,4],[20,14,54],[59,15,112],[100,26,128],[140,41,129],
+               [183,55,121],[222,73,104],[247,112,92],[254,159,109],
+               [254,207,146],[252,253,191]];
+  const STOPS=(panel.cmap==="magma")?MAGMA:VIRIDIS;
   const signed=(panel.cmap||"viridis")==="signed"&&zmin<0&&zmax>0;
   function lerp3(a,b,f){return [0,1,2].map(j=>Math.round(a[j]+(b[j]-a[j])*f));}
   function rampRGB(t){
@@ -1038,16 +1044,26 @@ function Plot(canvas,panel,meta){
       const k=t*2,i=Math.min(1,Math.floor(k));
       return lerp3(stops[i],stops[i+1],k-i);
     }
-    const k=t*(VIRIDIS.length-1),i=Math.min(VIRIDIS.length-2,Math.floor(k));
-    return lerp3(VIRIDIS[i],VIRIDIS[i+1],k-i);
+    const k=t*(STOPS.length-1),i=Math.min(STOPS.length-2,Math.floor(k));
+    return lerp3(STOPS[i],STOPS[i+1],k-i);
+  }
+  // The colour limits: the panel's own extent for a static heatmap, or the
+  // live figure's current window limits (the CML field's 1st/99th
+  // percentiles, recomputed each publish). draw() refreshes zlo/zhi so a
+  // rolling window's colours track the field it shows.
+  let zlo=zmin,zhi=zmax;
+  function syncZlim(){
+    if(live&&typeof live.zlim==="function"){
+      const z=live.zlim();
+      if(z&&Number.isFinite(z[0])&&Number.isFinite(z[1])){zlo=z[0];zhi=z[1];}
+    }
   }
   // Two-slope norm, as matplotlib's TwoSlopeNorm: z = 0 sits at the ramp's
   // midpoint (the locked/chaotic boundary) while each side still spans its half
   // of the ramp, so a lopsided field does not collapse into one hue.
   const znorm=v=>signed
-    ? (v<0 ? 0.5*(1-v/zmin) : 0.5+0.5*(v/zmax))
-    : (v-zmin)/((zmax-zmin)||1);
-  const zlo=zmin, zhi=zmax;
+    ? (v<0 ? 0.5*(1-v/zlo) : 0.5+0.5*(v/zhi))
+    : (v-zlo)/((zhi-zlo)||1);
   function ramp(t){const c=rampRGB(t);return `rgb(${c[0]},${c[1]},${c[2]})`;}
 
   const CBAR=13;   // colourbar strip width
@@ -1227,6 +1243,7 @@ function Plot(canvas,panel,meta){
 
   function draw(){
     if(!W||!H) return;
+    syncZlim();
     measurePads();
     ctx.clearRect(0,0,W,H);
     const rule=css("--rule"),low=css("--ink-low"),mid=css("--ink-mid");
@@ -1649,6 +1666,10 @@ function Plot(canvas,panel,meta){
       n.x1=n.x0+Math.max(1e-9,n.x1-n.x0);
       n.y1=n.y0+Math.max(1e-9,n.y1-n.y0);
       dom=n;draw();afterDomain();},
+    // rebase recomputes the base extent from live.base and resets the view
+    // onto it: the CML figure's site-count control changes the field's
+    // width, so the published domain itself moves, not just the view.
+    rebase:()=>{base=extent();dom={...base};draw();afterDomain();},
     isModified:()=>!!dom&&!!base&&(dom.x0!==base.x0||dom.x1!==base.x1||dom.y0!==base.y0||dom.y1!==base.y1),
     reset:resetDom};
 }
@@ -1697,6 +1718,10 @@ async function mountLive(fig){
   }
   if(fig.dataset.live==="double_staircase"){
     await mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText});
+    return;
+  }
+  if(fig.dataset.live==="spacetime_diagrams"){
+    await mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText});
     return;
   }
   const title="Rotation number over the circle-map parameter plane";
@@ -2282,6 +2307,142 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
     throw err;
   }
 }
+
+/* The CML space-time diagrams: the field x_i^n of the chosen model live
+   above the published nine-panel PNG — site i across, time n up, magma
+   colour at the shown field's 1st/99th percentiles, the same rule plot()
+   uses per row. One direct cml_spacetime_tile call per parameter set —
+   no tile pool, same as the attractor figures. The play button appends
+   chunks computed from the window's last row and drops the oldest rows;
+   the initial field comes from live/cml-x0.json (the paper's seed-42
+   uniform x0). This function only builds DOM; the request shape, the
+   field fold, the window trim, the model switch and the hash live in
+   live-figure.js for node tests. */
+async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
+  const cfg=liveFigure.LIVE_SPACETIME;
+  const title="Coupled-map lattice space-time";
+  try{
+    const res=await fetch(new URL("live/cml-x0.json",document.baseURI).href);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const x0=await res.json();
+    const w=document.createElement("div");w.className="plot-wrap";
+    const c=document.createElement("canvas");c.className="plot live";
+    c.setAttribute("role","img");
+    c.setAttribute("tabindex","0");
+    c.setAttribute("aria-label",capText+" — "+title);
+    const h=document.createElement("p");h.className="plot-title";
+    w.appendChild(h);
+    w.appendChild(c);
+    const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
+    w.appendChild(ctrls);
+    const transport=document.createElement("div");transport.className="live-presets";
+    const playBtn=document.createElement("button");
+    playBtn.type="button";playBtn.className="live-play";playBtn.textContent="play";
+    transport.appendChild(playBtn);
+    w.appendChild(transport);
+    const hint=document.createElement("p");hint.className="hint";
+    hint.textContent="tap to read values · drag to zoom · scroll or pinch to zoom · one finger to pan · reset view button to restore · focus the plot and use +/- to zoom, 0 or Esc to reset · play appends new rows and drops the oldest · computed live in this browser";
+    w.appendChild(hint);
+    body.insertBefore(w,body.firstChild);
+    const note=document.createElement("p");note.className="hint";
+    note.textContent="the image below is the published figure — nine panels at fixed \u03b5 values; the field above is computed in your browser at the model, \u03b5 and site count you choose";
+    body.insertBefore(note,w.nextSibling);
+    let plot=null;
+    const setTitle=()=>{h.textContent=cfg.models[liveFigure.cmlModelKind(cf.state.model)].title+" — \u03b5 = "+cf.state.eps;};
+    const setEpsBounds=(m)=>{
+      const f=inputs.eps;
+      f.range.min=m.epsMin;f.range.max=m.epsMax;
+      f.num.min=m.epsMin;f.num.max=m.epsMax;
+    };
+    const applyModel=(m)=>{
+      inputs.model.select.value=String(m.kind);
+      setEpsBounds(m);
+      c.setAttribute("aria-label",capText+" — "+m.title);
+    };
+    const writeHash=()=>{
+      const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,cf.state);
+      history.replaceState(null,"",location.pathname+location.search+(frag?"#"+frag:""));
+    };
+    const cf=liveFigure.createSpacetimeFigure({
+      params:cfg,
+      x0,
+      debounceMs:150,
+      echo:(name,v)=>{
+        const f=inputs[name];
+        if(name==="model"){applyModel(cfg.models[v]);setTitle();return;}
+        if(f){if(f.range)f.range.value=v;if(f.num)f.num.value=v;}
+        if(name==="eps") setTitle();
+      },
+      onField:(store,field)=>{
+        // The site-count control changes the field's width: the published
+        // domain itself moves, so the plot rebases instead of zooming.
+        if(live.base.x1!==field.nSites||live.base.y1!==field.nRows){
+          live.base={x0:0,x1:field.nSites,y0:0,y1:field.nRows};
+          if(plot) plot.rebase();
+        }
+        if(plot) plot.redraw();
+      },
+      onError:()=>{
+        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+      },
+      writeHash
+    });
+    const live={
+      base:{x0:0,x1:cfg.paramSpecs[2].default,y0:0,y1:cfg.nRecord},
+      tiles:cf.store.tiles,
+      generation:()=>cf.store.generation,
+      tilePixelRect:raster.tilePixelRect,
+      tileColorKey:raster.liveTileColorKey,
+      zlim:()=>cf.store.zlim,
+      sample:liveFigure.createRasterSample({store:cf.store,raster})
+    };
+    const panel={title,cmap:"magma",zlabel:"x_i^n"};
+    plot=Plot(c,panel,{
+      kind:"heatmap",
+      live,
+      xlabel:"Site i",
+      ylabel:"Time n",
+      onDomainChange:()=>{if(window.figState)window.figState.notify(fig);}
+    });
+    MOUNTED.push(plot);fig._plots=[plot];
+    applyModel(cfg.models[liveFigure.cmlModelKind(cf.state.model)]);
+    setTitle();
+    for(const spec of cfg.paramSpecs){
+      const f=inputs[spec.name];
+      if(f.select){f.select.addEventListener("change",()=>cf.onInput(spec.name,Number(f.select.value)));continue;}
+      f.range.addEventListener("input",()=>cf.onInput(spec.name,Number(f.range.value)));
+      f.num.addEventListener("change",()=>cf.onInput(spec.name,Number(f.num.value)));
+    }
+    playBtn.addEventListener("click",()=>{
+      if(cf.playing()){cf.pause();playBtn.textContent="play";}
+      else{cf.play();playBtn.textContent="pause";}
+    });
+    cf.refresh();
+    fig._live={
+      setParams:(values)=>{cf.setParams(values);},
+      params:()=>({...cf.state}),
+      field:()=>cf.store.field?{values:Array.from(cf.store.field.values),nSites:cf.store.field.nSites,nRows:cf.store.field.nRows}:null,
+      sample:live.sample,
+      play:()=>{cf.play();playBtn.textContent="pause";},
+      pause:()=>{cf.pause();playBtn.textContent="play";},
+      playing:()=>cf.playing(),
+      ready:()=>cf.ready(),
+      stats:()=>({
+        generation:cf.store.generation,
+        painted:cf.store.painted,
+        rows:cf.store.field?cf.store.field.nRows:0,
+        sites:cf.store.field?cf.store.field.nSites:0
+      })
+    };
+    fig.dataset.state="live";
+  }catch(err){
+    unmountPlot(fig);
+    const img=body.querySelector("img");
+    if(img) img.style.display="";
+    throw err;
+  }
+}
+
 
 async function mountInteractive(fig){
   const body=fig.querySelector(".fig-body");

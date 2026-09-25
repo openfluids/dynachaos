@@ -1264,8 +1264,11 @@ pub fn modulated_circle_rotation_tile(
 /// - `n_sites`: 2 to 512 sites; `n_transient`: 0 to 20000 steps; `n_record`:
 ///   1 to 2048 rows, reduced further to respect the step budget.
 /// - `x0`: the first `n_sites` entries are used; a missing or non-finite
-///   entry falls back to 0.5, then every entry clamps to `[0, 1]`, the
-///   interval the paper draws its initial field from.
+///   entry falls back to 0.5, then every entry clamps to `[-1, 2]`. The
+///   bound is wider than every observed orbit of the three models (A dips
+///   to -0.11, B to -0.05, C to -0.75), so a play chunk continues from the
+///   window's last row unchanged; a start far outside the invariant range
+///   can diverge, and the page never supplies one.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn cml_spacetime_tile(
@@ -1304,12 +1307,16 @@ pub fn cml_spacetime_tile(
 /// Build a clamped `n_sites`-entry CML initial field.
 ///
 /// A missing or non-finite entry falls back to 0.5, then every entry clamps
-/// to `[0, 1]`, the interval `simulate_cml` draws `x0` from
-/// (`src/dynachaos/cml/spatiotemporal.py:74`).
+/// to `[-1, 2]`. `simulate_cml` draws `x0` from `[0, 1]`
+/// (`src/dynachaos/cml/spatiotemporal.py:74`), but the live figure also
+/// feeds the window's last row back in to continue the run, and the three
+/// models' orbits leave `[0, 1]` (A dips to -0.11, B to -0.05, C to -0.75).
+/// `[-1, 2]` covers every observed orbit while still bounding a start far
+/// outside the invariant range, which can diverge.
 fn cml_state(n_sites: usize, x0: &[f64]) -> Vec<f64> {
     let mut start = vec![0.5_f64; n_sites];
     for (slot, &v) in start.iter_mut().zip(x0.iter()) {
-        *slot = finite_or(v, 0.5).clamp(0.0, 1.0);
+        *slot = finite_or(v, 0.5).clamp(-1.0, 2.0);
     }
     start
 }
@@ -2451,9 +2458,13 @@ mod tests {
         let truncated = cml_spacetime_tile(2, 0.2, 2, 10, 4, &[0.1, 0.4, 0.7, 0.2]);
         let short = cml_spacetime_tile(2, 0.2, 2, 10, 4, &[0.1, 0.4]);
         assert_eq!(truncated, short);
-        // Entries outside [0, 1] clamp in; non-finite entries fall back to 0.5.
-        let clamped = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[-1.0, 9.0, f64::NAN, 0.2]);
-        let at_cap = cml_spacetime_tile(2, 0.2, 4, 10, 4, &[0.0, 1.0, 0.5, 0.2]);
-        assert_eq!(clamped, at_cap);
+        // Entries outside [-1, 2] clamp in; non-finite entries fall back
+        // to 0.5. Asserting cml_state directly pins the bounds: through
+        // the export a narrower clamp would produce the same field on
+        // both sides and stay invisible.
+        assert_eq!(
+            cml_state(4, &[-5.0, 9.0, f64::NAN, 0.2]),
+            [-1.0, 2.0, 0.5, 0.2]
+        );
     }
 }

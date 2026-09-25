@@ -839,6 +839,7 @@ LIVE_FIGURES = {
     "fig:delayed_logistic_attractors": "delayed_logistic_attractors",
     "fig:map_I_attractors": "torus_doubling_attractors",
     "fig:double_staircase": "double_staircase",
+    "fig:spacetime_diagrams": "spacetime_diagrams",
 }
 
 
@@ -1454,6 +1455,26 @@ def copy_live_runtime(src_dir: Path, dst_dir: Path) -> int:
     return count
 
 
+def write_cml_x0(dst_dir: Path) -> None:
+    """Write the live CML figure's initial field to ``site/live/cml-x0.json``.
+
+    The paper draws ``x0 = default_rng(42).uniform(0, 1, N)``
+    (``cml/spatiotemporal.py`` ``simulate_cml``), and PCG64 cannot be
+    reproduced cheaply in the browser, so the page fetches the field
+    instead. ``uniform(0, 1, N)`` consumes the first N of these 512 draws —
+    one 64-bit draw per double — so the file's first 200 values are the
+    published figure's x0 exactly, and the site-count control slices to
+    the chosen N. JSON round-trips f64 exactly.
+    """
+    import numpy as np
+
+    x0 = np.random.default_rng(42).uniform(0, 1, 512)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    (dst_dir / "cml-x0.json").write_text(
+        json.dumps(x0.tolist(), separators=(",", ":")), encoding="utf-8"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manuscript", type=Path, help="LaTeX source to import (local only)")
@@ -1500,6 +1521,7 @@ def main() -> None:
 
     copy_and_subset_fonts(body, FONTS_SRC, fonts_dst)
     n_live = copy_live_runtime(LIVE_SRC, SITE / "live")
+    write_cml_x0(SITE / "live")
 
     index_units = build_search_index(body)
     index_json, index_truncated = search_index_json(index_units)

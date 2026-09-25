@@ -14,7 +14,7 @@
  */
 
 import { HEADER } from "./raster.js";
-import { clampValue, debounce } from "./params.js";
+import { clampValue, debounce, snapToStep } from "./params.js";
 
 /**
  * The published figure's iteration parameters. The readout's point.sample
@@ -164,6 +164,56 @@ export const LIVE_MODULATED = Object.freeze({
   ]),
 });
 
+
+/**
+ * The CML space-time figure: the field x_i^n of a coupled-map lattice,
+ * site i across, time n up, drawn as one heat map. The paper computes
+ * N = 200 sites, n_transient 2000, n_record 500 from
+ * x0 = default_rng(42).uniform(0, 1, N) (cml/spatiotemporal.py
+ * simulate_cml); the live figure runs the same counts through
+ * cml_spacetime_tile and keeps a rolling window of the last `nRecord`
+ * rows. `models` maps the selector's kernel id to the model's eps window
+ * — the published sweep's range and middle value, which is also the wasm
+ * export's non-finite fallback. `chunkRows` is the play step: one press
+ * appends that many rows computed from the window's last row with
+ * n_transient 0, then drops the oldest rows. `x0` arrives from
+ * site/live/cml-x0.json (the first 512 values of the paper's seed-42
+ * uniform field); the request slices it to the chosen site count, so
+ * sites = 200 reproduces the paper's initial condition exactly. The eps
+ * spec's range is the union of the three models' windows so a hash token
+ * for any model parses; the figure clamps eps into the active model's
+ * window. `snap` marks the specs whose values must equal their decimal
+ * literals — a range input's stepped double (0.07000000000000001) would
+ * otherwise reach the kernel as a different eps.
+ */
+export const LIVE_SPACETIME = Object.freeze({
+  nTransient: 2000,
+  nRecord: 500,
+  chunkRows: 250,
+  models: Object.freeze({
+    0: Object.freeze({ kind: 0, title: "Model (A): piecewise", epsMin: 0, epsMax: 0.2, epsDefault: 0.07 }),
+    1: Object.freeze({ kind: 1, title: "Model (B): circle", epsMin: 0, epsMax: 0.1, epsDefault: 0.024 }),
+    2: Object.freeze({ kind: 2, title: "Model (C): logistic", epsMin: 0, epsMax: 0.5, epsDefault: 0.2 }),
+  }),
+  paramSpecs: Object.freeze([
+    Object.freeze({
+      name: "model",
+      label: "model",
+      min: 0,
+      max: 2,
+      step: 1,
+      default: 0,
+      options: Object.freeze([
+        Object.freeze({ value: 0, label: "model (A): piecewise" }),
+        Object.freeze({ value: 1, label: "model (B): circle" }),
+        Object.freeze({ value: 2, label: "model (C): logistic" }),
+      ]),
+    }),
+    Object.freeze({ name: "eps", label: "coupling \u03b5", min: 0, max: 0.5, step: 0.001, default: 0.07, snap: true }),
+    Object.freeze({ name: "sites", label: "sites N", min: 16, max: 512, step: 1, default: 200, snap: true }),
+  ]),
+});
+
 /**
  * data-live kind -> live figure config. The hash-restore path in the page
  * reads paramSpecs from here so a shared link can name its figure.
@@ -174,6 +224,7 @@ export const LIVE_FIGURES = Object.freeze({
   delayed_logistic_attractors: LIVE_ATTRACTORS,
   torus_doubling_attractors: LIVE_TORUS,
   double_staircase: LIVE_MODULATED,
+  spacetime_diagrams: LIVE_SPACETIME,
 });
 
 /**
@@ -1198,6 +1249,381 @@ export function createModulatedFigure({
     refresh: () => {
       runner.run();
     },
+    ready: runner.ready,
+  };
+}
+/**
+ * Snap a model selector value to a kernel model id: 0, 1 or 2 — the same
+ * clamp the wasm export applies (model.min(2)), so the figure and the
+ * kernel never disagree about which lattice runs. A non-finite value
+ * falls back to model A.
+ *
+ * @param {number} value
+ * @returns {0 | 1 | 2}
+ */
+export function cmlModelKind(value) {
+  const v = Math.round(Number(value));
+  if (!Number.isFinite(v)) return 0;
+  return v <= 0 ? 0 : v >= 2 ? 2 : v;
+}
+
+/**
+ * The kernel request for one fresh space-time field: model id first, then
+ * eps, the site count, the transient, the record length and the initial
+ * field — the order cml_spacetime_tile takes them. eps is clamped into
+ * the chosen model's window so a stale or hand-edited hash value can
+ * never reach the kernel outside it. x0 is the published field sliced to
+ * the site count: uniform(0, 1, N) draws the first N values of the
+ * seed-42 stream, so slicing — not reseeding — reproduces the paper's
+ * initial condition at N = 200.
+ *
+ * @param {object} state name -> value, from the parameter wiring
+ * @param {{ nTransient: number, nRecord: number, models: object }} [params]
+ * @param {ArrayLike<number>} [x0] the seed-42 uniform field
+ * @returns {{ model: number, eps: number, nSites: number, nTransient: number, nRecord: number, x0: Float64Array }}
+ */
+export function cmlRequest(state, params = LIVE_SPACETIME, x0 = []) {
+  const model = params.models[cmlModelKind(state.model)];
+  const nSites = Math.round(state.sites);
+  return {
+    model: model.kind,
+    eps: Math.min(model.epsMax, Math.max(model.epsMin, state.eps)),
+    nSites,
+    nTransient: params.nTransient,
+    nRecord: params.nRecord,
+    x0: new Float64Array(Array.from(x0).slice(0, nSites)),
+  };
+}
+
+/**
+ * The kernel request for one play chunk: the same model and eps the
+ * window was computed with, no transient, and the window's last row as
+ * the initial field — continuing the orbit instead of restarting it. The
+ * kernel's own continuation is what the parity script checks bit for bit.
+ *
+ * @param {object} state name -> value, from the parameter wiring
+ * @param {{ values: ArrayLike<number>, nSites: number, nRows: number, model: number, eps: number }} field
+ * @param {{ chunkRows: number }} [params]
+ * @returns {{ model: number, eps: number, nSites: number, nTransient: number, nRecord: number, x0: Float64Array } | null}
+ */
+export function cmlChunkRequest(state, field, params = LIVE_SPACETIME) {
+  if (!field || !field.values || field.nRows < 1 || field.nSites < 1) return null;
+  const nSites = field.nSites;
+  const last = Array.prototype.slice.call(field.values, (field.nRows - 1) * nSites, field.nRows * nSites);
+  return {
+    model: field.model,
+    eps: field.eps,
+    nSites,
+    nTransient: 0,
+    nRecord: params.chunkRows,
+    x0: new Float64Array(last),
+  };
+}
+
+/**
+ * Unpack a cml_spacetime_tile into a field record. The layout is the
+ * kernel's: a 4-element header [model, n_sites, n_transient, n_record],
+ * then n_record rows of n_sites values, row-major by time then site —
+ * values[t * n_sites + i] is site i of the t-th recorded field, exactly
+ * as spacetime[t] = x fills the (n_record, N) array in Python. A tile
+ * that does not match its header yields null rather than a misread
+ * buffer. `req` supplies model and eps so a later chunk can continue the
+ * same run.
+ *
+ * @param {ArrayLike<number> | null | undefined} tile
+ * @param {ReturnType<typeof cmlRequest>} req
+ * @returns {{ values: Float64Array, nSites: number, nRows: number, model: number, eps: number } | null}
+ */
+export function cmlField(tile, req) {
+  if (!tile || tile.length < HEADER) return null;
+  const nSites = Math.floor(Number(tile[1]));
+  const nRows = Math.floor(Number(tile[3]));
+  if (!(nSites >= 1) || !(nRows >= 1)) return null;
+  if (tile.length < HEADER + nSites * nRows) return null;
+  return {
+    values: Float64Array.prototype.slice.call(tile, HEADER, HEADER + nSites * nRows),
+    nSites,
+    nRows,
+    model: req.model,
+    eps: req.eps,
+  };
+}
+
+/**
+ * Append a chunk's rows to the window and drop the oldest rows so the
+ * window keeps `nRecord` rows. The chunk must continue the same run —
+ * same model, eps and site count — or it is rejected: a parameter change
+ * restarts the field through the runner instead.
+ *
+ * @param {{ values: ArrayLike<number>, nSites: number, nRows: number, model: number, eps: number }} field
+ * @param {ArrayLike<number> | null | undefined} tile the chunk's kernel tile
+ * @param {number} nRecord the window's row cap
+ * @returns {{ values: Float64Array, nSites: number, nRows: number, model: number, eps: number } | null}
+ */
+export function cmlAppend(field, tile, nRecord) {
+  if (!field || !tile || tile.length < HEADER) return null;
+  const nSites = Math.floor(Number(tile[1]));
+  const nRows = Math.floor(Number(tile[3]));
+  if (nSites !== field.nSites || !(nRows >= 1)) return null;
+  if (Math.floor(Number(tile[0])) !== field.model) return null;
+  if (tile.length < HEADER + nSites * nRows) return null;
+  const keep = Math.max(0, Math.min(field.nRows, nRecord - nRows));
+  const values = new Float64Array((keep + nRows) * nSites);
+  values.set(Array.prototype.slice.call(field.values, (field.nRows - keep) * nSites), 0);
+  values.set(Array.prototype.slice.call(tile, HEADER, HEADER + nSites * nRows), keep * nSites);
+  return { values, nSites, nRows: keep + nRows, model: field.model, eps: field.eps };
+}
+
+/**
+ * The colour limits of the shown field: the 1st and 99th percentiles,
+ * linear interpolation on the sorted values — the same rule plot() uses
+ * on each row's stacked panels, including the ±0.5 pad when the field is
+ * constant. Non-finite values are skipped; an empty field falls back to
+ * [0, 1].
+ *
+ * @param {ArrayLike<number> | null | undefined} values
+ * @returns {[number, number]}
+ */
+export function cmlColorLimits(values) {
+  if (!values || !values.length) return [0, 1];
+  const sorted = Array.from(values).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return [0, 1];
+  const at = (p) => {
+    const h = (p / 100) * (sorted.length - 1);
+    const lo = Math.floor(h);
+    const hi = Math.min(sorted.length - 1, lo + 1);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (h - lo);
+  };
+  let vmin = at(1);
+  let vmax = at(99);
+  if (vmax - vmin < 1e-12) {
+    vmin -= 0.5;
+    vmax += 0.5;
+  }
+  return [vmin, vmax];
+}
+
+/**
+ * cml_spacetime_tile, loaded through the shared loader.
+ *
+ * @returns {Promise<(model: number, eps: number, nSites: number, nTransient: number, nRecord: number, x0: Float64Array) => Float64Array>}
+ */
+export function loadCmlKernel() {
+  return loadWasmExport("cml_spacetime_tile");
+}
+
+/**
+ * The default kernel call: load the glue, then invoke the export with the
+ * request's fields in the kernel's own order — model, eps, the site
+ * count, the transient, the record length, and the initial field.
+ * `kernel` is injectable so a node test can check the argument order
+ * without the wasm build.
+ *
+ * @param {ReturnType<typeof cmlRequest>} req
+ * @param {Function} [kernel]
+ * @returns {Promise<Float64Array>}
+ */
+export async function cmlKernelCall(req, kernel) {
+  const fn = kernel || (await loadCmlKernel());
+  return fn(req.model, req.eps, req.nSites, req.nTransient, req.nRecord, req.x0);
+}
+
+/**
+ * The space-time figure's parameter wiring, recompute path and play
+ * transport, sharing the attractor figures' runner. The page
+ * (mountSpacetime in scripts/paper_shell.py) builds the inputs and hands
+ * in the DOM callbacks; the decisions live here so node tests can drive
+ * them.
+ *
+ * The model selector is the figure's one non-slider control. Switching
+ * models snaps the value to a kernel id and resets eps to the new model's
+ * published default — the union range would clamp a model-A eps to model
+ * B's ceiling, which reads as a broken slider. An eps input snaps onto
+ * the spec's 0.001 grid so the kernel sees the decimal literal, then
+ * clamps into the active model's window.
+ *
+ * The store carries `field` (the rolling window) beside the trace arrays
+ * the runner splices. `store.tiles` holds one record — the window as a
+ * single heatmap tile — so the page's live renderer can reuse the tile
+ * path unchanged. `store.generation` bumps on every published field, so
+ * the colour cache and the readout never serve a stale window. `play()`
+ * appends chunkRows at a time from the window's last row until `pause()`
+ * or a parameter change; a chunk that resolves after the field it
+ * continues was replaced is dropped, never merged.
+ *
+ * @param {object} deps
+ * @param {object} [deps.params]
+ * @param {ArrayLike<number>} [deps.x0] the seed-42 uniform field
+ * @param {number} deps.debounceMs
+ * @param {(name: string, value: number) => void} deps.echo
+ * @param {(req: object) => Promise<ArrayLike<number>>} [deps.call]
+ * @param {(store: object, field: object, req: object) => void} [deps.onField]
+ * @param {() => void} deps.writeHash
+ * @param {(err: unknown) => void} [deps.onError]
+ * @param {{ set?: (fn: () => void, ms: number) => unknown, clear?: (id: unknown) => void }} [deps.timers]
+ * @returns {{ state: object, store: object, onInput: (name: string, raw: number) => void, setParams: (values: object) => void, refresh: () => void, play: () => void, pause: () => void, playing: () => boolean, ready: () => boolean }}
+ */
+export function createSpacetimeFigure({
+  params = LIVE_SPACETIME,
+  x0 = [],
+  debounceMs,
+  echo,
+  call = cmlKernelCall,
+  onField,
+  writeHash,
+  onError,
+  timers,
+}) {
+  const store = {
+    trace: { x: [], y: [] },
+    tiles: [],
+    field: null,
+    zlim: [0, 1],
+    generation: 0,
+    painted: 0,
+    playing: false,
+  };
+  // One counter for every published field: the runner's sequence and the
+  // play transport's appends both draw from it, so a chunk can never stamp
+  // a generation the colour cache already saw.
+  let gen = 0;
+  const publish = (field) => {
+    store.field = field;
+    store.zlim = cmlColorLimits(field.values);
+    store.generation = ++gen;
+    store.painted = field.nRows * field.nSites;
+    // The window as one tile record: header [n_sites, n_rows] is the
+    // raster path's shape, and data[4 + k] is field value k — the same
+    // offset the kernel's own tile uses, so the renderer and the readout
+    // read the record exactly like a pool tile.
+    const data = new Float64Array(HEADER + field.values.length);
+    data[0] = field.model;
+    data[1] = field.nSites;
+    data[2] = 0;
+    data[3] = field.nRows;
+    data.set(field.values, HEADER);
+    store.tiles.splice(0, store.tiles.length, {
+      id: "cml",
+      level: 0,
+      generation: store.generation,
+      omegaMin: 0,
+      omegaMax: field.nSites,
+      kMin: 0,
+      kMax: field.nRows,
+      header: [field.nSites, field.nRows],
+      data,
+    });
+  };
+  const runner = createKernelRunner({
+    store,
+    getState: () => wiring.state,
+    request: (state) => cmlRequest(state, params, x0),
+    fold: (tile, req) => {
+      const field = cmlField(tile, req);
+      return { x: [], y: [], field };
+    },
+    call,
+    onTrace: (s, trace, req) => {
+      if (!trace.field) return;
+      publish(trace.field);
+      if (onField) onField(s, trace.field, req);
+    },
+    onError,
+  });
+  const schedule = (fn) => {
+    if (timers && timers.set) return timers.set(fn, 0);
+    return setTimeout(fn, 0);
+  };
+  async function playChunk() {
+    if (!store.playing) return;
+    const field = store.field;
+    const req = cmlChunkRequest(wiring.state, field, params);
+    if (!req) {
+      store.playing = false;
+      return;
+    }
+    try {
+      const tile = await call(req);
+      // The field this chunk continues may have been replaced while the
+      // kernel ran (a parameter change restarts through the runner); a
+      // stale chunk is dropped, never merged into the new window.
+      if (!store.playing || store.field !== field) return;
+      const next = cmlAppend(field, tile, params.nRecord);
+      if (!next) return;
+      publish(next);
+      if (onField) onField(store, next, req);
+      if (store.playing) schedule(playChunk);
+    } catch (err) {
+      store.playing = false;
+      if (onError) onError(err);
+    }
+  }
+  let activeKind = null;
+  function syncState(name) {
+    const kind = cmlModelKind(wiring.state.model);
+    if (wiring.state.model !== kind) {
+      wiring.state.model = kind;
+      echo("model", kind);
+    }
+    const model = params.models[kind];
+    if (kind !== activeKind) {
+      if (name === "model") {
+        // A model switch moves eps's window; reset to the new model's
+        // published default rather than clamping the old model's eps.
+        wiring.state.eps = model.epsDefault;
+        echo("eps", model.epsDefault);
+      }
+      activeKind = kind;
+    } else {
+      const eps = Math.min(model.epsMax, Math.max(model.epsMin, wiring.state.eps));
+      if (wiring.state.eps !== eps) {
+        wiring.state.eps = eps;
+        echo("eps", eps);
+      }
+    }
+    // The snapped value is what the kernel sees: a stepped range input
+    // emits 0.07000000000000001 where the reader picked 0.07.
+    for (const spec of params.paramSpecs) {
+      if (!spec.snap) continue;
+      const snapped = snapToStep(wiring.state[spec.name], spec);
+      if (wiring.state[spec.name] !== snapped) {
+        wiring.state[spec.name] = snapped;
+        echo(spec.name, snapped);
+      }
+    }
+  }
+  const wiring = createParamWiring({
+    specs: params.paramSpecs,
+    debounceMs,
+    echo,
+    apply: () => {
+      runner.run();
+    },
+    writeHash,
+    onSet: (name) => syncState(name),
+    timers,
+  });
+  // Settle the initial state: the default model's window is active from
+  // the start, so a first eps input clamps into it rather than skipping
+  // the clamp on a null activeKind.
+  syncState(null);
+  return {
+    state: wiring.state,
+    store,
+    onInput: wiring.onInput,
+    setParams: wiring.setParams,
+    refresh: () => {
+      runner.run();
+    },
+    play: () => {
+      if (store.playing) return;
+      store.playing = true;
+      schedule(playChunk);
+    },
+    pause: () => {
+      store.playing = false;
+    },
+    playing: () => store.playing,
     ready: runner.ready,
   };
 }

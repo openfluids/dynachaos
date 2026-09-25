@@ -1174,6 +1174,7 @@ try {
       (await ev("location.hash")).includes("fig:double_staircase.dMin=0.25502630263026305"),
     JSON.stringify({ mParamsP, hash: await ev("location.hash") }),
   );
+
   const mPresetCheck = await ev(`(async () => {
     const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
     const p = ${M}._live.params();
@@ -1190,7 +1191,171 @@ try {
     JSON.stringify(mPresetCheck),
   );
 
+  // ---- CML space-time diagrams: the field x_i^n with a model selector ----
+  // The sixth live figure: one heat map (site i across, time n up, magma)
+  // drawn by one cml_spacetime_tile call per parameter set. The select
+  // switches the model — and with it the eps slider's window and default —
+  // the sites field sets the lattice width, play appends chunks computed
+  // from the window's last row, and one plotted value must equal the
+  // kernel's own output at the same request.
+  const C = "document.getElementById('fig:spacetime_diagrams')";
+  const cStats = () => ev(`${C} && ${C}._live ? ${C}._live.stats() : null`);
+  check(
+    "the spacetime figure is marked live-capable",
+    await ev(`!!${C} && ${C}.dataset.live === "spacetime_diagrams"`),
+    await ev(`${C} ? JSON.stringify(${C}.dataset) : "no figure"`),
+  );
+  await ev(`(${C}.querySelector(".act-interact").click(), true)`);
+  const cFirstPaint = await waitFor(
+    `!!${C}._live && ${C}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const cStats0 = await cStats();
+  check(
+    "the spacetime field is painted at the defaults",
+    cFirstPaint && cStats0 && cStats0.rows === 500 && cStats0.sites === 200,
+    JSON.stringify(cStats0),
+  );
+  check(
+    "the spacetime figure has a model selector, an eps slider and a sites field",
+    await ev(
+      `!!(${C} && ${C}.querySelector(".live-params select") && ${C}.querySelector(".live-params input[type=range]") && ${C}.querySelector(".live-params input[type=number]"))`,
+    ),
+  );
+  check(
+    "the spacetime figure has a play button",
+    await ev(`!!(${C} && ${C}.querySelector(".live-play"))`),
+  );
 
+  // One plotted value against the kernel computed the same way: the page's
+  // own glue module answers cml_spacetime_tile at the figure's current
+  // (model, eps, sites) from the same x0 JSON, and the field's first value
+  // must be that tile's first field entry.
+  const cCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const x0 = await (await fetch(new URL("live/cml-x0.json", document.baseURI).href)).json();
+    const p = ${C}._live.params();
+    const tile = glue.cml_spacetime_tile(p.model, p.eps, p.sites, 2000, 500, Float64Array.from(x0.slice(0, p.sites)));
+    const f = ${C}._live.field();
+    return { v: f.values[0], kv: tile[4], rows: f.nRows, nRecord: tile[3] };
+  })()`);
+  check(
+    "a plotted field value equals the kernel's at the same (model, eps, sites)",
+    cCheck != null &&
+      cCheck.v === cCheck.kv &&
+      cCheck.rows === cCheck.nRecord,
+    JSON.stringify(cCheck),
+  );
+
+  // Switch to model C: the selector must move eps into the new model's
+  // window (its published default 0.2), repaint a new generation, and
+  // write the model into the hash.
+  const cBefore = await cStats();
+  await ev(`(() => {
+    const s = ${C}.querySelector(".live-params select");
+    s.value = "2";
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  const cSwitched = await waitFor(
+    `!!${C}._live && ${C}._live.stats().generation > ${cBefore ? cBefore.generation : -1} && ${C}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("model=2")`, 5_000);
+  const cParams2 = await ev(`${C} && ${C}._live ? ${C}._live.params() : null`);
+  check(
+    "switching to model C repaints a new generation",
+    Boolean(cBefore && cSwitched),
+    JSON.stringify({ before: cBefore, after: await cStats() }),
+  );
+  check(
+    "switching to model C moves eps into the new window and writes the hash",
+    cParams2 != null &&
+      cParams2.model === 2 &&
+      cParams2.eps === 0.2 &&
+      (await ev("location.hash")).includes("fig:spacetime_diagrams.model=2"),
+    JSON.stringify({ cParams2, hash: await ev("location.hash") }),
+  );
+
+  // Move eps inside model C's window: the debounced apply must recompute,
+  // repaint, and write the new value into the hash. The range input snaps
+  // to its step, so the check reads back the snapped value rather than
+  // assuming it.
+  const cBeforeE = await cStats();
+  const cSet = await ev(`(() => {
+    const r = ${C}.querySelector(".live-params input[type=range]");
+    r.value = "0.3";
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return r.value;
+  })()`);
+  const cMoved = await waitFor(
+    `!!${C}._live && ${C}._live.stats().generation > ${cBeforeE ? cBeforeE.generation : -1} && ${C}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  await waitFor(`location.hash.includes("eps=" + ${JSON.stringify(cSet)})`, 5_000);
+  const cMovedCheck = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const x0 = await (await fetch(new URL("live/cml-x0.json", document.baseURI).href)).json();
+    const p = ${C}._live.params();
+    const tile = glue.cml_spacetime_tile(p.model, p.eps, p.sites, 2000, 500, Float64Array.from(x0.slice(0, p.sites)));
+    const f = ${C}._live.field();
+    return { eps: p.eps, v: f.values[0], kv: tile[4] };
+  })()`);
+  check(
+    "moving the spacetime eps repaints a new generation",
+    Boolean(cBeforeE && cMoved),
+    JSON.stringify({ before: cBeforeE, after: await cStats() }),
+  );
+  check(
+    "after the move the field is the new eps's run",
+    cMovedCheck != null &&
+      cMovedCheck.eps === Number(cSet) &&
+      cMovedCheck.v === cMovedCheck.kv,
+    JSON.stringify(cMovedCheck),
+  );
+
+  // Play: chunks append rows continued from the window's last row and the
+  // oldest rows drop off. Several chunks may land before the check reads
+  // the field, so the comparison anchors on the field itself: its last
+  // 250 rows must equal the kernel's continuation of the row just before
+  // them — the same call the figure's transport made.
+  const cGenBefore = (await cStats()).generation;
+  await ev(`(${C}._live.play(), true)`);
+  const cPlayed = await waitFor(
+    `!!${C}._live && ${C}._live.stats().generation > ${cGenBefore}`,
+    SAMPLE_MS,
+    100,
+  );
+  await ev(`(${C}._live.pause(), true)`);
+  const cCont = await ev(`(async () => {
+    const glue = await import(new URL("wasm/dynachaos_wasm.js", document.baseURI).href);
+    const f = ${C}._live.field();
+    const n = f.nSites;
+    const prior = f.values.slice((f.nRows - 251) * n, (f.nRows - 250) * n);
+    const p = ${C}._live.params();
+    const tile = glue.cml_spacetime_tile(p.model, p.eps, p.sites, 0, 250, Float64Array.from(prior));
+    const tail = f.values.slice((f.nRows - 250) * n);
+    let same = tail.length === 250 * n;
+    for (let k = 0; k < tail.length && same; k++) same = tail[k] === tile[4 + k];
+    return { same, rows: f.nRows, sites: f.nSites };
+  })()`);
+  check(
+    "play appends chunks continued from the window's last row",
+    Boolean(cPlayed && cCont != null && cCont.same && cCont.rows === 500),
+    JSON.stringify(cCont),
+  );
+  // Pause: the transport stops, so the generation freezes.
+  const cGen = (await cStats()).generation;
+  await sleep(600);
+  const cGen2 = (await cStats()).generation;
+  check(
+    "pause stops the transport",
+    cGen === cGen2 && !(await ev(`${C}._live.playing()`)),
+    JSON.stringify({ cGen, cGen2 }),
+  );
 
   const sEnd = await stats();
   check(
@@ -1356,6 +1521,32 @@ try {
       "under prefers-reduced-data the double staircase keeps its PNG and mounts no controls",
       Boolean(mReduced && mReduced.shown && !mReduced.liveCanvas && !mReduced.slider && !mReduced.presets && !mReduced.hasLive),
       JSON.stringify(mReduced),
+    );
+    // The space-time figure under reduced data: same rule — the published
+    // nine-panel PNG stays, no selector, no play button, no live canvas,
+    // no wasm.
+    await ev(`(${C}.querySelector(".act-interact") && ${C}.querySelector(".act-interact").click(), true)`);
+    await sleep(REDUCED_WAIT_MS);
+    const cReduced = await ev(`(() => {
+      const fig = ${C};
+      if (!fig) return { missing: true };
+      const img = fig.querySelector(".fig-body img");
+      const imgShown = img && getComputedStyle(img).display !== "none";
+      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      return {
+        shown: Boolean(imgShown || jsonChart),
+        liveCanvas: !!fig.querySelector("canvas.plot.live"),
+        slider: !!fig.querySelector(".live-params input"),
+        selector: !!fig.querySelector(".live-params select"),
+        play: !!fig.querySelector(".live-play"),
+        hasLive: !!fig._live,
+        state: fig.dataset.state,
+      };
+    })()`);
+    check(
+      "under prefers-reduced-data the spacetime figure keeps its PNG and mounts no controls",
+      Boolean(cReduced && cReduced.shown && !cReduced.liveCanvas && !cReduced.slider && !cReduced.selector && !cReduced.play && !cReduced.hasLive),
+      JSON.stringify(cReduced),
     );
   }
   await pullDebug();

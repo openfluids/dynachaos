@@ -134,6 +134,15 @@ jobs:
         # 1e-6 on rho_theta and 1e-12 on rho_phi; the reasoning is in the
         # script's docstring.
         run: uv run python scripts/check_wasm_modulated_circle.py
+      - name: Check the live CML space-time figure against the published npz
+        # The space-time figure recomputes in the browser at a reader-chosen
+        # model, eps and site count; this compares the wasm tile against the
+        # nine committed npz fields (A and C bit for bit, B against a numpy
+        # ensemble with a 1-ulp error on every sin), checks the page's x0 JSON
+        # against the paper's seed-42 field, and proves a play chunk
+        # continues the run bit for bit. The reasoning is in the script's
+        # docstring.
+        run: uv run python scripts/check_wasm_cml_spacetime.py
       - name: Check the diagnostics exports against the native build
         # Counts must match exactly; the fuzzy-entropy sum has a stated
         # tolerance, justified in the script's docstring.
