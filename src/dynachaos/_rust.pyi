@@ -121,7 +121,6 @@ def logistic_type_i_oracle(
     x0: float,
     r: float,
 ) -> npt.NDArray[np.float64]: ...
-
 def delayed_logistic_attractor_tile(
     A: float,
     d_values: npt.NDArray[np.float64],

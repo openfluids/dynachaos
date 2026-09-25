@@ -639,8 +639,7 @@ def main() -> int:
 
     # delayed_logistic_attractor_tile: [n_D, n_plot, n_transient, dim, samples...].
     delayed_d_values = [
-        DELAYED_D_MIN
-        + (DELAYED_D_MAX - DELAYED_D_MIN) * k / (DELAYED_N_D - 1)
+        DELAYED_D_MIN + (DELAYED_D_MAX - DELAYED_D_MIN) * k / (DELAYED_N_D - 1)
         for k in range(DELAYED_N_D)
     ]
     delayed_native = delayed_logistic_attractor_tile(
@@ -736,9 +735,7 @@ def main() -> int:
         float(MAP_TRANSIENT),
         float(MAP_PLOT),
     ]
-    if not check_header(
-        "torus_i_attractor_tile", out[:4], torus_i_expected_header
-    ):
+    if not check_header("torus_i_attractor_tile", out[:4], torus_i_expected_header):
         failed = True
     else:
         bad, worst = compare(
@@ -747,10 +744,7 @@ def main() -> int:
             out[4:],
             0.0,
         )
-        print(
-            f"torus_i_attractor_tile: map {TORUS_I_KIND}, "
-            f"{MAP_PLOT} samples, worst {worst:.3e}"
-        )
+        print(f"torus_i_attractor_tile: map {TORUS_I_KIND}, {MAP_PLOT} samples, worst {worst:.3e}")
         if bad:
             print("FAIL: torus_i_attractor_tile differs")
             failed = True
@@ -782,9 +776,7 @@ def main() -> int:
         float(CIRCLE_ITER),
         2.0,
     ]
-    if not check_header(
-        "modulated_circle_rotation_tile", out[:4], circle_expected_header
-    ):
+    if not check_header("modulated_circle_rotation_tile", out[:4], circle_expected_header):
         failed = True
     else:
         circle_native_flat = [float(v) for v in np.asarray(circle_native).ravel()]
@@ -815,9 +807,7 @@ def main() -> int:
     # cml_spacetime_tile: [model, n_sites, n_transient, n_record, field...].
     cml_x0 = np.array(x[:CML_N_SITES], dtype=np.float64)
     for model, key in [(0, "cml_spacetime_a"), (1, "cml_spacetime_b"), (2, "cml_spacetime_c")]:
-        cml_native = cml_spacetime_tile(
-            model, CML_EPS[model], CML_TRANSIENT, CML_RECORD, cml_x0
-        )
+        cml_native = cml_spacetime_tile(model, CML_EPS[model], CML_TRANSIENT, CML_RECORD, cml_x0)
         out = wasm[key]
         cml_expected_header = [
             float(model),

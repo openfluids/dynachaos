@@ -1487,9 +1487,7 @@ class TestMapAttractorParity:
 
         state0 = np.array([0.4, 0.35], dtype=np.float64)
         d_values = np.array([1.55, 1.95, 2.16], dtype=np.float64)
-        rust = delayed_logistic_attractor_tile(
-            0.3, d_values, self.N_TRANSIENT, self.N_PLOT, state0
-        )
+        rust = delayed_logistic_attractor_tile(0.3, d_values, self.N_TRANSIENT, self.N_PLOT, state0)
 
         expected = []
         for d in d_values:
@@ -1511,9 +1509,7 @@ class TestMapAttractorParity:
             (4, 0.3, 1.5212, [0.5, 0.45, 0.52, 0.48], "map_IV"),
         ],
     )
-    def test_torus_doubling_trajectory_parity(
-        self, map_kind, A, D, state0, map_function
-    ):
+    def test_torus_doubling_trajectory_parity(self, map_kind, A, D, state0, map_function):
         from dynachaos._rust import torus_doubling_attractor_tile
         from dynachaos.maps import torus_doubling
 
@@ -1616,13 +1612,9 @@ class TestModulatedCircleParity:
 
         state0 = np.array([0.1, 0.1], dtype=np.float64)
         with pytest.raises(ValueError):
-            modulated_circle_rotation_tile(
-                self.A, self.C, np.array([]), self.EPS, 10, 10, state0
-            )
+            modulated_circle_rotation_tile(self.A, self.C, np.array([]), self.EPS, 10, 10, state0)
         with pytest.raises(ValueError):
-            modulated_circle_rotation_tile(
-                self.A, self.C, np.array([0.3]), self.EPS, 10, 0, state0
-            )
+            modulated_circle_rotation_tile(self.A, self.C, np.array([0.3]), self.EPS, 10, 0, state0)
         with pytest.raises(ValueError):
             modulated_circle_rotation_tile(
                 self.A, self.C, np.array([0.3]), self.EPS, 10, 10, np.array([0.1])
@@ -1713,9 +1705,7 @@ class TestCmlSpacetimeParity:
 
         x0 = np.array([-0.9, 0.2, 0.5, -0.3], dtype=np.float64)
         rust = cml_spacetime_tile(1, 0.024, 0, 8, x0)
-        expected = simulate_cml(
-            model_B_f, model_B_g, 0.024, N=4, n_transient=0, n_record=8, x0=x0
-        )
+        expected = simulate_cml(model_B_f, model_B_g, 0.024, N=4, n_transient=0, n_record=8, x0=x0)
         np.testing.assert_array_equal(rust, expected)
 
     def test_invalid_input_is_rejected(self, x0):
