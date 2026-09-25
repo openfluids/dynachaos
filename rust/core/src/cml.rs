@@ -341,9 +341,25 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn cml_model_b_matches_python_exactly() {
         let out = cml_spacetime_tile(1, 0.024, 10, 4, &X0).unwrap();
         assert_eq!(out, MODEL_B_EPS_0_024);
+    }
+
+    /// macOS's libm `sin` differs from glibc's by 1 ulp on some inputs, so
+    /// model (B) is not bit-exact there (CI: 3.3e-16 at one value). Eight
+    /// numpy runs with a 1-ulp error on every sin result stay within
+    /// 1.6e-15 of the literals, so this key is not sensitive and the rule
+    /// of `scripts/check_wasm_cml_spacetime.py` applies: within 1e-9.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn cml_model_b_matches_python_within_sin_rounding() {
+        let out = cml_spacetime_tile(1, 0.024, 10, 4, &X0).unwrap();
+        assert_eq!(out.len(), MODEL_B_EPS_0_024.len());
+        for (k, (got, want)) in out.iter().zip(MODEL_B_EPS_0_024).enumerate() {
+            assert!((got - want).abs() <= 1e-9, "value {k}: {got} != {want}");
+        }
     }
 
     #[test]
