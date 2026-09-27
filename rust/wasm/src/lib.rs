@@ -10,15 +10,18 @@
 //!
 //! The kernels themselves live in `dynachaos-core` and are the same code the
 //! published figures were computed with. This crate only converts and guards.
-//! Sixteen exports: `rotation_number_tile` for the picture,
+//! Twenty exports: `rotation_number_tile` for the picture,
 //! `rotation_number_point` for the quoted readout, `zero_one_k` for the
 //! 0-1 test for chaos, `correlation_counts`, `apen_counts`,
 //! `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`,
 //! `vertical_lines`, `multifractal_moments`, `ami_histogram` and
-//! `select_dimension_cao` for the diagnostics panel, and
+//! `select_dimension_cao` for the diagnostics panel,
 //! `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`,
 //! `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the
-//! map-attractor and space-time live figures.
+//! map-attractor and space-time live figures, and
+//! `circle_map_lyapunov_sum`, `delayed_logistic_lyapunov_tile`,
+//! `torus_doubling_lyapunov_tile` and `coupled_delayed_lyapunov_tile`
+//! for the Lyapunov panels.
 
 use ndarray::Array2;
 use wasm_bindgen::prelude::*;
@@ -135,6 +138,28 @@ const MAX_CML_RECORD: usize = 2048;
 /// middle value of each model's paper sweep
 /// (`src/dynachaos/cml/spatiotemporal.py:102,107,112`).
 const CML_EPS_FALLBACK: [f64; 3] = [0.07, 0.024, 0.2];
+/// Largest D list a Lyapunov tile may sweep. The coupled-delayed tile is
+/// tighter: see `MAX_LYAP_DB`.
+const MAX_LYAP_D: usize = 512;
+/// Largest `D_B` list `coupled_delayed_lyapunov_tile` may sweep.
+const MAX_LYAP_DB: usize = 128;
+/// Circle-map amplitude cap from the kernel list. The staircase sweeps
+/// `A` over `[0, 0.25]` (`src/dynachaos/maps/circle_map.py:109`).
+const CIRCLE_A_MAX: f64 = 0.25;
+/// Delayed-logistic Lyapunov sweep (`src/dynachaos/maps/delayed_logistic.py:162`).
+const DELAYED_LYAP_D_MIN: f64 = 1.3;
+/// Largest delayed-logistic D the Lyapunov tile may ask for.
+const DELAYED_LYAP_D_MAX: f64 = 2.5;
+/// Coupled-delayed Lyapunov sweep (`src/dynachaos/maps/coupled_delayed.py:93`).
+const COUPLED_DB_MIN: f64 = 2.1;
+/// Largest coupled-delayed `D_B` the Lyapunov tile may ask for.
+const COUPLED_DB_MAX: f64 = 2.65;
+/// Smallest coupling the coupled-delayed Lyapunov figure uses.
+const COUPLED_EPS_MIN: f64 = 1e-3;
+/// Largest coupling the coupled-delayed Lyapunov figure uses.
+const COUPLED_EPS_MAX: f64 = 1e-2;
+/// Middle coupling of the published epsilon trio.
+const COUPLED_EPS_PAPER: f64 = 5e-3;
 
 /// Rotation numbers of the sine circle map over a tile of the (Omega, K) plane.
 ///
@@ -1304,6 +1329,303 @@ pub fn cml_spacetime_tile(
     out
 }
 
+/// Lyapunov exponent of the circle map at one `(A, D)`.
+///
+/// This is `dynachaos.maps.circle_map.lyapunov_exponent`
+/// (`src/dynachaos/maps/circle_map.py:75`): both the transient and the
+/// measured stretch use the wrapped map
+/// `theta' = (theta + D + A sin(2 pi theta)) mod 1`, and a zero derivative
+/// contributes `-100` instead of `log(0)`. The devils-staircase Lyapunov
+/// panel draws `lambda(A)` at `D = 0.25`.
+///
+/// # Returned layout
+///
+/// One flat array of 3 values:
+///
+/// - `[0]` = `n_transient` actually used.
+/// - `[1]` = `n_iter` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[2]` = `lambda`, the exponent.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 0.25]`, the staircase sweep; a non-finite value
+///   falls back to 0.
+/// - `d`: clamped to `[0, 1]`; a non-finite value falls back to 0.25, the
+///   paper's D.
+/// - `theta0`: clamped to `[0, 1]`; a non-finite value falls back to 0.1.
+/// - `n_transient`: clamped to `[0, 20000]`; `n_iter` to `[1, 200000]`,
+///   reduced further to respect the step budget.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn circle_map_lyapunov_sum(
+    a: f64,
+    d: f64,
+    n_transient: usize,
+    n_iter: usize,
+    theta0: f64,
+) -> Vec<f64> {
+    let a = finite_or(a, 0.0).clamp(0.0, CIRCLE_A_MAX);
+    let d = finite_or(d, 0.25).clamp(0.0, 1.0);
+    let theta0 = finite_or(theta0, 0.1).clamp(0.0, 1.0);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(1, 1, n_transient, n_iter);
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty tile rather than trapping and killing the worker.
+    let Ok(lambda) = dynachaos_core::circle_map_lyapunov_sum(a, d, n_transient, n_iter, theta0)
+    else {
+        return Vec::new();
+    };
+
+    vec![n_transient as f64, n_iter as f64, lambda]
+}
+
+/// Delayed-logistic Lyapunov tile: one 2-spectrum per `D`.
+///
+/// This is `lyapunov_spectrum` (`src/dynachaos/diagnostics/lyapunov.py:76`)
+/// run on `delayed_logistic` (`src/dynachaos/maps/delayed_logistic.py:82`)
+/// and its Jacobian. The Lyapunov figure sweeps `D` over `[1.3, 2.5]`
+/// (`src/dynachaos/maps/delayed_logistic.py:162`).
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_D * 2` values:
+///
+/// - `[0]` = `n_D` actually used.
+/// - `[1]` = `n_transient` actually used.
+/// - `[2]` = `n_iter` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[3]` = 2, the spectrum width.
+/// - `[4 ..]` = the spectra, D-major: two exponents per `D`, largest first.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to 0.3.
+/// - `d_min`, `d_max`: clamped to `[1.3, 2.5]`, the Lyapunov sweep; a
+///   non-finite value falls back to the matching endpoint.
+/// - `n_D`: clamped to `[1, 512]`; `n_transient` to `[0, 20000]`; `n_iter`
+///   to `[1, 200000]`, reduced further to respect the step budget.
+/// - `state0`: the first two entries are used; a missing or non-finite
+///   component falls back to 0.5, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn delayed_logistic_lyapunov_tile(
+    a: f64,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    n_transient: usize,
+    n_iter: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let a = finite_or(a, 0.3).clamp(0.0, 1.0);
+    let d_min = finite_or(d_min, DELAYED_LYAP_D_MIN).clamp(DELAYED_LYAP_D_MIN, DELAYED_LYAP_D_MAX);
+    let d_max = finite_or(d_max, DELAYED_LYAP_D_MAX).clamp(DELAYED_LYAP_D_MIN, DELAYED_LYAP_D_MAX);
+    let n_d = n_d.clamp(1, MAX_LYAP_D);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(n_d, 1, n_transient, n_iter);
+    let start = map_state::<2>(state0);
+
+    let d_values: Vec<f64> = (0..n_d)
+        .map(|k| d_min + (d_max - d_min) * (k as f64) / ((n_d - 1).max(1) as f64))
+        .collect();
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty tile rather than trapping and killing the worker.
+    let Ok(spectra) =
+        dynachaos_core::delayed_logistic_lyapunov_tile(a, &d_values, n_transient, n_iter, &start)
+    else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + spectra.len());
+    out.push(n_d as f64);
+    out.push(n_transient as f64);
+    out.push(n_iter as f64);
+    out.push(2.0);
+    out.extend_from_slice(&spectra);
+    out
+}
+
+/// Torus-doubling Lyapunov tile: one spectrum per `D`, map I or map IV.
+///
+/// This is `lyapunov_spectrum` run on `map_I` or `map_IV` and its Jacobian
+/// (`src/dynachaos/maps/torus_doubling.py:46,63`). The paper sweeps `D` over
+/// `[1.48, 1.53]` for map IV and `[1.9, 2.25]` for map I; the export accepts
+/// their union `[1.48, 2.25]`.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_D * dim` values:
+///
+/// - `[0]` = `n_D` actually used.
+/// - `[1]` = `n_transient` actually used.
+/// - `[2]` = `n_iter` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[3]` = the spectrum width: 3 for map I, 4 for map IV.
+/// - `[4 ..]` = the spectra, D-major: `dim` exponents per `D`, largest first.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `map_kind`: snapped to the nearer of `{1, 4}`: 2 and below is map I,
+///   3 and above is map IV.
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to 0.4.
+/// - `d_min`, `d_max`: clamped to `[1.48, 2.25]`, the union of the paper's
+///   map-I and map-IV sweeps; a non-finite value falls back to the matching
+///   endpoint.
+/// - `n_D`: clamped to `[1, 512]`; `n_transient` to `[0, 20000]`; `n_iter`
+///   to `[1, 200000]`, reduced further to respect the step budget.
+/// - `state0`: the first `dim` entries are used; a missing or non-finite
+///   component falls back to 0.5, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn torus_doubling_lyapunov_tile(
+    map_kind: usize,
+    a: f64,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    n_transient: usize,
+    n_iter: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let map_kind = if map_kind <= 2 { 1 } else { 4 };
+    let dim = if map_kind == 1 { 3 } else { 4 };
+    let a = finite_or(a, 0.4).clamp(0.0, 1.0);
+    let d_min = finite_or(d_min, TORUS_D_MIN).clamp(TORUS_D_MIN, TORUS_D_MAX);
+    let d_max = finite_or(d_max, TORUS_D_MAX).clamp(TORUS_D_MIN, TORUS_D_MAX);
+    let n_d = n_d.clamp(1, MAX_LYAP_D);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(n_d, 1, n_transient, n_iter);
+
+    let d_values: Vec<f64> = (0..n_d)
+        .map(|k| d_min + (d_max - d_min) * (k as f64) / ((n_d - 1).max(1) as f64))
+        .collect();
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty tile rather than trapping and killing the worker.
+    let spectra = if map_kind == 1 {
+        let start = map_state::<3>(state0);
+        dynachaos_core::torus_doubling_lyapunov_tile(1, a, &d_values, n_transient, n_iter, &start)
+    } else {
+        let start = map_state::<4>(state0);
+        dynachaos_core::torus_doubling_lyapunov_tile(4, a, &d_values, n_transient, n_iter, &start)
+    };
+    let Ok(spectra) = spectra else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + spectra.len());
+    out.push(n_d as f64);
+    out.push(n_transient as f64);
+    out.push(n_iter as f64);
+    out.push(dim as f64);
+    out.extend_from_slice(&spectra);
+    out
+}
+
+/// Coupled-delayed Lyapunov tile: one 4-spectrum per `D_B`.
+///
+/// This is `lyapunov_spectrum` run on `coupled_delayed` and its Jacobian
+/// (`src/dynachaos/maps/coupled_delayed.py:52`), with `D_A = D_B + 0.1` as
+/// `compute_lyapunov` fixes it. The paper sweeps `D_B` over `[2.1, 2.65]`
+/// at `eps` in `{1e-3, 5e-3, 1e-2}`.
+///
+/// # Returned layout
+///
+/// One flat array of `4 + n_DB * 4` values:
+///
+/// - `[0]` = `n_DB` actually used.
+/// - `[1]` = `n_transient` actually used.
+/// - `[2]` = `n_iter` actually used, which may be lower than requested when
+///   the step budget binds.
+/// - `[3]` = 4, the spectrum width.
+/// - `[4 ..]` = the spectra, `D_B`-major: four exponents per `D_B`, largest
+///   first.
+///
+/// Read the header rather than assuming the values you passed were honoured.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to 0.4.
+/// - `db_min`, `db_max`: clamped to `[2.1, 2.65]`, the paper sweep; a
+///   non-finite value falls back to the matching endpoint.
+/// - `eps`: clamped to `[1e-3, 1e-2]`, the paper's epsilon trio; a
+///   non-finite value falls back to 5e-3.
+/// - `n_DB`: clamped to `[1, 128]`; `n_transient` to `[0, 20000]`; `n_iter`
+///   to `[1, 200000]`, reduced further to respect the step budget.
+/// - `state0`: the first four entries are used; a missing or non-finite
+///   component falls back to 0.5, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn coupled_delayed_lyapunov_tile(
+    a: f64,
+    db_min: f64,
+    db_max: f64,
+    n_db: usize,
+    eps: f64,
+    n_transient: usize,
+    n_iter: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let a = finite_or(a, 0.4).clamp(0.0, 1.0);
+    let db_min = finite_or(db_min, COUPLED_DB_MIN).clamp(COUPLED_DB_MIN, COUPLED_DB_MAX);
+    let db_max = finite_or(db_max, COUPLED_DB_MAX).clamp(COUPLED_DB_MIN, COUPLED_DB_MAX);
+    let n_db = n_db.clamp(1, MAX_LYAP_DB);
+    let eps = finite_or(eps, COUPLED_EPS_PAPER).clamp(COUPLED_EPS_MIN, COUPLED_EPS_MAX);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_iter = n_iter.clamp(1, MAX_ITER);
+    let n_iter = fit_step_budget(n_db, 1, n_transient, n_iter);
+    let start = map_state::<4>(state0);
+
+    let db_values: Vec<f64> = (0..n_db)
+        .map(|k| db_min + (db_max - db_min) * (k as f64) / ((n_db - 1).max(1) as f64))
+        .collect();
+
+    // The kernel only fails on arguments this function has already ruled
+    // out, so an error here would be a bug in the clamping above. Report it
+    // as an empty tile rather than trapping and killing the worker.
+    let Ok(spectra) = dynachaos_core::coupled_delayed_lyapunov_tile(
+        a,
+        &db_values,
+        eps,
+        n_transient,
+        n_iter,
+        &start,
+    ) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::with_capacity(HEADER + spectra.len());
+    out.push(n_db as f64);
+    out.push(n_transient as f64);
+    out.push(n_iter as f64);
+    out.push(4.0);
+    out.extend_from_slice(&spectra);
+    out
+}
+
 /// Build a clamped `n_sites`-entry CML initial field.
 ///
 /// A missing or non-finite entry falls back to 0.5, then every entry clamps
@@ -2466,5 +2788,333 @@ mod tests {
             cml_state(4, &[-5.0, 9.0, f64::NAN, 0.2]),
             [-1.0, 2.0, 0.5, 0.2]
         );
+    }
+
+    #[test]
+    fn circle_lyapunov_header_reports_the_values_actually_used() {
+        let out = circle_map_lyapunov_sum(0.1, 0.25, 200, 5000, 0.1);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0], 200.0);
+        assert_eq!(out[1], 5000.0);
+        assert!(out[2].is_finite());
+    }
+
+    #[test]
+    fn circle_lyapunov_a_is_clamped_to_the_staircase_sweep() {
+        // A = 0.9 clamps to CIRCLE_A_MAX = 0.25.
+        let out = circle_map_lyapunov_sum(0.9, 0.25, 200, 1000, 0.1);
+        let capped = circle_map_lyapunov_sum(CIRCLE_A_MAX, 0.25, 200, 1000, 0.1);
+        assert_eq!(out, capped);
+        let below = circle_map_lyapunov_sum(-1.0, 0.25, 200, 1000, 0.1);
+        let at_zero = circle_map_lyapunov_sum(0.0, 0.25, 200, 1000, 0.1);
+        assert_eq!(below, at_zero);
+    }
+
+    #[test]
+    fn circle_lyapunov_d_is_clamped_to_unit_interval() {
+        // d = 9 clamps to 1.
+        let out = circle_map_lyapunov_sum(0.1, 9.0, 200, 1000, 0.1);
+        let capped = circle_map_lyapunov_sum(0.1, 1.0, 200, 1000, 0.1);
+        assert_eq!(out, capped);
+        let out = circle_map_lyapunov_sum(0.1, -4.0, 200, 1000, 0.1);
+        let floored = circle_map_lyapunov_sum(0.1, 0.0, 200, 1000, 0.1);
+        assert_eq!(out, floored);
+    }
+
+    #[test]
+    fn circle_lyapunov_theta0_and_counts_are_clamped() {
+        let out = circle_map_lyapunov_sum(0.1, 0.25, 200, 1000, 7.3);
+        let capped = circle_map_lyapunov_sum(0.1, 0.25, 200, 1000, 1.0);
+        assert_eq!(out, capped);
+        let out = circle_map_lyapunov_sum(0.1, 0.25, MAX_TRANSIENT + 10_000, MAX_ITER + 10, 0.1);
+        assert_eq!(out[0], MAX_TRANSIENT as f64);
+        assert_eq!(out[1], MAX_ITER as f64);
+    }
+
+    #[test]
+    fn circle_lyapunov_iteration_count_respects_the_step_budget() {
+        // Both clamps are independently observable: the count clamps up to
+        // MAX_ITER, and the step budget cannot exceed MAX_STEPS.
+        let out = circle_map_lyapunov_sum(0.1, 0.25, 0, usize::MAX, 0.1);
+        assert_eq!(out[1], MAX_ITER as f64);
+        let out = circle_map_lyapunov_sum(0.1, 0.25, MAX_TRANSIENT, MAX_ITER, 0.1);
+        assert!(out[0] as u64 + out[1] as u64 <= MAX_STEPS);
+    }
+
+    #[test]
+    fn delayed_lyapunov_header_reports_the_values_actually_used() {
+        let out = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.9, 4, 200, 5000, &[0.4, 0.35]);
+        assert_eq!(out[0], 4.0);
+        assert_eq!(out[1], 200.0);
+        assert_eq!(out[2], 5000.0);
+        assert_eq!(out[3], 2.0);
+        assert_eq!(out.len(), HEADER + 4 * 2);
+    }
+
+    #[test]
+    fn delayed_lyapunov_a_is_clamped_to_the_paper_range() {
+        // A = -2 clamps to 0: J is [[0, -2*D*y], [1, 0]]. With n_transient =
+        // 0 and n_iter = 1 the spectrum is log|diag R| of that J, which is
+        // [0, log|2*D*y0|].
+        let out = delayed_logistic_lyapunov_tile(
+            -2.0,
+            DELAYED_LYAP_D_MIN,
+            DELAYED_LYAP_D_MIN,
+            1,
+            0,
+            1,
+            &[0.4, 0.35],
+        );
+        let capped = delayed_logistic_lyapunov_tile(
+            0.0,
+            DELAYED_LYAP_D_MIN,
+            DELAYED_LYAP_D_MIN,
+            1,
+            0,
+            1,
+            &[0.4, 0.35],
+        );
+        assert_eq!(out, capped);
+        let expected_second = (-2.0 * DELAYED_LYAP_D_MIN * 0.35_f64).abs().ln();
+        assert_eq!(out[HEADER], 0.0);
+        assert_eq!(out[HEADER + 1], expected_second);
+    }
+
+    #[test]
+    fn delayed_lyapunov_d_endpoints_are_clamped_to_the_paper_range() {
+        // d_max = 99 clamps to DELAYED_LYAP_D_MAX = 2.5. A two-point sweep
+        // runs the endpoints: block 0 at d_min = 1.6, block 1 at the clamp.
+        let out = delayed_logistic_lyapunov_tile(0.3, 1.6, 99.0, 2, 0, 1, &[0.4, 0.35]);
+        assert_eq!(out[0], 2.0);
+        let first = delayed_logistic_lyapunov_tile(0.3, 1.6, 1.6, 1, 0, 1, &[0.4, 0.35]);
+        let second = delayed_logistic_lyapunov_tile(
+            0.3,
+            DELAYED_LYAP_D_MAX,
+            DELAYED_LYAP_D_MAX,
+            1,
+            0,
+            1,
+            &[0.4, 0.35],
+        );
+        assert_eq!(&out[HEADER..HEADER + 2], &first[HEADER..]);
+        assert_eq!(&out[HEADER + 2..], &second[HEADER..]);
+    }
+
+    #[test]
+    fn delayed_lyapunov_counts_are_clamped_not_refused() {
+        let out = delayed_logistic_lyapunov_tile(
+            0.3,
+            1.55,
+            1.9,
+            MAX_LYAP_D + 10,
+            MAX_TRANSIENT + 10_000,
+            MAX_ITER + 10,
+            &[0.4, 0.35],
+        );
+        assert_eq!(out[0], MAX_LYAP_D as f64);
+        assert_eq!(out[1], MAX_TRANSIENT as f64);
+        assert_eq!(out[2], MAX_ITER as f64);
+    }
+
+    #[test]
+    fn delayed_lyapunov_state_is_clamped_and_padded() {
+        let padded = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.55, 1, 20, 8, &[]);
+        let default_state = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.55, 1, 20, 8, &[0.5, 0.5]);
+        assert_eq!(padded, default_state);
+        let clamped = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.55, 1, 20, 8, &[99.0, -99.0]);
+        let at_cap = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.55, 1, 20, 8, &[4.0, -4.0]);
+        assert_eq!(clamped, at_cap);
+        let nan_state = delayed_logistic_lyapunov_tile(0.3, 1.55, 1.55, 1, 20, 8, &[f64::NAN]);
+        assert_eq!(nan_state, default_state);
+    }
+
+    #[test]
+    fn torus_lyapunov_header_reports_the_values_actually_used() {
+        let out = torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 200, 5000, &[0.5, 0.5, 0.5]);
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 200.0);
+        assert_eq!(out[2], 5000.0);
+        assert_eq!(out[3], 3.0);
+        assert_eq!(out.len(), HEADER + 3);
+    }
+
+    #[test]
+    fn torus_lyapunov_map_kind_snaps_to_one_or_four() {
+        let state = [0.5, 0.45, 0.52, 0.48];
+        for (kind, dim) in [(0usize, 3.0), (2, 3.0), (3, 4.0), (usize::MAX, 4.0)] {
+            let out = torus_doubling_lyapunov_tile(kind, 0.4, 2.19, 2.19, 1, 10, 4, &state);
+            assert_eq!(out[3], dim);
+        }
+    }
+
+    #[test]
+    fn torus_lyapunov_a_and_d_are_clamped_to_the_paper_ranges() {
+        // A = -2 clamps to 0; d = 99 clamps to TORUS_D_MAX = 2.25. With
+        // n_transient = 0 and n_iter = 1, map I's Jacobian is
+        // [[0, -2*D*y0, 0], [0, 0, 1], [1, 0, 0]]. Its QR diagonal is
+        // [-1, -2*D*y0, -1], so the one-step spectrum is
+        // [log(2*D*y0), 0, ~0], sorted descending.
+        let out = torus_doubling_lyapunov_tile(1, -2.0, 99.0, 99.0, 1, 0, 1, &[0.4, 0.35, 0.3]);
+        let capped = torus_doubling_lyapunov_tile(
+            1,
+            0.0,
+            TORUS_D_MAX,
+            TORUS_D_MAX,
+            1,
+            0,
+            1,
+            &[0.4, 0.35, 0.3],
+        );
+        assert_eq!(out, capped);
+        let first = (-2.0 * TORUS_D_MAX * 0.35_f64).abs().ln();
+        assert_eq!(out[HEADER], first);
+        assert_eq!(out[HEADER + 1], 0.0);
+        assert!(out[HEADER + 2] <= 0.0);
+    }
+
+    #[test]
+    fn torus_lyapunov_counts_are_clamped_not_refused() {
+        let out = torus_doubling_lyapunov_tile(
+            1,
+            0.4,
+            2.19,
+            2.19,
+            MAX_LYAP_D + 10,
+            MAX_TRANSIENT + 10_000,
+            MAX_ITER + 10,
+            &[0.5, 0.5, 0.5],
+        );
+        assert_eq!(out[0], MAX_LYAP_D as f64);
+        assert_eq!(out[1], MAX_TRANSIENT as f64);
+        assert_eq!(out[2], MAX_ITER as f64);
+    }
+
+    #[test]
+    fn torus_lyapunov_state_is_clamped_and_padded() {
+        let padded = torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 20, 8, &[]);
+        let default_state =
+            torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 20, 8, &[0.5, 0.5, 0.5]);
+        assert_eq!(padded, default_state);
+        let clamped =
+            torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 0, 1, &[99.0, -99.0, 0.5]);
+        let at_cap = torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 0, 1, &[4.0, -4.0, 0.5]);
+        assert_eq!(clamped, at_cap);
+        let long =
+            torus_doubling_lyapunov_tile(1, 0.4, 2.19, 2.19, 1, 20, 8, &[0.5, 0.5, 0.5, 99.0]);
+        assert_eq!(long, default_state);
+    }
+
+    #[test]
+    fn coupled_lyapunov_header_reports_the_values_actually_used() {
+        let out = coupled_delayed_lyapunov_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            0.005,
+            200,
+            5000,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 200.0);
+        assert_eq!(out[2], 5000.0);
+        assert_eq!(out[3], 4.0);
+        assert_eq!(out.len(), HEADER + 4);
+    }
+
+    #[test]
+    fn coupled_lyapunov_db_endpoints_are_clamped_to_the_paper_range() {
+        // db_max = 99 clamps to COUPLED_DB_MAX = 2.65. A two-point sweep
+        // runs both endpoints; block 1 lands on the clamped value.
+        let out =
+            coupled_delayed_lyapunov_tile(0.4, 2.3, 99.0, 2, 0.005, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(out[0], 2.0);
+        let second = coupled_delayed_lyapunov_tile(
+            0.4,
+            COUPLED_DB_MAX,
+            COUPLED_DB_MAX,
+            1,
+            0.005,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(&out[HEADER + 4..], &second[HEADER..]);
+    }
+
+    #[test]
+    fn coupled_lyapunov_a_eps_and_counts_are_clamped() {
+        // A = -2 clamps to 0.
+        let out =
+            coupled_delayed_lyapunov_tile(-2.0, 2.3, 2.3, 1, 0.005, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let capped =
+            coupled_delayed_lyapunov_tile(0.0, 2.3, 2.3, 1, 0.005, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(out, capped);
+        // eps = 9 clamps to COUPLED_EPS_MAX = 1e-2.
+        let out = coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 9.0, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let capped = coupled_delayed_lyapunov_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            COUPLED_EPS_MAX,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(out, capped);
+        // eps = 0 clamps up to COUPLED_EPS_MIN = 1e-3.
+        let out = coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.0, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let floored = coupled_delayed_lyapunov_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            COUPLED_EPS_MIN,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(out, floored);
+        let out = coupled_delayed_lyapunov_tile(
+            0.4,
+            2.3,
+            2.3,
+            MAX_LYAP_DB + 10,
+            0.005,
+            MAX_TRANSIENT + 10_000,
+            MAX_ITER + 10,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(out[0], MAX_LYAP_DB as f64);
+        assert_eq!(out[1], MAX_TRANSIENT as f64);
+        assert_eq!(out[2], MAX_ITER as f64);
+    }
+
+    #[test]
+    fn coupled_lyapunov_state_is_clamped_and_padded() {
+        // map_state pads missing components to 0.5; a short slice is not the
+        // published state (0.5, 0.5, 0.3, 0.3), it is (0.5, 0.5, 0.3, 0.5).
+        let padded = coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.005, 20, 8, &[]);
+        let all_half =
+            coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.005, 20, 8, &[0.5, 0.5, 0.5, 0.5]);
+        let published =
+            coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.005, 20, 8, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(padded, all_half);
+        assert_ne!(padded, published);
+        let clamped = coupled_delayed_lyapunov_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            0.005,
+            0,
+            1,
+            &[99.0, -99.0, 99.0, -99.0],
+        );
+        let at_cap =
+            coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.005, 0, 1, &[4.0, -4.0, 4.0, -4.0]);
+        assert_eq!(clamped, at_cap);
     }
 }

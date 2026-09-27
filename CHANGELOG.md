@@ -73,6 +73,16 @@ reconstructed from git history. 0.4.0 is the first public release.
   The WebAssembly build exports both for the browser, with every input
   clamped. The paper pipeline still uses the Python path.
 
+- The compiled extension exports `circle_map_lyapunov_sum`,
+  `delayed_logistic_lyapunov_tile`, `torus_doubling_lyapunov_tile` and
+  `coupled_delayed_lyapunov_tile`. They compute the circle-map Lyapunov
+  exponent and the delayed-logistic, torus-doubling (maps I and IV) and
+  coupled-delayed spectra in Rust, agreeing with the Python reference to
+  1e-9 absolute per exponent (the orbit is bit-identical; the Householder
+  QR differs from `np.linalg.qr` only in the last bits). The WebAssembly
+  build exports all four for the browser, with every input clamped. The
+  paper pipeline still uses the Python path.
+
 ### Changed
 
 - `zero_one_statistic` and `zero_one_series` run on the Rust core when the

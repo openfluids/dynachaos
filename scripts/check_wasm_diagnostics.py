@@ -1,17 +1,14 @@
-"""Check that the diagnostics WebAssembly exports match the native build.
+"""Check that the diagnostics and map WebAssembly exports match the native build.
 
-Four map and lattice exports are compared in addition to the diagnostics
-exports: ``delayed_logistic_attractor_tile``,
+The map and lattice exports compared are ``delayed_logistic_attractor_tile``,
 ``torus_doubling_attractor_tile`` (maps I and IV),
-``modulated_circle_rotation_tile`` and ``cml_spacetime_tile`` (models A, B
-and C). The native side is the pyo3 extension, which runs the same
-``rust/core`` code; the browser side is the ``site/wasm`` bundle driven
-through node. Both sides receive the same inputs, built once below.
-
-The diagnostics exports are ``correlation_counts``, ``apen_counts``,
-``fuzzy_entropy_sum``, ``ordinal_distribution``, ``diagonal_lines``,
-``vertical_lines``, ``multifractal_moments``, ``ami_histogram``,
-``select_dimension_cao`` and ``zero_one_k``.
+``modulated_circle_rotation_tile``, ``cml_spacetime_tile`` (models A, B and
+C), and the four Lyapunov kernels ``circle_map_lyapunov_sum``,
+``delayed_logistic_lyapunov_tile``, ``torus_doubling_lyapunov_tile`` (maps I
+and IV) and ``coupled_delayed_lyapunov_tile``. The native side is the pyo3
+extension, which runs the same ``rust/core`` code; the browser side is the
+``site/wasm`` bundle driven through node. Both sides receive the same inputs,
+built once below.
 
 The tolerance is set per export by what the kernel computes:
 
@@ -42,6 +39,11 @@ The tolerance is set per export by what the kernel computes:
   difference amplified over the recorded steps, tight enough that a wrong
   formula fails. Models (A) and (C) carry no transcendental call and must
   match exactly, as must both torus maps and the delayed logistic.
+* The five Lyapunov comparisons accumulate one ``ln`` per step and a QR
+  renormalisation. The wasm module's own ``ln`` can differ in the last
+  bits; the frame renormalises every step, so the difference does not
+  grow. They are held to 1e-9 absolute, loose enough for the last-bit
+  logarithm difference, tight enough that a wrong Jacobian fails.
 
 Each export also gets a self-check: one value of the native result is
 perturbed and the comparison must fail, so a script that compares nothing
@@ -67,9 +69,12 @@ import numpy as np
 from dynachaos._rust import (
     ami_histogram,
     apen_counts,
+    circle_map_lyapunov_sum,
     cml_spacetime_tile,
     correlation_counts,
+    coupled_delayed_lyapunov_tile,
     delayed_logistic_attractor_tile,
+    delayed_logistic_lyapunov_tile,
     diagonal_lines,
     fuzzy_entropy_sum,
     modulated_circle_rotation_tile,
@@ -77,6 +82,7 @@ from dynachaos._rust import (
     ordinal_distribution,
     select_dimension_cao,
     torus_doubling_attractor_tile,
+    torus_doubling_lyapunov_tile,
     vertical_lines,
     zero_one_k,  # type: ignore[attr-defined]
 )
@@ -150,6 +156,38 @@ CIRCLE_N_D = 16
 CIRCLE_EPS = 0.05
 CIRCLE_TRANSIENT = 200
 CIRCLE_ITER = 2000
+# The four Lyapunov kernels. The spectra accumulate a `log` per step, so the
+# wasm module's own `ln` can differ in the last bits from the native one;
+# the QR frame is renormalised every step so the difference does not grow.
+# A small sweep and a short iter keep the node message small while covering
+# every dimension: 1 (circle), 2 (delayed), 3 and 4 (torus I/IV), 4
+# (coupled). All five exports are held to 1e-9 absolute.
+LYAP_ABS_TOLERANCE = 1e-9
+LYAP_TRANSIENT = 200
+LYAP_ITER = 2000
+CIRCLE_LYAP_A = 0.1
+CIRCLE_LYAP_D = 0.25
+CIRCLE_LYAP_THETA0 = 0.1
+DELAYED_LYAP_A = 0.3
+DELAYED_LYAP_D_MIN = 1.3
+DELAYED_LYAP_D_MAX = 1.7
+DELAYED_LYAP_N_D = 4
+DELAYED_LYAP_STATE = [0.4, 0.35]
+TORUS_I_LYAP_A = 0.4
+TORUS_I_LYAP_D = 2.19
+TORUS_I_LYAP_STATE = [0.5, 0.5, 0.5]
+TORUS_LYAP_A = 0.3
+TORUS_LYAP_D_MIN = 1.48
+TORUS_LYAP_D_MAX = 1.53
+TORUS_LYAP_N_D = 4
+TORUS_LYAP_STATE = [0.5, 0.45, 0.52, 0.48]
+COUPLED_LYAP_A = 0.4
+COUPLED_LYAP_DB_MIN = 2.1
+COUPLED_LYAP_DB_MAX = 2.4
+COUPLED_LYAP_N_DB = 4
+COUPLED_LYAP_EPS = 5e-3
+COUPLED_LYAP_STATE = [0.5, 0.5, 0.3, 0.3]
+
 CIRCLE_STATE = [0.1, 0.1]
 
 # CML space-time: a 64-site lattice over a short record. Model (B) carries a
@@ -234,6 +272,24 @@ process.stdout.write(JSON.stringify({
   torus_doubling_attractor_tile: Array.from(mod.torus_doubling_attractor_tile(
     spec.torus_kind, spec.torus_a, spec.torus_d, spec.map_transient, spec.map_plot,
     new Float64Array(spec.torus_state))),
+  circle_map_lyapunov_sum: Array.from(mod.circle_map_lyapunov_sum(
+    spec.circle_lyap_a, spec.circle_lyap_d, spec.lyap_transient, spec.lyap_iter,
+    spec.circle_lyap_theta0)),
+  delayed_logistic_lyapunov_tile: Array.from(mod.delayed_logistic_lyapunov_tile(
+    spec.delayed_lyap_a, spec.delayed_lyap_d_min, spec.delayed_lyap_d_max,
+    spec.delayed_lyap_n_d, spec.lyap_transient, spec.lyap_iter,
+    new Float64Array(spec.delayed_lyap_state))),
+  torus_i_lyapunov_tile: Array.from(mod.torus_doubling_lyapunov_tile(
+    spec.torus_i_kind, spec.torus_i_lyap_a, spec.torus_i_lyap_d, spec.torus_i_lyap_d,
+    1, spec.lyap_transient, spec.lyap_iter, new Float64Array(spec.torus_i_lyap_state))),
+  torus_doubling_lyapunov_tile: Array.from(mod.torus_doubling_lyapunov_tile(
+    spec.torus_kind, spec.torus_lyap_a, spec.torus_lyap_d_min, spec.torus_lyap_d_max,
+    spec.torus_lyap_n_d, spec.lyap_transient, spec.lyap_iter,
+    new Float64Array(spec.torus_lyap_state))),
+  coupled_delayed_lyapunov_tile: Array.from(mod.coupled_delayed_lyapunov_tile(
+    spec.coupled_lyap_a, spec.coupled_lyap_db_min, spec.coupled_lyap_db_max,
+    spec.coupled_lyap_n_db, spec.coupled_lyap_eps, spec.lyap_transient,
+    spec.lyap_iter, new Float64Array(spec.coupled_lyap_state))),
 }));
 """
 
@@ -370,6 +426,30 @@ def main() -> int:
         "circle_n_d": CIRCLE_N_D,
         "circle_eps": CIRCLE_EPS,
         "circle_transient": CIRCLE_TRANSIENT,
+        "lyap_transient": LYAP_TRANSIENT,
+        "lyap_iter": LYAP_ITER,
+        "circle_lyap_a": CIRCLE_LYAP_A,
+        "circle_lyap_d": CIRCLE_LYAP_D,
+        "circle_lyap_theta0": CIRCLE_LYAP_THETA0,
+        "delayed_lyap_a": DELAYED_LYAP_A,
+        "delayed_lyap_d_min": DELAYED_LYAP_D_MIN,
+        "delayed_lyap_d_max": DELAYED_LYAP_D_MAX,
+        "delayed_lyap_n_d": DELAYED_LYAP_N_D,
+        "delayed_lyap_state": DELAYED_LYAP_STATE,
+        "torus_i_lyap_a": TORUS_I_LYAP_A,
+        "torus_i_lyap_d": TORUS_I_LYAP_D,
+        "torus_i_lyap_state": TORUS_I_LYAP_STATE,
+        "torus_lyap_a": TORUS_LYAP_A,
+        "torus_lyap_d_min": TORUS_LYAP_D_MIN,
+        "torus_lyap_d_max": TORUS_LYAP_D_MAX,
+        "torus_lyap_n_d": TORUS_LYAP_N_D,
+        "torus_lyap_state": TORUS_LYAP_STATE,
+        "coupled_lyap_a": COUPLED_LYAP_A,
+        "coupled_lyap_db_min": COUPLED_LYAP_DB_MIN,
+        "coupled_lyap_db_max": COUPLED_LYAP_DB_MAX,
+        "coupled_lyap_n_db": COUPLED_LYAP_N_DB,
+        "coupled_lyap_eps": COUPLED_LYAP_EPS,
+        "coupled_lyap_state": COUPLED_LYAP_STATE,
         "circle_iter": CIRCLE_ITER,
         "circle_state": CIRCLE_STATE,
         "cml_n_sites": CML_N_SITES,
@@ -831,6 +911,181 @@ def main() -> int:
             elif not self_check(key, cml_native_flat, out[4:], tolerance, 1e-6):
                 print(f"FAIL: {key} self-check did not trip")
                 failed = True
+
+    # circle_map_lyapunov_sum: [n_transient, n_iter, lambda].
+    circle_lyap_native = circle_map_lyapunov_sum(
+        CIRCLE_LYAP_A, CIRCLE_LYAP_D, LYAP_TRANSIENT, LYAP_ITER, CIRCLE_LYAP_THETA0
+    )
+    out = wasm["circle_map_lyapunov_sum"]
+    circle_lyap_header = [float(LYAP_TRANSIENT), float(LYAP_ITER)]
+    if not check_header("circle_map_lyapunov_sum", out[:2], circle_lyap_header):
+        failed = True
+    else:
+        bad, worst = compare(
+            "circle_map_lyapunov_sum", [circle_lyap_native], [out[2]], LYAP_ABS_TOLERANCE
+        )
+        print(
+            f"circle_map_lyapunov_sum: {LYAP_ITER} steps, "
+            f"worst {worst:.3e} (limit {LYAP_ABS_TOLERANCE:.1e})"
+        )
+        if bad:
+            print("FAIL: circle_map_lyapunov_sum differs")
+            failed = True
+        elif not self_check(
+            "circle_map_lyapunov_sum", [circle_lyap_native], [out[2]], LYAP_ABS_TOLERANCE, 1e-6
+        ):
+            print("FAIL: circle_map_lyapunov_sum self-check did not trip")
+            failed = True
+
+    # delayed_logistic_lyapunov_tile: [n_D, n_transient, n_iter, 2, spectra...].
+    delayed_lyap_d = np.linspace(DELAYED_LYAP_D_MIN, DELAYED_LYAP_D_MAX, DELAYED_LYAP_N_D)
+    delayed_lyap_native = delayed_logistic_lyapunov_tile(
+        DELAYED_LYAP_A,
+        delayed_lyap_d,
+        LYAP_TRANSIENT,
+        LYAP_ITER,
+        np.array(DELAYED_LYAP_STATE, dtype=np.float64),
+    )
+    out = wasm["delayed_logistic_lyapunov_tile"]
+    delayed_lyap_header = [
+        float(DELAYED_LYAP_N_D),
+        float(LYAP_TRANSIENT),
+        float(LYAP_ITER),
+        2.0,
+    ]
+    if not check_header("delayed_logistic_lyapunov_tile", out[:4], delayed_lyap_header):
+        failed = True
+    else:
+        delayed_lyap_flat = [float(v) for v in np.asarray(delayed_lyap_native).ravel()]
+        bad, worst = compare(
+            "delayed_logistic_lyapunov_tile", delayed_lyap_flat, out[4:], LYAP_ABS_TOLERANCE
+        )
+        print(
+            f"delayed_logistic_lyapunov_tile: {DELAYED_LYAP_N_D} D values, "
+            f"worst {worst:.3e} (limit {LYAP_ABS_TOLERANCE:.1e})"
+        )
+        if bad:
+            print("FAIL: delayed_logistic_lyapunov_tile differs")
+            failed = True
+        elif not self_check(
+            "delayed_logistic_lyapunov_tile",
+            delayed_lyap_flat,
+            out[4:],
+            LYAP_ABS_TOLERANCE,
+            1e-6,
+        ):
+            print("FAIL: delayed_logistic_lyapunov_tile self-check did not trip")
+            failed = True
+
+    # torus_doubling_lyapunov_tile, map I: [n_D, n_transient, n_iter, 3, spectra...].
+    torus_i_lyap_native = torus_doubling_lyapunov_tile(
+        TORUS_I_KIND,
+        TORUS_I_LYAP_A,
+        np.array([TORUS_I_LYAP_D], dtype=np.float64),
+        LYAP_TRANSIENT,
+        LYAP_ITER,
+        np.array(TORUS_I_LYAP_STATE, dtype=np.float64),
+    )
+    out = wasm["torus_i_lyapunov_tile"]
+    torus_i_lyap_header = [1.0, float(LYAP_TRANSIENT), float(LYAP_ITER), 3.0]
+    if not check_header("torus_i_lyapunov_tile", out[:4], torus_i_lyap_header):
+        failed = True
+    else:
+        torus_i_lyap_flat = [float(v) for v in np.asarray(torus_i_lyap_native).ravel()]
+        bad, worst = compare(
+            "torus_i_lyapunov_tile", torus_i_lyap_flat, out[4:], LYAP_ABS_TOLERANCE
+        )
+        print(f"torus_i_lyapunov_tile: map I, worst {worst:.3e} (limit {LYAP_ABS_TOLERANCE:.1e})")
+        if bad:
+            print("FAIL: torus_i_lyapunov_tile differs")
+            failed = True
+        elif not self_check(
+            "torus_i_lyapunov_tile", torus_i_lyap_flat, out[4:], LYAP_ABS_TOLERANCE, 1e-6
+        ):
+            print("FAIL: torus_i_lyapunov_tile self-check did not trip")
+            failed = True
+
+    # torus_doubling_lyapunov_tile, map IV: [n_D, n_transient, n_iter, 4, spectra...].
+    torus_lyap_d = np.linspace(TORUS_LYAP_D_MIN, TORUS_LYAP_D_MAX, TORUS_LYAP_N_D)
+    torus_lyap_native = torus_doubling_lyapunov_tile(
+        TORUS_KIND,
+        TORUS_LYAP_A,
+        torus_lyap_d,
+        LYAP_TRANSIENT,
+        LYAP_ITER,
+        np.array(TORUS_LYAP_STATE, dtype=np.float64),
+    )
+    out = wasm["torus_doubling_lyapunov_tile"]
+    torus_lyap_header = [
+        float(TORUS_LYAP_N_D),
+        float(LYAP_TRANSIENT),
+        float(LYAP_ITER),
+        4.0,
+    ]
+    if not check_header("torus_doubling_lyapunov_tile", out[:4], torus_lyap_header):
+        failed = True
+    else:
+        torus_lyap_flat = [float(v) for v in np.asarray(torus_lyap_native).ravel()]
+        bad, worst = compare(
+            "torus_doubling_lyapunov_tile", torus_lyap_flat, out[4:], LYAP_ABS_TOLERANCE
+        )
+        print(
+            f"torus_doubling_lyapunov_tile: {TORUS_LYAP_N_D} D values, "
+            f"worst {worst:.3e} (limit {LYAP_ABS_TOLERANCE:.1e})"
+        )
+        if bad:
+            print("FAIL: torus_doubling_lyapunov_tile differs")
+            failed = True
+        elif not self_check(
+            "torus_doubling_lyapunov_tile",
+            torus_lyap_flat,
+            out[4:],
+            LYAP_ABS_TOLERANCE,
+            1e-6,
+        ):
+            print("FAIL: torus_doubling_lyapunov_tile self-check did not trip")
+            failed = True
+
+    # coupled_delayed_lyapunov_tile: [n_DB, n_transient, n_iter, 4, spectra...].
+    coupled_lyap_db = np.linspace(COUPLED_LYAP_DB_MIN, COUPLED_LYAP_DB_MAX, COUPLED_LYAP_N_DB)
+    coupled_lyap_native = coupled_delayed_lyapunov_tile(
+        COUPLED_LYAP_A,
+        coupled_lyap_db,
+        COUPLED_LYAP_EPS,
+        LYAP_TRANSIENT,
+        LYAP_ITER,
+        np.array(COUPLED_LYAP_STATE, dtype=np.float64),
+    )
+    out = wasm["coupled_delayed_lyapunov_tile"]
+    coupled_lyap_header = [
+        float(COUPLED_LYAP_N_DB),
+        float(LYAP_TRANSIENT),
+        float(LYAP_ITER),
+        4.0,
+    ]
+    if not check_header("coupled_delayed_lyapunov_tile", out[:4], coupled_lyap_header):
+        failed = True
+    else:
+        coupled_lyap_flat = [float(v) for v in np.asarray(coupled_lyap_native).ravel()]
+        bad, worst = compare(
+            "coupled_delayed_lyapunov_tile", coupled_lyap_flat, out[4:], LYAP_ABS_TOLERANCE
+        )
+        print(
+            f"coupled_delayed_lyapunov_tile: {COUPLED_LYAP_N_DB} DB values, "
+            f"worst {worst:.3e} (limit {LYAP_ABS_TOLERANCE:.1e})"
+        )
+        if bad:
+            print("FAIL: coupled_delayed_lyapunov_tile differs")
+            failed = True
+        elif not self_check(
+            "coupled_delayed_lyapunov_tile",
+            coupled_lyap_flat,
+            out[4:],
+            LYAP_ABS_TOLERANCE,
+            1e-6,
+        ):
+            print("FAIL: coupled_delayed_lyapunov_tile self-check did not trip")
+            failed = True
 
     if failed:
         return 1

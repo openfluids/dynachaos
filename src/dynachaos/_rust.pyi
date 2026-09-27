@@ -152,3 +152,33 @@ def cml_spacetime_tile(
     n_record: int,
     x0: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def circle_map_lyapunov_sum(
+    A: float,
+    D: float,
+    n_transient: int,
+    n_iter: int,
+    theta0: float,
+) -> float: ...
+def delayed_logistic_lyapunov_tile(
+    A: float,
+    d_values: npt.NDArray[np.float64],
+    n_transient: int,
+    n_iter: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def torus_doubling_lyapunov_tile(
+    map_kind: int,
+    A: float,
+    d_values: npt.NDArray[np.float64],
+    n_transient: int,
+    n_iter: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def coupled_delayed_lyapunov_tile(
+    A: float,
+    db_values: npt.NDArray[np.float64],
+    eps: float,
+    n_transient: int,
+    n_iter: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...

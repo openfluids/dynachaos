@@ -61,5 +61,9 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(maps::torus_doubling_attractor_tile, m)?)?;
     m.add_function(wrap_pyfunction!(maps::modulated_circle_rotation_tile, m)?)?;
     m.add_function(wrap_pyfunction!(cml::cml_spacetime_tile, m)?)?;
+    m.add_function(wrap_pyfunction!(maps::circle_map_lyapunov_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(maps::delayed_logistic_lyapunov_tile, m)?)?;
+    m.add_function(wrap_pyfunction!(maps::torus_doubling_lyapunov_tile, m)?)?;
+    m.add_function(wrap_pyfunction!(maps::coupled_delayed_lyapunov_tile, m)?)?;
     Ok(())
 }

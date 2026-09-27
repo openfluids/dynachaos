@@ -26,7 +26,7 @@ The split landed in Phase 0 (2026-09).
 |---|---|---|
 | `rust/core` | every kernel; slices in, plain Rust out; no pyo3, no numpy | ndarray, rayon (optional) |
 | `rust/py` | `#[pyfunction]` wrappers, numpy conversion, `py.detach` around core calls | `dynachaos-core`, pyo3, numpy |
-| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; `rotation_number_tile` for the picture, `rotation_number_point` for the quoted readout, `zero_one_k` for the 0-1 test for chaos, `correlation_counts`, `apen_counts`, `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`, `vertical_lines`, `multifractal_moments`, `ami_histogram`, `select_dimension_cao`, `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`, `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the diagnostics, map-attractor and space-time panels | `dynachaos-core` with `--no-default-features` |
+| `rust/wasm` | `wasm-bindgen` exports over `rust/core`; `rotation_number_tile` for the picture, `rotation_number_point` for the quoted readout, `zero_one_k` for the 0-1 test for chaos, `correlation_counts`, `apen_counts`, `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`, `vertical_lines`, `multifractal_moments`, `ami_histogram`, `select_dimension_cao`, `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`, `modulated_circle_rotation_tile`, `cml_spacetime_tile`, `circle_map_lyapunov_sum`, `delayed_logistic_lyapunov_tile`, `torus_doubling_lyapunov_tile` and `coupled_delayed_lyapunov_tile` for the diagnostics, map and Lyapunov panels | `dynachaos-core` with `--no-default-features` |
 
 `rust/core` carries 1491 lines of kernel code; `rust/py` carries 629 lines of
 binding with no arithmetic in it. Keeping the arithmetic in exactly one place is
@@ -509,7 +509,7 @@ defined in `rust/wasm/src/lib.rs:32`.
 
 | section | png | module | class | interaction | kernel | caps |
 |---|---|---|---|---|---|---|
-| sec02_circle_map | devils_staircase.png | maps.circle_map | A | slider D and zoom A (rotation panel) | rotation_number_tile | A for the rotation panel; n_omega=1 and n_k<=512; Lyapunov panel stays PNG pending circle_map_lyapunov_sum |
+| sec02_circle_map | devils_staircase.png | maps.circle_map | A | slider D and zoom A (rotation panel) | rotation_number_tile | A for the rotation panel; n_omega=1 and n_k<=512; Lyapunov panel stays PNG (circle_map_lyapunov_sum is exported but no page calls it yet) |
 | sec02_circle_map | arnold_tongues.png | maps.arnold_tongues | A | zoom (Omega,K) | rotation_number_tile | n_omega,n_k<=512; n_cells*(transient+iter)<=MAX_STEPS |
 | sec02_circle_map | staircase_zoom.png | maps.circle_map | A | zoom K window | rotation_number_tile | n_omega,n_k<=512; n_cells*(transient+iter)<=MAX_STEPS |
 | sec03_transition | phase_diagram.png | maps.coupled_logistic | B | zoom (A,D) | coupled_logistic_phase_tile | viewport cells<=512; cells*(transient+sample)<=MAX_STEPS |

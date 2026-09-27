@@ -13,6 +13,7 @@ pub mod embedding;
 pub mod entropy;
 mod fft;
 pub mod intermittency;
+pub mod lyapunov;
 pub mod maps;
 pub mod multifractal;
 pub mod permutation;
@@ -33,6 +34,10 @@ pub use entropy::{apen_counts, fuzzy_entropy_sum};
 pub use intermittency::{
     logistic_type_i_oracle, on_off_oracle, on_off_skew_logistic_oracle, pm_type_i_oracle,
     pm_type_ii_oracle, pm_type_iii_oracle,
+};
+pub use lyapunov::{
+    circle_map_lyapunov_sum, coupled_delayed_lyapunov_tile, delayed_logistic_lyapunov_tile,
+    torus_doubling_lyapunov_tile,
 };
 pub use maps::{
     delayed_logistic_attractor_tile, modulated_circle_rotation_tile, torus_doubling_attractor_tile,

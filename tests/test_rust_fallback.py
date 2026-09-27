@@ -1719,3 +1719,245 @@ class TestCmlSpacetimeParity:
             cml_spacetime_tile(0, 0.07, 10, 0, x0)
         with pytest.raises(ValueError):
             cml_spacetime_tile(0, np.nan, 10, 4, x0)
+
+
+
+@rust_extension
+class TestCircleMapLyapunovParity:
+    """Verify the Rust circle-map exponent against ``lyapunov_exponent``.
+
+    The wrapped map and the derivative evaluate the same expression in the
+    same operation order as ``lyapunov_exponent``; the only nondeterminism
+    is the last bit of ``sin``/``cos`` between the Rust and numpy system
+    libraries. The bound is absolute 1e-9, fixed by the dispatch. Measured
+    worst absolute difference over the 25-value grid below: 8.1e-20.
+    """
+
+    A = 0.1
+    D = 0.25
+    N_TRANSIENT = 5000
+    N_ITER = 50_000
+    THETA0 = 0.1
+
+    def test_exponent_matches_python(self):
+        from dynachaos._rust import circle_map_lyapunov_sum
+        from dynachaos.maps.circle_map import lyapunov_exponent
+
+        # 25 A values across the staircase sweep, D fixed at the paper's 0.25.
+        a_values = np.linspace(0.0, 0.25, 25)
+        for a in a_values:
+            rust = circle_map_lyapunov_sum(
+                float(a), self.D, self.N_TRANSIENT, self.N_ITER, self.THETA0
+            )
+            expected = lyapunov_exponent(
+                float(a),
+                self.D,
+                n_transient=self.N_TRANSIENT,
+                n_iter=self.N_ITER,
+                theta0=self.THETA0,
+            )
+            np.testing.assert_allclose(rust, expected, atol=1e-9, rtol=0.0)
+
+    def test_invalid_input_is_rejected(self):
+        from dynachaos._rust import circle_map_lyapunov_sum
+
+        with pytest.raises(ValueError):
+            circle_map_lyapunov_sum(0.1, 0.25, 10, 0, 0.1)
+        with pytest.raises(ValueError):
+            circle_map_lyapunov_sum(np.nan, 0.25, 10, 10, 0.1)
+        with pytest.raises(ValueError):
+            circle_map_lyapunov_sum(0.1, np.inf, 10, 10, 0.1)
+
+
+
+@rust_extension
+class TestDelayedLogisticLyapunovParity:
+    """Verify the Rust delayed-logistic spectrum against ``lyapunov_spectrum``.
+
+    The orbit is bit-identical (the map uses only +, -, *), but the Python
+    reference uses ``np.linalg.qr`` (LAPACK Householder) and the Rust kernel
+    runs its own Householder QR, so the tangent frames differ in the last
+    bits even though the state does not. The comparison is therefore
+    absolute 1e-9, fixed by the dispatch. Measured worst absolute difference
+    on the grid below: 8.3e-16.
+    """
+
+    A = 0.3
+    D_VALUES = np.linspace(1.3, 2.5, 20)
+    N_TRANSIENT = 10_000
+    N_ITER = 50_000
+
+    def test_spectrum_matches_python(self):
+        from dynachaos._rust import delayed_logistic_lyapunov_tile
+        from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+        from dynachaos.maps.delayed_logistic import delayed_logistic, delayed_logistic_jac
+
+        # The kernel takes one shared state0 per call, while the Python
+        # sweep (delayed_logistic.py:170) rebuilds the fixed-point seed
+        # fp(D) +- 0.01 for every D. To reproduce the paper orbit bit for
+        # bit, the kernel is called once per D with that D's seed; only the
+        # QR then differs from np.linalg.qr.
+        rust = np.empty((len(self.D_VALUES), 2))
+        expected = np.empty((len(self.D_VALUES), 2))
+        for k, d in enumerate(self.D_VALUES):
+            fp = (np.sqrt(1.0 + 4.0 * d) - 1.0) / (2.0 * d)
+            x0 = np.array([fp + 0.01, fp - 0.01])
+            rust[k] = delayed_logistic_lyapunov_tile(
+                self.A,
+                np.array([d], dtype=np.float64),
+                self.N_TRANSIENT,
+                self.N_ITER,
+                x0,
+            )[0]
+            expected[k] = lyapunov_spectrum(
+                lambda s, d=d: delayed_logistic(s, self.A, d),
+                lambda s, d=d: delayed_logistic_jac(s, self.A, d),
+                x0,
+                n_iter=self.N_ITER,
+                n_transient=self.N_TRANSIENT,
+            )
+        np.testing.assert_allclose(rust, expected, atol=1e-9, rtol=0.0)
+
+    def test_invalid_input_is_rejected(self):
+        from dynachaos._rust import delayed_logistic_lyapunov_tile
+
+        with pytest.raises(ValueError):
+            delayed_logistic_lyapunov_tile(0.3, np.array([]), 10, 10, np.array([0.5, 0.5]))
+        with pytest.raises(ValueError):
+            delayed_logistic_lyapunov_tile(
+                0.3, np.array([1.55]), 10, 0, np.array([0.5, 0.5])
+            )
+        with pytest.raises(ValueError):
+            delayed_logistic_lyapunov_tile(0.3, np.array([1.55]), 10, 10, np.array([0.5]))
+
+
+
+@rust_extension
+class TestTorusDoublingLyapunovParity:
+    """Verify the Rust torus spectra against ``lyapunov_spectrum``.
+
+    Both maps are polynomial, so the orbit is bit-identical; only the QR
+    differs from ``np.linalg.qr``. Absolute 1e-9 bound, fixed by the
+    dispatch. Measured worst absolute difference on the grids below:
+    1.4e-14 (map IV), 2.9e-16 (map I).
+    """
+
+    N_TRANSIENT = 10_000
+    N_ITER = 50_000
+
+    @pytest.mark.parametrize(
+        ("map_kind", "A", "d_values", "state0", "map_function", "jac_function"),
+        [
+            (
+                1,
+                0.4,
+                np.linspace(1.9, 2.25, 20),
+                [0.5, 0.5, 0.5],
+                "map_I",
+                "map_I_jac",
+            ),
+            (
+                4,
+                0.3,
+                np.linspace(1.48, 1.53, 20),
+                [0.5, 0.45, 0.52, 0.48],
+                "map_IV",
+                "map_IV_jac",
+            ),
+        ],
+    )
+    def test_spectrum_matches_python(
+        self, map_kind, A, d_values, state0, map_function, jac_function
+    ):
+        from dynachaos._rust import torus_doubling_lyapunov_tile
+        from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+        from dynachaos.maps import torus_doubling
+
+        f = getattr(torus_doubling, map_function)
+        jac = getattr(torus_doubling, jac_function)
+        expected = np.array(
+            [
+                lyapunov_spectrum(
+                    lambda s, d=d: f(s, A, d),
+                    lambda s, d=d: jac(s, A, d),
+                    np.array(state0),
+                    n_iter=self.N_ITER,
+                    n_transient=self.N_TRANSIENT,
+                )
+                for d in d_values
+            ]
+        )
+        rust = torus_doubling_lyapunov_tile(
+            map_kind,
+            A,
+            np.asarray(d_values, dtype=np.float64),
+            self.N_TRANSIENT,
+            self.N_ITER,
+            np.array(state0),
+        )
+        np.testing.assert_allclose(rust, expected, atol=1e-9, rtol=0.0)
+
+    def test_invalid_input_is_rejected(self):
+        from dynachaos._rust import torus_doubling_lyapunov_tile
+
+        with pytest.raises(ValueError):
+            torus_doubling_lyapunov_tile(2, 0.4, np.array([2.19]), 10, 10, np.array([0.5] * 3))
+        with pytest.raises(ValueError):
+            torus_doubling_lyapunov_tile(1, 0.4, np.array([2.19]), 10, 10, np.array([0.5] * 4))
+        with pytest.raises(ValueError):
+            torus_doubling_lyapunov_tile(1, 0.4, np.array([2.19]), 10, 0, np.array([0.5] * 3))
+
+
+
+@rust_extension
+class TestCoupledDelayedLyapunovParity:
+    """Verify the Rust coupled-delayed spectrum against ``lyapunov_spectrum``.
+
+    Same construction as the torus tests: polynomial map, bit-identical
+    orbit, QR in Rust instead of LAPACK. Absolute 1e-9 bound, fixed by the
+    dispatch. Measured worst absolute difference on the grid below: 4.9e-15.
+    """
+
+    A = 0.4
+    EPS = 5e-3
+    DB_VALUES = np.linspace(2.1, 2.65, 20)
+    N_TRANSIENT = 10_000
+    N_ITER = 30_000
+    STATE0 = np.array([0.5, 0.5, 0.3, 0.3])
+
+    def test_spectrum_matches_python(self):
+        from dynachaos._rust import coupled_delayed_lyapunov_tile
+        from dynachaos.diagnostics.lyapunov import lyapunov_spectrum
+        from dynachaos.maps.coupled_delayed import coupled_delayed, coupled_delayed_jac
+
+        expected = np.array(
+            [
+                lyapunov_spectrum(
+                    lambda s, db=db: coupled_delayed(s, self.A, db + 0.1, db, self.EPS),
+                    lambda s, db=db: coupled_delayed_jac(s, self.A, db + 0.1, db, self.EPS),
+                    self.STATE0,
+                    n_iter=self.N_ITER,
+                    n_transient=self.N_TRANSIENT,
+                )
+                for db in self.DB_VALUES
+            ]
+        )
+        rust = coupled_delayed_lyapunov_tile(
+            self.A,
+            self.DB_VALUES,
+            self.EPS,
+            self.N_TRANSIENT,
+            self.N_ITER,
+            self.STATE0,
+        )
+        np.testing.assert_allclose(rust, expected, atol=1e-9, rtol=0.0)
+
+    def test_invalid_input_is_rejected(self):
+        from dynachaos._rust import coupled_delayed_lyapunov_tile
+
+        with pytest.raises(ValueError):
+            coupled_delayed_lyapunov_tile(0.4, np.array([]), 0.005, 10, 10, self.STATE0)
+        with pytest.raises(ValueError):
+            coupled_delayed_lyapunov_tile(
+                0.4, np.array([2.3]), 0.005, 10, 10, np.array([0.5] * 3)
+            )
