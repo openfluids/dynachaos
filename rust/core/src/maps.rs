@@ -1,4 +1,5 @@
-//! Low-dimensional map-iteration kernels: delayed logistic and torus doubling.
+//! Low-dimensional map-iteration kernels: delayed logistic, torus doubling,
+//! modulated circle, and the coupled-delayed `(x, z)` projection.
 //!
 //! Each kernel iterates a map past a transient and records the states that
 //! follow, mirroring `trajectory_after_transient` in
@@ -8,12 +9,13 @@
 //! is the Kaneko form `1 - a * x * x` (`src/dynachaos/maps/primitives.py:6`),
 //! not `r * x * (1 - x)`.
 //!
-//! Divergence follows the Python rule: a state with any `|component| > 1e10`
-//! stops the computation. The delayed logistic kernel drops the whole block
-//! for that parameter value (`allow_partial = false`, as
+//! Divergence follows the Python rule where Python has one: a state with any
+//! `|component| > 1e10` stops the computation. The delayed logistic kernel drops
+//! the whole block for that parameter value (`allow_partial = false`, as
 //! `src/dynachaos/maps/delayed_logistic.py:113` requests); the torus kernels
 //! keep the samples recorded so far (`allow_partial = true`,
-//! `src/dynachaos/maps/torus_doubling.py:99`).
+//! `src/dynachaos/maps/torus_doubling.py:99`). The coupled-delayed projection
+//! has no such check in Python; see [`coupled_delayed_projection_tile`].
 
 use crate::CoreError;
 
@@ -349,6 +351,98 @@ pub fn modulated_circle_rotation_tile(
     Ok(out)
 }
 
+/// Paper offset `D_A = D_B + 0.1` (`src/dynachaos/maps/coupled_delayed.py:135`).
+const COUPLED_DA_OFFSET: f64 = 0.1;
+
+/// One iteration of the 4D coupled delayed logistic map.
+///
+/// ```text
+/// x' = A x + D_A y (1 - y) + eps (z - w)
+/// y' = x
+/// z' = A z + D_B w (1 - w) + eps (y - x)
+/// w' = z
+/// ```
+///
+/// Same operation order as `coupled_delayed`
+/// (`src/dynachaos/maps/coupled_delayed.py:52`). No product uses `mul_add`.
+#[inline]
+fn coupled_delayed_step(state: [f64; 4], a: f64, da: f64, db: f64, eps: f64) -> [f64; 4] {
+    let [x, y, z, w] = state;
+    let h1 = z - w;
+    let h2 = y - x;
+    let x_new = a * x + da * y * (1.0 - y) + eps * h1;
+    let z_new = a * z + db * w * (1.0 - w) + eps * h2;
+    [x_new, x, z_new, z]
+}
+
+/// Coupled-delayed projection tile: one `(x, z)` trajectory per `D_B`.
+///
+/// Mirrors `compute_projections` (`src/dynachaos/maps/coupled_delayed.py:123`).
+/// `D_A = D_B + 0.1` for every entry. For each `db` the kernel iterates
+/// [`coupled_delayed_step`] `n_transient` times from `state0`, then records
+/// `n_plot` projected `(x, z)` pairs — coordinates 0 and 2 of the post-step
+/// state, the same selection as `project_fn=lambda state: state[[0, 2]]`.
+///
+/// Python passes no `diverged_fn`, so it has no divergence check. This kernel
+/// does the same: it records every requested sample, including non-finite
+/// values, and does not apply a magnitude gate. (The Lyapunov tile in
+/// `lyapunov.rs` is a different kernel and is not reused here.)
+///
+/// The result is flat and D-major: `db_values.len()` blocks of `n_plot`
+/// `(x, z)` pairs. The paper sweep starts from `(0.5, 0.5, 0.3, 0.3)` at
+/// `A = 0.4`, `eps = 5e-3`.
+///
+/// # Errors
+///
+/// `CoreError::InvalidArgument` when `db_values` is empty, `n_plot` is zero,
+/// `state0` does not hold exactly four entries, or `A`, `eps`, a `D_B`, or a
+/// state component is not finite.
+pub fn coupled_delayed_projection_tile(
+    a: f64,
+    db_values: &[f64],
+    eps: f64,
+    n_transient: usize,
+    n_plot: usize,
+    state0: &[f64],
+) -> Result<Vec<f64>, CoreError> {
+    if db_values.is_empty() {
+        return Err(CoreError::invalid_argument("db_values must not be empty"));
+    }
+    if n_plot == 0 {
+        return Err(CoreError::invalid_argument("n_plot must be at least 1"));
+    }
+    if state0.len() != 4 {
+        return Err(CoreError::invalid_argument(
+            "state0 must hold exactly 4 components",
+        ));
+    }
+    if !a.is_finite() || !eps.is_finite() {
+        return Err(CoreError::invalid_argument("A and eps must be finite"));
+    }
+    if db_values.iter().any(|db| !db.is_finite()) {
+        return Err(CoreError::invalid_argument("every D_B must be finite"));
+    }
+    if state0.iter().any(|v| !v.is_finite()) {
+        return Err(CoreError::invalid_argument("state0 must be finite"));
+    }
+
+    let start = [state0[0], state0[1], state0[2], state0[3]];
+    let mut out = Vec::with_capacity(db_values.len() * n_plot * 2);
+    for &db in db_values {
+        let da = db + COUPLED_DA_OFFSET;
+        let mut state = start;
+        for _ in 0..n_transient {
+            state = coupled_delayed_step(state, a, da, db, eps);
+        }
+        for _ in 0..n_plot {
+            state = coupled_delayed_step(state, a, da, db, eps);
+            out.push(state[0]);
+            out.push(state[2]);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -588,6 +682,69 @@ mod tests {
         );
         assert!(
             modulated_circle_rotation_tile(0.1, c, &[0.3], 0.05, 50, 200, &[0.1, f64::NAN])
+                .is_err()
+        );
+    }
+
+    /// First eight `(x, z)` samples at A = 0.4, D_B = 2.37, eps = 5e-3 from
+    /// (0.5, 0.5, 0.3, 0.3) after a 20-step transient. `PROJECTION_CASES` panel 0.
+    const PROJECTION_DB_2_37: [f64; 16] = [
+        0.9079264445850574,
+        0.8452492484777323,
+        0.6563897866332581,
+        0.8854591014629967,
+        0.4692391229644689,
+        0.6654443306035374,
+        0.7436848948843963,
+        0.5074819217651929,
+        0.911846953966259,
+        0.729249310973097,
+        0.8366732683853395,
+        0.8832262435005075,
+        0.5339829456932967,
+        0.8216104314296215,
+        0.5508133417931551,
+        0.5745938458985095,
+    ];
+
+    #[test]
+    fn projection_tile_matches_python_exactly() {
+        let out = coupled_delayed_projection_tile(0.4, &[2.37], 5e-3, 20, 8, &[0.5, 0.5, 0.3, 0.3])
+            .unwrap();
+        assert_eq!(out, PROJECTION_DB_2_37);
+    }
+
+    #[test]
+    fn projection_tile_is_d_major_and_records_x_z() {
+        let out =
+            coupled_delayed_projection_tile(0.4, &[2.37, 2.43], 5e-3, 20, 8, &[0.5, 0.5, 0.3, 0.3])
+                .unwrap();
+        assert_eq!(out.len(), 2 * 8 * 2);
+        assert_eq!(&out[..16], &PROJECTION_DB_2_37);
+        // A swap of (x, z) would put z in the even slot. The first sample's x
+        // is the value Python records in column 0.
+        assert_eq!(out[0], 0.9079264445850574);
+        assert_eq!(out[1], 0.8452492484777323);
+    }
+
+    #[test]
+    fn projection_rejects_invalid_input() {
+        assert!(
+            coupled_delayed_projection_tile(0.4, &[], 5e-3, 1, 1, &[0.5, 0.5, 0.3, 0.3]).is_err()
+        );
+        assert!(
+            coupled_delayed_projection_tile(0.4, &[2.37], 5e-3, 1, 0, &[0.5, 0.5, 0.3, 0.3])
+                .is_err()
+        );
+        assert!(
+            coupled_delayed_projection_tile(0.4, &[2.37], 5e-3, 1, 1, &[0.5, 0.5, 0.3]).is_err()
+        );
+        assert!(
+            coupled_delayed_projection_tile(f64::NAN, &[2.37], 5e-3, 1, 1, &[0.5, 0.5, 0.3, 0.3])
+                .is_err()
+        );
+        assert!(
+            coupled_delayed_projection_tile(0.4, &[2.37], 5e-3, 1, 1, &[0.5, 0.5, 0.3, f64::NAN])
                 .is_err()
         );
     }

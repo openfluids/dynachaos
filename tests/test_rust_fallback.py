@@ -1961,3 +1961,167 @@ class TestCoupledDelayedLyapunovParity:
             coupled_delayed_lyapunov_tile(
                 0.4, np.array([2.3]), 0.005, 10, 10, np.array([0.5] * 3)
             )
+
+
+@rust_extension
+class TestCoupledLogisticTrajectoryParity:
+    """Verify phase, attractor and basin kernels against the Python map.
+
+    Trajectories and the asymmetry grid are exact (``np.array_equal``). The
+    phase Lyapunov column is not: NumPy ``log`` and Rust ``ln`` differ in the
+    last bit. Measured worst absolute difference on the 20 by 10 paper subset
+    below is 8.7e-19, inside the fixed 1e-9 bound.
+    """
+
+    N_TRANSIENT = 2_000
+    N_RECORD = 5_000
+
+    def test_phase_tile_matches_python(self):
+        from dynachaos._rust import coupled_logistic_phase_tile
+        from dynachaos.maps.coupled_logistic import compute_phase_diagram
+
+        a_values = np.ascontiguousarray(np.linspace(0.5, 1.65, 500)[::25])
+        d_values = np.ascontiguousarray(np.linspace(0.0, 0.3, 200)[::20])
+        assert a_values.shape == (20,)
+        assert d_values.shape == (10,)
+        python = compute_phase_diagram(
+            A_values=a_values,
+            D_values=d_values,
+            n_transient=self.N_TRANSIENT,
+            n_sample=self.N_RECORD,
+            output_path=None,
+            progress_interval=0,
+        )
+        rust = coupled_logistic_phase_tile(
+            a_values,
+            d_values,
+            self.N_TRANSIENT,
+            self.N_RECORD,
+            0.1,
+            0.2,
+        )
+        np.testing.assert_array_equal(rust[..., 0], python["asym"])
+        lyap_py = python["lyap"]
+        lyap_rs = rust[..., 1]
+        np.testing.assert_array_equal(np.isnan(lyap_rs), np.isnan(lyap_py))
+        finite = np.isfinite(lyap_py)
+        worst_lyap = float(np.max(np.abs(lyap_rs[finite] - lyap_py[finite])))
+        assert worst_lyap <= 1e-9
+        np.testing.assert_allclose(lyap_rs[finite], lyap_py[finite], atol=1e-9, rtol=0.0)
+
+    def test_attractor_cases_match_python(self):
+        from dynachaos._rust import coupled_logistic_attractor_tile
+        from dynachaos.maps.coupled_logistic import ATTRACTOR_CASES, compute_attractors
+
+        python = compute_attractors(
+            n_transient=self.N_TRANSIENT,
+            n_plot=self.N_RECORD,
+            output_path=None,
+        )
+        for index, case in enumerate(ATTRACTOR_CASES):
+            rust = coupled_logistic_attractor_tile(
+                np.array([case.A], dtype=np.float64),
+                0.1,
+                self.N_TRANSIENT,
+                self.N_RECORD,
+                np.array(case.initial_state, dtype=np.float64),
+            )
+            expected = np.column_stack((python[f"x_{index}"], python[f"y_{index}"]))
+            np.testing.assert_array_equal(rust[0], expected)
+
+    def test_basin_labels_match_python_on_a_64_grid(self):
+        from dynachaos._rust import coupled_logistic_basin_grid
+        from dynachaos.maps.coupled_logistic import _basin_grid_python, _find_reference_orbit
+
+        a = 1.35344
+        d = 0.1
+        n_grid = 64
+        n_transient = 200
+        reference = _find_reference_orbit(a, d, 0.1, 0.6, n_transient=80, period=32)
+        x_range = np.linspace(-1.0, 1.0, n_grid)
+        y_range = np.linspace(-1.0, 1.0, n_grid)
+        python = _basin_grid_python(a, d, x_range, y_range, n_transient, reference)
+        rust = coupled_logistic_basin_grid(x_range, y_range, a, d, n_transient, reference)
+        np.testing.assert_array_equal(rust, python)
+
+
+@rust_extension
+class TestCoupledDelayedProjectionParity:
+    """Verify ``(x, z)`` projections against ``coupled_delayed``.
+
+    ``compute_projections`` writes the figure cache and hardcodes a 50_000
+    record, so this test calls that function's map and projector at every
+    ``PROJECTION_CASES`` value. ``n_record`` is 5_000, the shortest count the
+    dispatch allows. Python passes no divergence check; the samples compared
+    here stay finite, so the recorded pairs are exact.
+    """
+
+    A = 0.4
+    EPS = 5e-3
+    STATE0 = np.array([0.5, 0.5, 0.3, 0.3], dtype=np.float64)
+    N_TRANSIENT = 2_000
+    N_RECORD = 5_000
+
+    def test_projection_cases_match_python(self):
+        from dynachaos._rust import coupled_delayed_projection_tile
+        from dynachaos.maps._iter import trajectory_after_transient
+        from dynachaos.maps.coupled_delayed import PROJECTION_CASES, coupled_delayed
+
+        db_values = np.array([case[0] for case in PROJECTION_CASES], dtype=np.float64)
+        rust = coupled_delayed_projection_tile(
+            self.A,
+            db_values,
+            self.EPS,
+            self.N_TRANSIENT,
+            self.N_RECORD,
+            self.STATE0,
+        )
+        for index, db in enumerate(db_values):
+            da = float(db) + 0.1
+            python = trajectory_after_transient(
+                self.STATE0,
+                lambda state, da=da, db=float(db): coupled_delayed(
+                    state, self.A, da, db, self.EPS
+                ),
+                self.N_TRANSIENT,
+                self.N_RECORD,
+                project_fn=lambda state: state[[0, 2]],
+            )
+            assert python is not None
+            np.testing.assert_array_equal(rust[index], python)
+
+
+@rust_extension
+class TestFractalizationAttractorParity:
+    """Verify fractalization orbits against ``iterate``.
+
+    Fractalization is the delayed logistic map. The Rust side is
+    ``delayed_logistic_attractor_tile``, the kernel the wasm export calls.
+    ``iterate`` builds ``fp(D) ± 0.01`` when ``x0`` is omitted and passes no
+    divergence check; the reused kernel instead fills a block with NaN when
+    any ``|component| > 1e10``. The paper D values stay finite, so the
+    recorded pairs are exact. ``n_record`` is 5_000, shorter than the
+    figure's 500_000 and at the dispatch floor.
+    """
+
+    A = 0.3
+    D_VALUES = (1.75, 1.86, 1.90, 1.92, 1.94, 1.945)
+    N_TRANSIENT = 2_000
+    N_RECORD = 5_000
+
+    def test_paper_d_values_match_iterate(self):
+        from dynachaos._rust import delayed_logistic_attractor_tile
+        from dynachaos.maps.fractalization import iterate
+
+        for d in self.D_VALUES:
+            python = iterate(self.A, d, n_transient=self.N_TRANSIENT, n_record=self.N_RECORD)
+            fp = (np.sqrt(1.0 + 4.0 * d) - 1.0) / (2.0 * d)
+            state0 = np.array([fp + 0.01, fp - 0.01], dtype=np.float64)
+            rust = delayed_logistic_attractor_tile(
+                self.A,
+                np.array([d], dtype=np.float64),
+                self.N_TRANSIENT,
+                self.N_RECORD,
+                state0,
+            )
+            np.testing.assert_array_equal(rust[0], python)

@@ -43,6 +43,14 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coupled_logistic::coupled_logistic_basin_grid,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(
+        coupled_logistic::coupled_logistic_phase_tile,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        coupled_logistic::coupled_logistic_attractor_tile,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(recurrence::count_line_lengths, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::apen_counts, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::fuzzy_entropy_sum, m)?)?;
@@ -65,5 +73,6 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(maps::delayed_logistic_lyapunov_tile, m)?)?;
     m.add_function(wrap_pyfunction!(maps::torus_doubling_lyapunov_tile, m)?)?;
     m.add_function(wrap_pyfunction!(maps::coupled_delayed_lyapunov_tile, m)?)?;
+    m.add_function(wrap_pyfunction!(maps::coupled_delayed_projection_tile, m)?)?;
     Ok(())
 }

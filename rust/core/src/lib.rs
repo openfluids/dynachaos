@@ -28,7 +28,10 @@ pub use circle_map::{
 pub use cml::{cml_jacobian_logistic, cml_spacetime_tile};
 pub use comoving::comoving_lyapunov_logistic;
 pub use correlation_gp::correlation_counts;
-pub use coupled_logistic::coupled_logistic_basin_grid;
+pub use coupled_logistic::{
+    coupled_logistic_attractor_tile, coupled_logistic_basin_grid, coupled_logistic_phase_tile,
+    coupled_logistic_reference_orbit,
+};
 pub use embedding::select_dimension_cao;
 pub use entropy::{apen_counts, fuzzy_entropy_sum};
 pub use intermittency::{
@@ -40,7 +43,8 @@ pub use lyapunov::{
     torus_doubling_lyapunov_tile,
 };
 pub use maps::{
-    delayed_logistic_attractor_tile, modulated_circle_rotation_tile, torus_doubling_attractor_tile,
+    coupled_delayed_projection_tile, delayed_logistic_attractor_tile,
+    modulated_circle_rotation_tile, torus_doubling_attractor_tile,
 };
 pub use multifractal::{MultifractalMoments, multifractal_moments};
 pub use permutation::ordinal_distribution;

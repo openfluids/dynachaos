@@ -3,12 +3,15 @@
 The map and lattice exports compared are ``delayed_logistic_attractor_tile``,
 ``torus_doubling_attractor_tile`` (maps I and IV),
 ``modulated_circle_rotation_tile``, ``cml_spacetime_tile`` (models A, B and
-C), and the four Lyapunov kernels ``circle_map_lyapunov_sum``,
+C), the four Lyapunov kernels ``circle_map_lyapunov_sum``,
 ``delayed_logistic_lyapunov_tile``, ``torus_doubling_lyapunov_tile`` (maps I
-and IV) and ``coupled_delayed_lyapunov_tile``. The native side is the pyo3
-extension, which runs the same ``rust/core`` code; the browser side is the
-``site/wasm`` bundle driven through node. Both sides receive the same inputs,
-built once below.
+and IV) and ``coupled_delayed_lyapunov_tile``, and the five trajectory and
+grid exports ``coupled_logistic_phase_tile``,
+``coupled_logistic_attractor_tile``, ``coupled_logistic_basin_grid``,
+``coupled_delayed_projection_tile`` and ``fractalization_attractor_tile``.
+The native side is the pyo3 extension, which runs the same ``rust/core``
+code; the browser side is the ``site/wasm`` bundle driven through node.
+Both sides receive the same inputs, built once below.
 
 The tolerance is set per export by what the kernel computes:
 
@@ -44,6 +47,11 @@ The tolerance is set per export by what the kernel computes:
   bits; the frame renormalises every step, so the difference does not
   grow. They are held to 1e-9 absolute, loose enough for the last-bit
   logarithm difference, tight enough that a wrong Jacobian fails.
+* ``coupled_logistic_phase_tile`` accumulates one ``ln`` and one ``sqrt``
+  per sample for the Lyapunov column. That column is held to 1e-9
+  absolute. The asymmetry column, and the attractor, projection,
+  fractalization and basin exports, use only ``+``, ``-`` and ``*`` (basin
+  labels are integers) and must match exactly.
 
 Each export also gets a self-check: one value of the native result is
 perturbed and the comparison must fail, so a script that compares nothing
@@ -73,6 +81,10 @@ from dynachaos._rust import (
     cml_spacetime_tile,
     correlation_counts,
     coupled_delayed_lyapunov_tile,
+    coupled_delayed_projection_tile,
+    coupled_logistic_attractor_tile,
+    coupled_logistic_basin_grid,
+    coupled_logistic_phase_tile,
     delayed_logistic_attractor_tile,
     delayed_logistic_lyapunov_tile,
     diagonal_lines,
@@ -188,6 +200,46 @@ COUPLED_LYAP_N_DB = 4
 COUPLED_LYAP_EPS = 5e-3
 COUPLED_LYAP_STATE = [0.5, 0.5, 0.3, 0.3]
 
+# Trajectory and grid exports. Phase Lyapunov uses sqrt and ln, so that
+# column allows a last-bit wasm/native difference. The other four are
+# polynomial or integer labels and must match exactly.
+PHASE_A_MIN = 0.8
+PHASE_A_MAX = 1.2
+PHASE_N_A = 4
+PHASE_D_MIN = 0.0
+PHASE_D_MAX = 0.2
+PHASE_N_D = 3
+PHASE_TRANSIENT = 20
+PHASE_SAMPLE = 40
+PHASE_X0 = 0.1
+PHASE_Y0 = 0.2
+PHASE_LYAP_ABS = 1e-9
+ATTRACTOR_A_MIN = 1.0
+ATTRACTOR_A_MAX = 1.3
+ATTRACTOR_N_A = 3
+ATTRACTOR_D = 0.1
+ATTRACTOR_X0 = 0.1
+ATTRACTOR_Y0 = 0.2
+BASIN_A = 1.35344
+BASIN_D = 0.1
+BASIN_N = 8
+BASIN_TRANSIENT = 12
+BASIN_REFERENCE = 20
+BASIN_PERIOD = 4
+BASIN_X_REF = 0.1
+BASIN_Y_REF = 0.6
+PROJECTION_A = 0.4
+PROJECTION_DB_MIN = 2.2
+PROJECTION_DB_MAX = 2.5
+PROJECTION_N_DB = 3
+PROJECTION_EPS = 5e-3
+PROJECTION_STATE = [0.5, 0.5, 0.3, 0.3]
+FRACTAL_A = 0.3
+FRACTAL_D_MIN = 1.8
+FRACTAL_D_MAX = 1.9
+FRACTAL_N_D = 3
+FRACTAL_STATE = [0.4, 0.35]
+
 CIRCLE_STATE = [0.1, 0.1]
 
 # CML space-time: a 64-site lattice over a short record. Model (B) carries a
@@ -290,6 +342,24 @@ process.stdout.write(JSON.stringify({
     spec.coupled_lyap_a, spec.coupled_lyap_db_min, spec.coupled_lyap_db_max,
     spec.coupled_lyap_n_db, spec.coupled_lyap_eps, spec.lyap_transient,
     spec.lyap_iter, new Float64Array(spec.coupled_lyap_state))),
+  coupled_logistic_phase_tile: Array.from(mod.coupled_logistic_phase_tile(
+    spec.phase_a_min, spec.phase_a_max, spec.phase_n_a,
+    spec.phase_d_min, spec.phase_d_max, spec.phase_n_d,
+    spec.phase_transient, spec.phase_sample, spec.phase_x0, spec.phase_y0)),
+  coupled_logistic_attractor_tile: Array.from(mod.coupled_logistic_attractor_tile(
+    spec.attractor_a_min, spec.attractor_a_max, spec.attractor_n_a, spec.attractor_d,
+    spec.map_transient, spec.map_plot, spec.attractor_x0, spec.attractor_y0)),
+  coupled_logistic_basin_grid: Array.from(mod.coupled_logistic_basin_grid(
+    spec.basin_a, spec.basin_d, spec.basin_x_min, spec.basin_x_max, spec.basin_n,
+    spec.basin_y_min, spec.basin_y_max, spec.basin_n, spec.basin_transient,
+    spec.basin_reference, spec.basin_period, spec.basin_x_ref, spec.basin_y_ref)),
+  coupled_delayed_projection_tile: Array.from(mod.coupled_delayed_projection_tile(
+    spec.projection_a, spec.projection_db_min, spec.projection_db_max,
+    spec.projection_n_db, spec.projection_eps, spec.map_transient, spec.map_plot,
+    new Float64Array(spec.projection_state))),
+  fractalization_attractor_tile: Array.from(mod.fractalization_attractor_tile(
+    spec.fractal_a, spec.fractal_d_min, spec.fractal_d_max, spec.fractal_n_d,
+    spec.map_transient, spec.map_plot, new Float64Array(spec.fractal_state))),
 }));
 """
 
@@ -469,6 +539,45 @@ def main() -> int:
         "torus_a": TORUS_A,
         "torus_d": TORUS_D,
         "torus_state": TORUS_STATE,
+        "phase_a_min": PHASE_A_MIN,
+        "phase_a_max": PHASE_A_MAX,
+        "phase_n_a": PHASE_N_A,
+        "phase_d_min": PHASE_D_MIN,
+        "phase_d_max": PHASE_D_MAX,
+        "phase_n_d": PHASE_N_D,
+        "phase_transient": PHASE_TRANSIENT,
+        "phase_sample": PHASE_SAMPLE,
+        "phase_x0": PHASE_X0,
+        "phase_y0": PHASE_Y0,
+        "attractor_a_min": ATTRACTOR_A_MIN,
+        "attractor_a_max": ATTRACTOR_A_MAX,
+        "attractor_n_a": ATTRACTOR_N_A,
+        "attractor_d": ATTRACTOR_D,
+        "attractor_x0": ATTRACTOR_X0,
+        "attractor_y0": ATTRACTOR_Y0,
+        "basin_a": BASIN_A,
+        "basin_d": BASIN_D,
+        "basin_x_min": -1.0,
+        "basin_x_max": 1.0,
+        "basin_y_min": -1.0,
+        "basin_y_max": 1.0,
+        "basin_n": BASIN_N,
+        "basin_transient": BASIN_TRANSIENT,
+        "basin_reference": BASIN_REFERENCE,
+        "basin_period": BASIN_PERIOD,
+        "basin_x_ref": BASIN_X_REF,
+        "basin_y_ref": BASIN_Y_REF,
+        "projection_a": PROJECTION_A,
+        "projection_db_min": PROJECTION_DB_MIN,
+        "projection_db_max": PROJECTION_DB_MAX,
+        "projection_n_db": PROJECTION_N_DB,
+        "projection_eps": PROJECTION_EPS,
+        "projection_state": PROJECTION_STATE,
+        "fractal_a": FRACTAL_A,
+        "fractal_d_min": FRACTAL_D_MIN,
+        "fractal_d_max": FRACTAL_D_MAX,
+        "fractal_n_d": FRACTAL_N_D,
+        "fractal_state": FRACTAL_STATE,
     }
     wasm = wasm_results(spec)
 
@@ -1085,6 +1194,192 @@ def main() -> int:
             1e-6,
         ):
             print("FAIL: coupled_delayed_lyapunov_tile self-check did not trip")
+            failed = True
+
+    def _swept(lo: float, hi: float, n: int) -> np.ndarray:
+        denom = max(n - 1, 1)
+        return np.array([lo + (hi - lo) * k / denom for k in range(n)], dtype=np.float64)
+
+    # coupled_logistic_phase_tile: [n_A, n_D, n_transient, n_sample, pairs...].
+    phase_native = coupled_logistic_phase_tile(
+        _swept(PHASE_A_MIN, PHASE_A_MAX, PHASE_N_A),
+        _swept(PHASE_D_MIN, PHASE_D_MAX, PHASE_N_D),
+        PHASE_TRANSIENT,
+        PHASE_SAMPLE,
+        PHASE_X0,
+        PHASE_Y0,
+    )
+    out = wasm["coupled_logistic_phase_tile"]
+    phase_header = [
+        float(PHASE_N_A),
+        float(PHASE_N_D),
+        float(PHASE_TRANSIENT),
+        float(PHASE_SAMPLE),
+    ]
+    if not check_header("coupled_logistic_phase_tile", out[:4], phase_header):
+        failed = True
+    else:
+        phase_flat = [float(v) for v in np.asarray(phase_native).ravel()]
+        phase_body = out[4:]
+        bad_asym, worst_asym = compare(
+            "coupled_logistic_phase_tile asym", phase_flat[0::2], phase_body[0::2], 0.0
+        )
+        bad_lyap, worst_lyap = compare(
+            "coupled_logistic_phase_tile lyap",
+            phase_flat[1::2],
+            phase_body[1::2],
+            PHASE_LYAP_ABS,
+        )
+        print(
+            f"coupled_logistic_phase_tile: {PHASE_N_D} x {PHASE_N_A}, "
+            f"asym worst {worst_asym:.3e}, lyap worst {worst_lyap:.3e}"
+        )
+        if bad_asym or bad_lyap:
+            print("FAIL: coupled_logistic_phase_tile differs")
+            failed = True
+        elif not self_check(
+            "coupled_logistic_phase_tile", phase_flat, phase_body, 0.0, 1.0
+        ):
+            print("FAIL: coupled_logistic_phase_tile self-check did not trip")
+            failed = True
+
+    # coupled_logistic_attractor_tile: [n_A, n_plot, n_transient, 2, samples...].
+    attractor_native = coupled_logistic_attractor_tile(
+        _swept(ATTRACTOR_A_MIN, ATTRACTOR_A_MAX, ATTRACTOR_N_A),
+        ATTRACTOR_D,
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array([ATTRACTOR_X0, ATTRACTOR_Y0], dtype=np.float64),
+    )
+    out = wasm["coupled_logistic_attractor_tile"]
+    attractor_header = [
+        float(ATTRACTOR_N_A),
+        float(MAP_PLOT),
+        float(MAP_TRANSIENT),
+        2.0,
+    ]
+    if not check_header("coupled_logistic_attractor_tile", out[:4], attractor_header):
+        failed = True
+    else:
+        attractor_flat = [float(v) for v in np.asarray(attractor_native).ravel()]
+        bad, worst = compare("coupled_logistic_attractor_tile", attractor_flat, out[4:], 0.0)
+        print(
+            f"coupled_logistic_attractor_tile: {ATTRACTOR_N_A} A values x "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: coupled_logistic_attractor_tile differs")
+            failed = True
+        elif not self_check(
+            "coupled_logistic_attractor_tile", attractor_flat, out[4:], 0.0, 1.0
+        ):
+            print("FAIL: coupled_logistic_attractor_tile self-check did not trip")
+            failed = True
+
+    # coupled_logistic_basin_grid: [n_x, n_y, n_transient, period, labels...].
+    from dynachaos.maps.coupled_logistic import _find_reference_orbit
+
+    basin_x = _swept(-1.0, 1.0, BASIN_N)
+    basin_y = _swept(-1.0, 1.0, BASIN_N)
+    basin_ref = _find_reference_orbit(
+        BASIN_A,
+        BASIN_D,
+        BASIN_X_REF,
+        BASIN_Y_REF,
+        n_transient=BASIN_REFERENCE,
+        period=BASIN_PERIOD,
+    )
+    assert basin_ref is not None
+    basin_native = coupled_logistic_basin_grid(
+        basin_x, basin_y, BASIN_A, BASIN_D, BASIN_TRANSIENT, basin_ref
+    )
+    out = wasm["coupled_logistic_basin_grid"]
+    basin_header = [
+        float(BASIN_N),
+        float(BASIN_N),
+        float(BASIN_TRANSIENT),
+        float(BASIN_PERIOD),
+    ]
+    if not check_header("coupled_logistic_basin_grid", out[:4], basin_header):
+        failed = True
+    else:
+        basin_flat = [float(v) for v in np.asarray(basin_native).ravel()]
+        bad, worst = compare("coupled_logistic_basin_grid", basin_flat, out[4:], 0.0)
+        print(f"coupled_logistic_basin_grid: {BASIN_N} x {BASIN_N}, worst {worst:.3e}")
+        if bad:
+            print("FAIL: coupled_logistic_basin_grid differs")
+            failed = True
+        elif not self_check("coupled_logistic_basin_grid", basin_flat, out[4:], 0.0, 1.0):
+            print("FAIL: coupled_logistic_basin_grid self-check did not trip")
+            failed = True
+
+    # coupled_delayed_projection_tile: [n_DB, n_plot, n_transient, 2, pairs...].
+    projection_native = coupled_delayed_projection_tile(
+        PROJECTION_A,
+        _swept(PROJECTION_DB_MIN, PROJECTION_DB_MAX, PROJECTION_N_DB),
+        PROJECTION_EPS,
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array(PROJECTION_STATE, dtype=np.float64),
+    )
+    out = wasm["coupled_delayed_projection_tile"]
+    projection_header = [
+        float(PROJECTION_N_DB),
+        float(MAP_PLOT),
+        float(MAP_TRANSIENT),
+        2.0,
+    ]
+    if not check_header("coupled_delayed_projection_tile", out[:4], projection_header):
+        failed = True
+    else:
+        projection_flat = [float(v) for v in np.asarray(projection_native).ravel()]
+        bad, worst = compare(
+            "coupled_delayed_projection_tile", projection_flat, out[4:], 0.0
+        )
+        print(
+            f"coupled_delayed_projection_tile: {PROJECTION_N_DB} DB values x "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: coupled_delayed_projection_tile differs")
+            failed = True
+        elif not self_check(
+            "coupled_delayed_projection_tile", projection_flat, out[4:], 0.0, 1.0
+        ):
+            print("FAIL: coupled_delayed_projection_tile self-check did not trip")
+            failed = True
+
+    # fractalization_attractor_tile calls the delayed-logistic kernel.
+    fractal_native = delayed_logistic_attractor_tile(
+        FRACTAL_A,
+        _swept(FRACTAL_D_MIN, FRACTAL_D_MAX, FRACTAL_N_D),
+        MAP_TRANSIENT,
+        MAP_PLOT,
+        np.array(FRACTAL_STATE, dtype=np.float64),
+    )
+    out = wasm["fractalization_attractor_tile"]
+    fractal_header = [
+        float(FRACTAL_N_D),
+        float(MAP_PLOT),
+        float(MAP_TRANSIENT),
+        2.0,
+    ]
+    if not check_header("fractalization_attractor_tile", out[:4], fractal_header):
+        failed = True
+    else:
+        fractal_flat = [float(v) for v in np.asarray(fractal_native).ravel()]
+        bad, worst = compare("fractalization_attractor_tile", fractal_flat, out[4:], 0.0)
+        print(
+            f"fractalization_attractor_tile: {FRACTAL_N_D} D values x "
+            f"{MAP_PLOT} samples, worst {worst:.3e}"
+        )
+        if bad:
+            print("FAIL: fractalization_attractor_tile differs")
+            failed = True
+        elif not self_check(
+            "fractalization_attractor_tile", fractal_flat, out[4:], 0.0, 1.0
+        ):
+            print("FAIL: fractalization_attractor_tile self-check did not trip")
             failed = True
 
     if failed:

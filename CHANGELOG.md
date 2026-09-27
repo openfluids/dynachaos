@@ -83,6 +83,15 @@ reconstructed from git history. 0.4.0 is the first public release.
   build exports all four for the browser, with every input clamped. The
   paper pipeline still uses the Python path.
 
+- The compiled extension exports `coupled_logistic_phase_tile`,
+  `coupled_logistic_attractor_tile` and `coupled_delayed_projection_tile`.
+  They compute the coupled-logistic phase diagram, attractor portraits and
+  coupled-delayed `(x, z)` projections in Rust. The WebAssembly build
+  exports those three plus `coupled_logistic_basin_grid` and
+  `fractalization_attractor_tile` (the latter calls the existing delayed
+  logistic kernel), with every input clamped. They are exported; no page
+  calls them yet. The paper pipeline still uses the Python path.
+
 ### Changed
 
 - `zero_one_statistic` and `zero_one_series` run on the Rust core when the

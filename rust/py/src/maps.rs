@@ -240,3 +240,37 @@ pub fn coupled_delayed_lyapunov_tile<'py>(
         .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))?;
     Ok(PyArray2::from_owned_array(py, tile))
 }
+
+/// Coupled-delayed projection tile: one `(x, z)` trajectory per `D_B`.
+///
+/// Mirrors `compute_projections` in `dynachaos.maps.coupled_delayed`, with
+/// `D_A = D_B + 0.1`. Python passes no divergence check; this kernel likewise
+/// records every sample, including non-finite values.
+///
+/// Returns an array of shape `(n_DB, n_plot, 2)`.
+#[pyfunction]
+#[pyo3(signature = (A, db_values, eps, n_transient, n_plot, state0))]
+#[allow(non_snake_case, clippy::too_many_arguments)]
+pub fn coupled_delayed_projection_tile<'py>(
+    py: Python<'py>,
+    A: f64,
+    db_values: PyReadonlyArray1<'py, f64>,
+    eps: f64,
+    n_transient: usize,
+    n_plot: usize,
+    state0: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray3<f64>>> {
+    let n_db = db_values.as_slice()?.len();
+    let flat = dynachaos_core::coupled_delayed_projection_tile(
+        A,
+        db_values.as_slice()?,
+        eps,
+        n_transient,
+        n_plot,
+        state0.as_slice()?,
+    )
+    .map_err(crate::core_to_py)?;
+    let tile = Array3::from_shape_vec((n_db, n_plot, 2), flat)
+        .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))?;
+    Ok(PyArray3::from_owned_array(py, tile))
+}

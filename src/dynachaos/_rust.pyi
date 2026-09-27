@@ -63,6 +63,21 @@ def coupled_logistic_basin_grid(
     n_transient: int,
     ref_a: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.int8]: ...
+def coupled_logistic_phase_tile(
+    a_values: npt.NDArray[np.float64],
+    d_values: npt.NDArray[np.float64],
+    n_transient: int,
+    n_sample: int,
+    x0: float,
+    y0: float,
+) -> npt.NDArray[np.float64]: ...
+def coupled_logistic_attractor_tile(
+    a_values: npt.NDArray[np.float64],
+    D: float,
+    n_transient: int,
+    n_plot: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
 def apen_counts(
     traj: npt.NDArray[np.float64],
     r: float,
@@ -180,5 +195,13 @@ def coupled_delayed_lyapunov_tile(
     eps: float,
     n_transient: int,
     n_iter: int,
+    state0: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def coupled_delayed_projection_tile(
+    A: float,
+    db_values: npt.NDArray[np.float64],
+    eps: float,
+    n_transient: int,
+    n_plot: int,
     state0: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...

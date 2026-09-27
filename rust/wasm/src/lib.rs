@@ -10,7 +10,7 @@
 //!
 //! The kernels themselves live in `dynachaos-core` and are the same code the
 //! published figures were computed with. This crate only converts and guards.
-//! Twenty exports: `rotation_number_tile` for the picture,
+//! Twenty-five exports: `rotation_number_tile` for the picture,
 //! `rotation_number_point` for the quoted readout, `zero_one_k` for the
 //! 0-1 test for chaos, `correlation_counts`, `apen_counts`,
 //! `fuzzy_entropy_sum`, `ordinal_distribution`, `diagonal_lines`,
@@ -18,10 +18,13 @@
 //! `select_dimension_cao` for the diagnostics panel,
 //! `delayed_logistic_attractor_tile`, `torus_doubling_attractor_tile`,
 //! `modulated_circle_rotation_tile` and `cml_spacetime_tile` for the
-//! map-attractor and space-time live figures, and
+//! map-attractor and space-time live figures,
 //! `circle_map_lyapunov_sum`, `delayed_logistic_lyapunov_tile`,
 //! `torus_doubling_lyapunov_tile` and `coupled_delayed_lyapunov_tile`
-//! for the Lyapunov panels.
+//! for the Lyapunov panels, and `coupled_logistic_phase_tile`,
+//! `coupled_logistic_attractor_tile`, `coupled_logistic_basin_grid`,
+//! `coupled_delayed_projection_tile` and `fractalization_attractor_tile`
+//! exported for later map panels (no page calls them yet).
 
 use ndarray::Array2;
 use wasm_bindgen::prelude::*;
@@ -160,6 +163,46 @@ const COUPLED_EPS_MIN: f64 = 1e-3;
 const COUPLED_EPS_MAX: f64 = 1e-2;
 /// Middle coupling of the published epsilon trio.
 const COUPLED_EPS_PAPER: f64 = 5e-3;
+/// Coupled-logistic phase diagram sweeps A over [0.5, 1.65]
+/// (`src/dynachaos/maps/coupled_logistic.py:180`).
+const LOGISTIC_A_MIN: f64 = 0.5;
+/// Largest coupled-logistic A the phase, attractor and basin tiles may ask for.
+const LOGISTIC_A_MAX: f64 = 1.65;
+/// Coupled-logistic phase diagram sweeps D over [0, 0.3]
+/// (`src/dynachaos/maps/coupled_logistic.py:184`).
+const LOGISTIC_D_MIN: f64 = 0.0;
+/// Largest coupled-logistic D those tiles may ask for.
+const LOGISTIC_D_MAX: f64 = 0.3;
+/// Basin figure parameter (`src/dynachaos/maps/coupled_logistic.py:381`).
+const BASIN_A_PAPER: f64 = 1.35344;
+/// Gallery coupling (`src/dynachaos/maps/coupled_logistic.py:268`).
+const LOGISTIC_D_PAPER: f64 = 0.1;
+/// Phase-diagram and animation start (`src/dynachaos/maps/coupled_logistic.py:194`).
+const PHASE_X0: f64 = 0.1;
+/// Second component of that start.
+const PHASE_Y0: f64 = 0.2;
+/// Reference-orbit start (`src/dynachaos/maps/coupled_logistic.py:403`).
+const BASIN_X_REF: f64 = 0.1;
+/// Second component of the reference-orbit start.
+const BASIN_Y_REF: f64 = 0.6;
+/// Largest phase-diagram sample count from the kernel list.
+const MAX_PHASE_SAMPLE: usize = 200_000;
+/// Largest A list `coupled_logistic_attractor_tile` may sweep.
+const MAX_ATTRACTOR_A: usize = 64;
+/// Largest `D_B` list `coupled_delayed_projection_tile` may sweep.
+const MAX_PROJECTION_DB: usize = 32;
+/// Largest D list `fractalization_attractor_tile` may sweep.
+const MAX_FRACTAL_D: usize = 32;
+/// Largest basin period from the kernel list.
+const MAX_BASIN_PERIOD: usize = 64;
+/// Largest reference-orbit transient. The paper uses 500_000; the kernel
+/// list caps the browser at 50_000.
+const MAX_REFERENCE_TRANSIENT: usize = 50_000;
+/// Fractalization animation sweeps D over [1.75, 1.96]
+/// (`src/dynachaos/maps/fractalization.py:250`).
+const FRACTAL_D_MIN: f64 = 1.75;
+/// Largest fractalization D the browser may ask for.
+const FRACTAL_D_MAX: f64 = 1.96;
 
 /// Rotation numbers of the sine circle map over a tile of the (Omega, K) plane.
 ///
@@ -1626,6 +1669,348 @@ pub fn coupled_delayed_lyapunov_tile(
     out
 }
 
+/// Coupled-logistic phase tile: asymmetry and largest-tangent growth on an (A, D) grid.
+///
+/// Mirrors `compute_phase_diagram` (`src/dynachaos/maps/coupled_logistic.py:161`).
+/// The tangent step runs before the map step. `|x| > 10` or `|y| > 10` sets
+/// that state to NaN, and a cell with no valid sample is NaN.
+///
+/// # Returned layout
+///
+/// `[n_A, n_D, n_transient, n_sample, asym_0, lyap_0, ...]`, row-major in D
+/// then A, two values per cell. The header reports the values actually used.
+/// A kernel error — impossible after the clamps below — returns an empty
+/// array, never a trap.
+///
+/// # Clamping
+///
+/// - `a_min`, `a_max`: clamped to `[0.5, 1.65]`; a non-finite value falls back
+///   to the matching endpoint.
+/// - `d_min`, `d_max`: clamped to `[0, 0.3]`; a non-finite value falls back to
+///   the matching endpoint.
+/// - `n_A`, `n_D`: clamped to `[1, 512]`; `n_transient` to `[0, 20000]`;
+///   `n_sample` to `[1, 200000]`, then both counts shrink until
+///   `n_A * n_D * (n_transient + n_sample) <= MAX_STEPS`.
+/// - `x0`, `y0`: a non-finite value falls back to `(0.1, 0.2)`, then each
+///   component clamps to `[-1, 1]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn coupled_logistic_phase_tile(
+    a_min: f64,
+    a_max: f64,
+    n_a: usize,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    n_transient: usize,
+    n_sample: usize,
+    x0: f64,
+    y0: f64,
+) -> Vec<f64> {
+    let a_min = finite_or(a_min, LOGISTIC_A_MIN).clamp(LOGISTIC_A_MIN, LOGISTIC_A_MAX);
+    let a_max = finite_or(a_max, LOGISTIC_A_MAX).clamp(LOGISTIC_A_MIN, LOGISTIC_A_MAX);
+    let d_min = finite_or(d_min, LOGISTIC_D_MIN).clamp(LOGISTIC_D_MIN, LOGISTIC_D_MAX);
+    let d_max = finite_or(d_max, LOGISTIC_D_MAX).clamp(LOGISTIC_D_MIN, LOGISTIC_D_MAX);
+    let n_a = n_a.clamp(1, MAX_SIDE);
+    let n_d = n_d.clamp(1, MAX_SIDE);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_sample = n_sample.clamp(1, MAX_PHASE_SAMPLE);
+    let (n_transient, n_sample) = fit_pair_budget(n_a, n_d, n_transient, n_sample);
+    let x0 = logistic_coord(x0, PHASE_X0);
+    let y0 = logistic_coord(y0, PHASE_Y0);
+    let a_values = swept_values(a_min, a_max, n_a);
+    let d_values = swept_values(d_min, d_max, n_d);
+    let Ok(samples) = dynachaos_core::coupled_logistic_phase_tile(
+        &a_values,
+        &d_values,
+        n_transient,
+        n_sample,
+        x0,
+        y0,
+    ) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(n_a as f64);
+    out.push(n_d as f64);
+    out.push(n_transient as f64);
+    out.push(n_sample as f64);
+    out.extend_from_slice(&samples);
+    out
+}
+
+/// Coupled-logistic attractor tile: one `(x, y)` trajectory per `A` at fixed `D`.
+///
+/// Mirrors `compute_attractors` (`src/dynachaos/maps/coupled_logistic.py:265`).
+/// Python passes no `diverged_fn`. This kernel does the same: it records every
+/// requested sample, including non-finite values, and does not apply a
+/// magnitude gate.
+///
+/// # Returned layout
+///
+/// `[n_A, n_plot, n_transient, 2, x_0, y_0, ...]`, A-major `(x, y)` pairs.
+/// A kernel error returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `a_min`, `a_max`: clamped to `[0.5, 1.65]`; a non-finite value falls back
+///   to the matching endpoint.
+/// - `d`: clamped to `[0, 0.3]`; a non-finite value falls back to `0.1`.
+/// - `n_A`: clamped to `[1, 64]`; `n_transient` to `[0, 20000]`; `n_plot` to
+///   `[1, 4096]`, then the pair shrinks to respect the step budget.
+/// - `x0`, `y0`: a non-finite value falls back to `(0.1, 0.2)`, then each
+///   component clamps to `[-1, 1]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn coupled_logistic_attractor_tile(
+    a_min: f64,
+    a_max: f64,
+    n_a: usize,
+    d: f64,
+    n_transient: usize,
+    n_plot: usize,
+    x0: f64,
+    y0: f64,
+) -> Vec<f64> {
+    let a_min = finite_or(a_min, LOGISTIC_A_MIN).clamp(LOGISTIC_A_MIN, LOGISTIC_A_MAX);
+    let a_max = finite_or(a_max, LOGISTIC_A_MAX).clamp(LOGISTIC_A_MIN, LOGISTIC_A_MAX);
+    let n_a = n_a.clamp(1, MAX_ATTRACTOR_A);
+    let d = finite_or(d, LOGISTIC_D_PAPER).clamp(LOGISTIC_D_MIN, LOGISTIC_D_MAX);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_plot = n_plot.clamp(1, MAX_MAP_PLOT);
+    let (n_transient, n_plot) = fit_pair_budget(n_a, 1, n_transient, n_plot);
+    let x0 = logistic_coord(x0, PHASE_X0);
+    let y0 = logistic_coord(y0, PHASE_Y0);
+    let a_values = swept_values(a_min, a_max, n_a);
+    let Ok(samples) = dynachaos_core::coupled_logistic_attractor_tile(
+        &a_values,
+        d,
+        n_transient,
+        n_plot,
+        &[x0, y0],
+    ) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(n_a as f64);
+    out.push(n_plot as f64);
+    out.push(n_transient as f64);
+    out.push(2.0);
+    out.extend_from_slice(&samples);
+    out
+}
+
+/// Coupled-logistic basin grid, including the reference orbit the Python caller builds.
+///
+/// The reference orbit is `_find_reference_orbit`
+/// (`src/dynachaos/maps/coupled_logistic.py:308`): `reference_transient` steps
+/// from `(x_ref, y_ref)`, then `period` recorded states, with no divergence
+/// check. The grid classification then calls the existing
+/// `coupled_logistic_basin_grid`, which marks `|x| > 100` or `|y| > 100` as
+/// label `-1`.
+///
+/// # Returned layout
+///
+/// `[n_x, n_y, n_transient, period, label_0, ...]`, row-major in y then x.
+/// Labels are `-1, 0, 1, 2` as f64. A kernel error returns an empty array.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0.5, 1.65]`; a non-finite value falls back to `1.35344`.
+/// - `d`: clamped to `[0, 0.3]`; a non-finite value falls back to `0.1`.
+/// - `x_min`, `x_max`, `y_min`, `y_max`, `x_ref`, `y_ref`: clamped to `[-1, 1]`.
+///   A non-finite range endpoint falls back to the paper domain `[-1, 1]`; a
+///   non-finite reference component falls back to `(0.1, 0.6)`.
+/// - `n_x`, `n_y`: clamped to `[1, 512]`; `n_transient` to `[0, 20000]`;
+///   `reference_transient` to `[0, 50000]`; `period` to `[1, 64]`. The pair
+///   `(n_transient, reference_transient)` then shrinks until
+///   `n_x * n_y * n_transient + reference_transient <= MAX_STEPS`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn coupled_logistic_basin_grid(
+    a: f64,
+    d: f64,
+    x_min: f64,
+    x_max: f64,
+    n_x: usize,
+    y_min: f64,
+    y_max: f64,
+    n_y: usize,
+    n_transient: usize,
+    reference_transient: usize,
+    period: usize,
+    x_ref: f64,
+    y_ref: f64,
+) -> Vec<f64> {
+    let a = finite_or(a, BASIN_A_PAPER).clamp(LOGISTIC_A_MIN, LOGISTIC_A_MAX);
+    let d = finite_or(d, LOGISTIC_D_PAPER).clamp(LOGISTIC_D_MIN, LOGISTIC_D_MAX);
+    let x_min = logistic_coord(x_min, -1.0);
+    let x_max = logistic_coord(x_max, 1.0);
+    let y_min = logistic_coord(y_min, -1.0);
+    let y_max = logistic_coord(y_max, 1.0);
+    let n_x = n_x.clamp(1, MAX_SIDE);
+    let n_y = n_y.clamp(1, MAX_SIDE);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let reference_transient = reference_transient.min(MAX_REFERENCE_TRANSIENT);
+    let period = period.clamp(1, MAX_BASIN_PERIOD);
+    let (n_transient, reference_transient) =
+        fit_basin_budget(n_x, n_y, n_transient, reference_transient);
+    let x_ref = logistic_coord(x_ref, BASIN_X_REF);
+    let y_ref = logistic_coord(y_ref, BASIN_Y_REF);
+    let x_values = swept_values(x_min, x_max, n_x);
+    let y_values = swept_values(y_min, y_max, n_y);
+    let Ok(orbit) = dynachaos_core::coupled_logistic_reference_orbit(
+        a,
+        d,
+        x_ref,
+        y_ref,
+        reference_transient,
+        period,
+    ) else {
+        return Vec::new();
+    };
+    let Ok(ref_a) = Array2::from_shape_vec((period, 2), orbit) else {
+        return Vec::new();
+    };
+    let Ok(basin) = dynachaos_core::coupled_logistic_basin_grid(
+        &x_values,
+        &y_values,
+        a,
+        d,
+        n_transient,
+        ref_a.view(),
+    ) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(HEADER + basin.len());
+    out.push(n_x as f64);
+    out.push(n_y as f64);
+    out.push(n_transient as f64);
+    out.push(period as f64);
+    out.extend(basin.iter().copied().map(|label| label as f64));
+    out
+}
+
+/// Coupled-delayed projection tile: one `(x, z)` trajectory per `D_B`.
+///
+/// Mirrors `compute_projections` (`src/dynachaos/maps/coupled_delayed.py:123`)
+/// with `D_A = D_B + 0.1`. Python passes no `diverged_fn`. This kernel does
+/// the same: it records every requested `(x, z)` sample, including non-finite
+/// values, and does not apply a magnitude gate.
+///
+/// # Returned layout
+///
+/// `[n_DB, n_plot, n_transient, 2, x_0, z_0, ...]`, D-major projected pairs.
+/// A kernel error returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to `0.4`.
+/// - `db_min`, `db_max`: clamped to `[2.1, 2.65]`; a non-finite value falls
+///   back to the matching endpoint.
+/// - `eps`: clamped to `[1e-3, 1e-2]`; a non-finite value falls back to `5e-3`.
+/// - `n_DB`: clamped to `[1, 32]`; `n_transient` to `[0, 20000]`; `n_plot` to
+///   `[1, 4096]`, then the pair shrinks to respect the step budget.
+/// - `state0`: the first four entries are used; a missing or non-finite
+///   component falls back to `0.5`, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn coupled_delayed_projection_tile(
+    a: f64,
+    db_min: f64,
+    db_max: f64,
+    n_db: usize,
+    eps: f64,
+    n_transient: usize,
+    n_plot: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let a = finite_or(a, 0.4).clamp(0.0, 1.0);
+    let db_min = finite_or(db_min, COUPLED_DB_MIN).clamp(COUPLED_DB_MIN, COUPLED_DB_MAX);
+    let db_max = finite_or(db_max, COUPLED_DB_MAX).clamp(COUPLED_DB_MIN, COUPLED_DB_MAX);
+    let n_db = n_db.clamp(1, MAX_PROJECTION_DB);
+    let eps = finite_or(eps, COUPLED_EPS_PAPER).clamp(COUPLED_EPS_MIN, COUPLED_EPS_MAX);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_plot = n_plot.clamp(1, MAX_MAP_PLOT);
+    let (n_transient, n_plot) = fit_pair_budget(n_db, 1, n_transient, n_plot);
+    let start = map_state::<4>(state0);
+    let db_values = swept_values(db_min, db_max, n_db);
+    let Ok(samples) = dynachaos_core::coupled_delayed_projection_tile(
+        a,
+        &db_values,
+        eps,
+        n_transient,
+        n_plot,
+        &start,
+    ) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(n_db as f64);
+    out.push(n_plot as f64);
+    out.push(n_transient as f64);
+    out.push(2.0);
+    out.extend_from_slice(&samples);
+    out
+}
+
+/// Fractalization attractor tile: the delayed logistic map under this figure's clamps.
+///
+/// `maps.fractalization.iterate` (`src/dynachaos/maps/fractalization.py:49`) is
+/// the delayed logistic map. This export does not reimplement it: it calls
+/// `delayed_logistic_attractor_tile` after applying the fractalization clamps
+/// (`n_D <= 32`, D in `[1.75, 1.96]`). Python `iterate` passes no
+/// `diverged_fn`. The reused kernel instead treats any `|component| > 1e10`
+/// as divergence and fills that `D` block with NaN.
+///
+/// # Returned layout
+///
+/// `[n_D, n_plot, n_transient, 2, x_0, y_0, ...]`, D-major `(x, y)` pairs.
+/// A kernel error returns an empty array, never a trap.
+///
+/// # Clamping
+///
+/// - `a`: clamped to `[0, 1]`; a non-finite value falls back to `0.3`.
+/// - `d_min`, `d_max`: clamped to `[1.75, 1.96]`; a non-finite value falls
+///   back to the matching endpoint.
+/// - `n_D`: clamped to `[1, 32]`; `n_transient` to `[0, 20000]`; `n_plot` to
+///   `[1, 4096]`, then the pair shrinks to respect the step budget.
+/// - `state0`: the first two entries are used; a missing or non-finite
+///   component falls back to `0.5`, then every component clamps to `[-4, 4]`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn fractalization_attractor_tile(
+    a: f64,
+    d_min: f64,
+    d_max: f64,
+    n_d: usize,
+    n_transient: usize,
+    n_plot: usize,
+    state0: &[f64],
+) -> Vec<f64> {
+    let a = finite_or(a, 0.3).clamp(0.0, 1.0);
+    let d_min = finite_or(d_min, FRACTAL_D_MIN).clamp(FRACTAL_D_MIN, FRACTAL_D_MAX);
+    let d_max = finite_or(d_max, FRACTAL_D_MAX).clamp(FRACTAL_D_MIN, FRACTAL_D_MAX);
+    let n_d = n_d.clamp(1, MAX_FRACTAL_D);
+    let n_transient = n_transient.min(MAX_TRANSIENT);
+    let n_plot = n_plot.clamp(1, MAX_MAP_PLOT);
+    let (n_transient, n_plot) = fit_pair_budget(n_d, 1, n_transient, n_plot);
+    let start = map_state::<2>(state0);
+    let d_values = swept_values(d_min, d_max, n_d);
+    let Ok(samples) =
+        dynachaos_core::delayed_logistic_attractor_tile(a, &d_values, n_transient, n_plot, &start)
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(HEADER + samples.len());
+    out.push(n_d as f64);
+    out.push(n_plot as f64);
+    out.push(n_transient as f64);
+    out.push(2.0);
+    out.extend_from_slice(&samples);
+    out
+}
+
 /// Build a clamped `n_sites`-entry CML initial field.
 ///
 /// A missing or non-finite entry falls back to 0.5, then every entry clamps
@@ -1730,6 +2115,61 @@ fn fit_step_budget(n_omega: usize, n_k: usize, n_transient: usize, n_iter: usize
     let affordable = MAX_STEPS / cells.max(1);
     let measured = affordable.saturating_sub(n_transient as u64);
     measured.max(1) as usize
+}
+
+/// Evenly spaced samples, matching `min + (max - min) * k / (n - 1)`.
+fn swept_values(min: f64, max: f64, n: usize) -> Vec<f64> {
+    (0..n)
+        .map(|k| min + (max - min) * (k as f64) / ((n - 1).max(1) as f64))
+        .collect()
+}
+
+/// Clamp one coupled-logistic coordinate to the paper domain `[-1, 1]`.
+fn logistic_coord(value: f64, fallback: f64) -> f64 {
+    finite_or(value, fallback).clamp(-1.0, 1.0)
+}
+
+/// Shrink transient and measured steps until `cells * (transient + measured)`
+/// fits `MAX_STEPS`. The measured count stays at least 1; the transient shrinks
+/// only when it alone cannot leave room for that step.
+fn fit_pair_budget(
+    n_rows: usize,
+    n_cols: usize,
+    n_transient: usize,
+    n_measure: usize,
+) -> (usize, usize) {
+    let cells = (n_rows as u64).saturating_mul(n_cols as u64).max(1);
+    let transient = n_transient as u64;
+    let measure = n_measure as u64;
+    if cells.saturating_mul(transient.saturating_add(measure)) <= MAX_STEPS {
+        return (n_transient, n_measure);
+    }
+    let affordable = MAX_STEPS / cells;
+    if transient.saturating_add(1) > affordable {
+        return (affordable.saturating_sub(1) as usize, 1);
+    }
+    (n_transient, (affordable - transient) as usize)
+}
+
+/// Shrink the basin transient, then the reference transient, until
+/// `n_x * n_y * n_transient + reference_transient <= MAX_STEPS`.
+fn fit_basin_budget(
+    n_x: usize,
+    n_y: usize,
+    n_transient: usize,
+    n_reference: usize,
+) -> (usize, usize) {
+    let cells = (n_x as u64).saturating_mul(n_y as u64).max(1);
+    let mut reference = n_reference as u64;
+    if reference > MAX_STEPS {
+        reference = MAX_STEPS;
+    }
+    let transient = n_transient as u64;
+    if cells.saturating_mul(transient).saturating_add(reference) <= MAX_STEPS {
+        return (n_transient, reference as usize);
+    }
+    let affordable = (MAX_STEPS - reference) / cells;
+    (affordable as usize, reference as usize)
 }
 
 #[cfg(test)]
@@ -3116,5 +3556,677 @@ mod tests {
         let at_cap =
             coupled_delayed_lyapunov_tile(0.4, 2.3, 2.3, 1, 0.005, 0, 1, &[4.0, -4.0, 4.0, -4.0]);
         assert_eq!(clamped, at_cap);
+    }
+
+    #[test]
+    fn phase_header_reports_the_values_actually_used() {
+        let out = coupled_logistic_phase_tile(0.8, 1.2, 3, 0.0, 0.2, 2, 5, 4, 0.1, 0.2);
+        assert_eq!(out[0], 3.0);
+        assert_eq!(out[1], 2.0);
+        assert_eq!(out[2], 5.0);
+        assert_eq!(out[3], 4.0);
+        assert_eq!(out.len(), HEADER + 3 * 2 * 2);
+    }
+
+    #[test]
+    fn phase_a_endpoints_are_clamped_to_the_paper_range() {
+        let low = coupled_logistic_phase_tile(-2.0, 0.8, 1, 0.1, 0.1, 1, 0, 1, 0.1, 0.2);
+        let at_min =
+            coupled_logistic_phase_tile(LOGISTIC_A_MIN, 0.8, 1, 0.1, 0.1, 1, 0, 1, 0.1, 0.2);
+        assert_eq!(low, at_min);
+        let high = coupled_logistic_phase_tile(0.8, 9.0, 2, 0.1, 0.1, 1, 0, 1, 0.1, 0.2);
+        let at_max =
+            coupled_logistic_phase_tile(0.8, LOGISTIC_A_MAX, 2, 0.1, 0.1, 1, 0, 1, 0.1, 0.2);
+        assert_eq!(high, at_max);
+    }
+
+    #[test]
+    fn phase_a_non_finite_falls_back_to_the_paper_endpoints() {
+        let out = coupled_logistic_phase_tile(f64::NAN, f64::NAN, 2, 0.1, 0.1, 1, 0, 1, 0.1, 0.2);
+        let fallback = coupled_logistic_phase_tile(
+            LOGISTIC_A_MIN,
+            LOGISTIC_A_MAX,
+            2,
+            0.1,
+            0.1,
+            1,
+            0,
+            1,
+            0.1,
+            0.2,
+        );
+        assert_eq!(out, fallback);
+    }
+
+    #[test]
+    fn phase_d_endpoints_are_clamped_to_the_paper_range() {
+        let low = coupled_logistic_phase_tile(1.1, 1.1, 1, -1.0, 0.1, 1, 0, 1, 0.1, 0.2);
+        let at_min =
+            coupled_logistic_phase_tile(1.1, 1.1, 1, LOGISTIC_D_MIN, 0.1, 1, 0, 1, 0.1, 0.2);
+        assert_eq!(low, at_min);
+        let high = coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, 9.0, 2, 0, 1, 0.1, 0.2);
+        let at_max =
+            coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, LOGISTIC_D_MAX, 2, 0, 1, 0.1, 0.2);
+        assert_eq!(high, at_max);
+    }
+
+    #[test]
+    fn phase_d_non_finite_falls_back_to_the_paper_endpoints() {
+        let out = coupled_logistic_phase_tile(1.1, 1.1, 1, f64::NAN, f64::NAN, 2, 0, 1, 0.1, 0.2);
+        let fallback = coupled_logistic_phase_tile(
+            1.1,
+            1.1,
+            1,
+            LOGISTIC_D_MIN,
+            LOGISTIC_D_MAX,
+            2,
+            0,
+            1,
+            0.1,
+            0.2,
+        );
+        assert_eq!(out, fallback);
+    }
+
+    #[test]
+    fn phase_grid_sides_are_clamped() {
+        let out = coupled_logistic_phase_tile(1.1, 1.2, 0, 0.0, 0.1, MAX_SIDE + 10, 0, 1, 0.1, 0.2);
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], MAX_SIDE as f64);
+        assert_eq!(out.len(), HEADER + MAX_SIDE * 2);
+    }
+
+    #[test]
+    fn phase_counts_are_clamped() {
+        let out = coupled_logistic_phase_tile(
+            1.1,
+            1.1,
+            1,
+            0.1,
+            0.1,
+            1,
+            MAX_TRANSIENT + 10_000,
+            0,
+            0.1,
+            0.2,
+        );
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        assert_eq!(out[3], 1.0);
+        let wide = coupled_logistic_phase_tile(
+            1.1,
+            1.1,
+            1,
+            0.1,
+            0.1,
+            1,
+            0,
+            MAX_PHASE_SAMPLE + 10,
+            0.1,
+            0.2,
+        );
+        assert_eq!(wide[3], MAX_PHASE_SAMPLE as f64);
+    }
+
+    #[test]
+    fn phase_state_is_clamped_to_the_unit_interval() {
+        let high = coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, 0.1, 1, 0, 1, 5.0, -5.0);
+        let capped = coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, 0.1, 1, 0, 1, 1.0, -1.0);
+        assert_eq!(high, capped);
+        let missing =
+            coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, 0.1, 1, 0, 1, f64::NAN, f64::NAN);
+        let fallback =
+            coupled_logistic_phase_tile(1.1, 1.1, 1, 0.1, 0.1, 1, 0, 1, PHASE_X0, PHASE_Y0);
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn phase_sample_count_respects_the_step_budget() {
+        let n = 200;
+        let out = coupled_logistic_phase_tile(0.8, 1.2, n, 0.0, 0.2, n, 0, 10_000, 0.1, 0.2);
+        let used = out[3] as u64;
+        assert!(used < 10_000);
+        assert!((n as u64) * (n as u64) * used <= MAX_STEPS);
+    }
+
+    #[test]
+    fn attractor_header_reports_the_values_actually_used() {
+        let out = coupled_logistic_attractor_tile(1.0, 1.3, 4, 0.1, 6, 5, 0.1, 0.2);
+        assert_eq!(out[0], 4.0);
+        assert_eq!(out[1], 5.0);
+        assert_eq!(out[2], 6.0);
+        assert_eq!(out[3], 2.0);
+        assert_eq!(out.len(), HEADER + 4 * 5 * 2);
+    }
+
+    #[test]
+    fn attractor_a_endpoints_are_clamped_to_the_paper_range() {
+        let low = coupled_logistic_attractor_tile(-3.0, 1.1, 1, 0.1, 0, 1, 0.1, 0.2);
+        let at_min = coupled_logistic_attractor_tile(LOGISTIC_A_MIN, 1.1, 1, 0.1, 0, 1, 0.1, 0.2);
+        assert_eq!(low, at_min);
+        let high = coupled_logistic_attractor_tile(1.1, 9.0, 2, 0.1, 0, 1, 0.1, 0.2);
+        let at_max = coupled_logistic_attractor_tile(1.1, LOGISTIC_A_MAX, 2, 0.1, 0, 1, 0.1, 0.2);
+        assert_eq!(high, at_max);
+        let missing = coupled_logistic_attractor_tile(f64::NAN, f64::NAN, 2, 0.1, 0, 1, 0.1, 0.2);
+        let fallback =
+            coupled_logistic_attractor_tile(LOGISTIC_A_MIN, LOGISTIC_A_MAX, 2, 0.1, 0, 1, 0.1, 0.2);
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn attractor_d_is_clamped_and_non_finite_falls_back() {
+        let high = coupled_logistic_attractor_tile(1.1, 1.1, 1, 4.0, 0, 1, 0.1, 0.2);
+        let capped = coupled_logistic_attractor_tile(1.1, 1.1, 1, LOGISTIC_D_MAX, 0, 1, 0.1, 0.2);
+        assert_eq!(high, capped);
+        let low = coupled_logistic_attractor_tile(1.1, 1.1, 1, -1.0, 0, 1, 0.1, 0.2);
+        let floored = coupled_logistic_attractor_tile(1.1, 1.1, 1, LOGISTIC_D_MIN, 0, 1, 0.1, 0.2);
+        assert_eq!(low, floored);
+        let missing = coupled_logistic_attractor_tile(1.1, 1.1, 1, f64::NAN, 0, 1, 0.1, 0.2);
+        let fallback =
+            coupled_logistic_attractor_tile(1.1, 1.1, 1, LOGISTIC_D_PAPER, 0, 1, 0.1, 0.2);
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn attractor_counts_are_clamped() {
+        let out = coupled_logistic_attractor_tile(
+            1.0,
+            1.2,
+            MAX_ATTRACTOR_A + 10,
+            0.1,
+            MAX_TRANSIENT + 5,
+            0,
+            0.1,
+            0.2,
+        );
+        assert_eq!(out[0], MAX_ATTRACTOR_A as f64);
+        assert_eq!(out[1], 1.0);
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        let wide =
+            coupled_logistic_attractor_tile(1.1, 1.1, 1, 0.1, 0, MAX_MAP_PLOT + 10, 0.1, 0.2);
+        assert_eq!(wide[1], MAX_MAP_PLOT as f64);
+    }
+
+    #[test]
+    fn attractor_state_is_clamped_to_the_unit_interval() {
+        let high = coupled_logistic_attractor_tile(1.1, 1.1, 1, 0.1, 0, 1, 8.0, -8.0);
+        let capped = coupled_logistic_attractor_tile(1.1, 1.1, 1, 0.1, 0, 1, 1.0, -1.0);
+        assert_eq!(high, capped);
+        let missing = coupled_logistic_attractor_tile(1.1, 1.1, 1, 0.1, 0, 1, f64::NAN, f64::NAN);
+        let fallback = coupled_logistic_attractor_tile(1.1, 1.1, 1, 0.1, 0, 1, PHASE_X0, PHASE_Y0);
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn basin_header_reports_the_values_actually_used() {
+        let out = coupled_logistic_basin_grid(
+            1.35344, 0.1, -1.0, 1.0, 3, -0.5, 0.5, 2, 1, 4, 3, 0.1, 0.6,
+        );
+        assert_eq!(out[0], 3.0);
+        assert_eq!(out[1], 2.0);
+        assert_eq!(out[2], 1.0);
+        assert_eq!(out[3], 3.0);
+        assert_eq!(out.len(), HEADER + 6);
+        assert!(
+            out[HEADER..]
+                .iter()
+                .all(|label| { *label == -1.0 || *label == 0.0 || *label == 1.0 || *label == 2.0 })
+        );
+    }
+
+    #[test]
+    fn basin_a_and_d_are_clamped() {
+        let high_a =
+            coupled_logistic_basin_grid(9.0, 0.1, -1.0, 1.0, 2, -1.0, 1.0, 2, 0, 1, 1, 0.1, 0.6);
+        let a_cap = coupled_logistic_basin_grid(
+            LOGISTIC_A_MAX,
+            0.1,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        assert_eq!(high_a, a_cap);
+        let missing_a = coupled_logistic_basin_grid(
+            f64::NAN,
+            0.1,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        let a_fallback = coupled_logistic_basin_grid(
+            BASIN_A_PAPER,
+            0.1,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        assert_eq!(missing_a, a_fallback);
+        let high_d =
+            coupled_logistic_basin_grid(1.2, 4.0, -1.0, -1.0, 1, 0.5, 0.5, 1, 3, 1, 1, 0.1, 0.6);
+        let d_cap = coupled_logistic_basin_grid(
+            1.2,
+            LOGISTIC_D_MAX,
+            -1.0,
+            -1.0,
+            1,
+            0.5,
+            0.5,
+            1,
+            3,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        assert_eq!(high_d, d_cap);
+        let missing_d = coupled_logistic_basin_grid(
+            1.2,
+            f64::NAN,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        let d_fallback = coupled_logistic_basin_grid(
+            1.2,
+            LOGISTIC_D_PAPER,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            0.1,
+            0.6,
+        );
+        assert_eq!(missing_d, d_fallback);
+    }
+
+    #[test]
+    fn basin_ranges_and_reference_state_are_clamped() {
+        let wide =
+            coupled_logistic_basin_grid(1.2, 0.1, -4.0, 4.0, 2, -4.0, 4.0, 2, 0, 1, 1, 3.0, -3.0);
+        let capped =
+            coupled_logistic_basin_grid(1.2, 0.1, -1.0, 1.0, 2, -1.0, 1.0, 2, 0, 1, 1, 1.0, -1.0);
+        assert_eq!(wide, capped);
+        let missing = coupled_logistic_basin_grid(
+            1.2,
+            0.1,
+            f64::NAN,
+            f64::NAN,
+            2,
+            f64::NAN,
+            f64::NAN,
+            2,
+            0,
+            1,
+            1,
+            f64::NAN,
+            f64::NAN,
+        );
+        let fallback = coupled_logistic_basin_grid(
+            1.2,
+            0.1,
+            -1.0,
+            1.0,
+            2,
+            -1.0,
+            1.0,
+            2,
+            0,
+            1,
+            1,
+            BASIN_X_REF,
+            BASIN_Y_REF,
+        );
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn basin_counts_and_period_are_clamped() {
+        let out = coupled_logistic_basin_grid(
+            1.2,
+            0.1,
+            -1.0,
+            1.0,
+            0,
+            -1.0,
+            1.0,
+            MAX_SIDE + 8,
+            MAX_TRANSIENT + 10,
+            0,
+            0,
+            0.1,
+            0.6,
+        );
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], MAX_SIDE as f64);
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        assert_eq!(out[3], 1.0);
+        let period = coupled_logistic_basin_grid(
+            1.2,
+            0.1,
+            -1.0,
+            1.0,
+            1,
+            -1.0,
+            1.0,
+            1,
+            0,
+            1,
+            MAX_BASIN_PERIOD + 20,
+            0.1,
+            0.6,
+        );
+        assert_eq!(period[3], MAX_BASIN_PERIOD as f64);
+    }
+
+    #[test]
+    fn basin_reference_transient_is_clamped() {
+        // period = 3 so a one-step shift of the reference window changes the
+        // recorded set, and therefore some labels. 50_001 must clamp to 50_000.
+        let over = coupled_logistic_basin_grid(
+            1.35344, 0.1, -1.0, 1.0, 17, -1.0, 1.0, 17, 0, 50_001, 3, 0.1, 0.6,
+        );
+        let capped = coupled_logistic_basin_grid(
+            1.35344, 0.1, -1.0, 1.0, 17, -1.0, 1.0, 17, 0, 50_000, 3, 0.1, 0.6,
+        );
+        assert_eq!(over.len(), HEADER + 17 * 17);
+        assert_eq!(over, capped);
+    }
+
+    #[test]
+    fn basin_transient_respects_the_step_budget() {
+        let n = 200;
+        let out = coupled_logistic_basin_grid(
+            1.35344, 0.1, -1.0, 1.0, n, -1.0, 1.0, n, 10_000, 0, 1, 0.1, 0.6,
+        );
+        let used = out[2] as u64;
+        assert!(used < 10_000);
+        assert!((n as u64) * (n as u64) * used <= MAX_STEPS);
+    }
+
+    #[test]
+    fn projection_header_reports_the_values_actually_used() {
+        let out =
+            coupled_delayed_projection_tile(0.4, 2.2, 2.5, 3, 5e-3, 4, 5, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(out[0], 3.0);
+        assert_eq!(out[1], 5.0);
+        assert_eq!(out[2], 4.0);
+        assert_eq!(out[3], 2.0);
+        assert_eq!(out.len(), HEADER + 3 * 5 * 2);
+    }
+
+    #[test]
+    fn projection_a_is_clamped() {
+        let high =
+            coupled_delayed_projection_tile(3.0, 2.3, 2.3, 1, 5e-3, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let capped =
+            coupled_delayed_projection_tile(1.0, 2.3, 2.3, 1, 5e-3, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(high, capped);
+        let missing = coupled_delayed_projection_tile(
+            f64::NAN,
+            2.3,
+            2.3,
+            1,
+            5e-3,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        let fallback =
+            coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 5e-3, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn projection_db_endpoints_are_clamped() {
+        let high =
+            coupled_delayed_projection_tile(0.4, 2.3, 9.0, 2, 5e-3, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let second = coupled_delayed_projection_tile(
+            0.4,
+            COUPLED_DB_MAX,
+            COUPLED_DB_MAX,
+            1,
+            5e-3,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(&high[HEADER + 2..], &second[HEADER..]);
+        let low =
+            coupled_delayed_projection_tile(0.4, 0.0, 2.3, 1, 5e-3, 0, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let floored = coupled_delayed_projection_tile(
+            0.4,
+            COUPLED_DB_MIN,
+            2.3,
+            1,
+            5e-3,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(low, floored);
+        let missing = coupled_delayed_projection_tile(
+            0.4,
+            f64::NAN,
+            f64::NAN,
+            1,
+            5e-3,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        let fallback = coupled_delayed_projection_tile(
+            0.4,
+            COUPLED_DB_MIN,
+            COUPLED_DB_MAX,
+            1,
+            5e-3,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn projection_eps_is_clamped() {
+        let high =
+            coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 1.0, 1, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let capped = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            COUPLED_EPS_MAX,
+            1,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(high, capped);
+        let low =
+            coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 0.0, 1, 1, &[0.5, 0.5, 0.3, 0.3]);
+        let floored = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            COUPLED_EPS_MIN,
+            1,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(low, floored);
+        let missing = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            f64::NAN,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        let fallback = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            COUPLED_EPS_PAPER,
+            0,
+            1,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(missing, fallback);
+    }
+
+    #[test]
+    fn projection_counts_are_clamped() {
+        let out = coupled_delayed_projection_tile(
+            0.4,
+            2.2,
+            2.5,
+            MAX_PROJECTION_DB + 8,
+            5e-3,
+            MAX_TRANSIENT + 4,
+            0,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(out[0], MAX_PROJECTION_DB as f64);
+        assert_eq!(out[1], 1.0);
+        assert_eq!(out[2], MAX_TRANSIENT as f64);
+        let wide = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            5e-3,
+            0,
+            MAX_MAP_PLOT + 3,
+            &[0.5, 0.5, 0.3, 0.3],
+        );
+        assert_eq!(wide[1], MAX_MAP_PLOT as f64);
+    }
+
+    #[test]
+    fn projection_state_is_clamped_and_padded() {
+        let padded = coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 5e-3, 0, 1, &[]);
+        let default_state =
+            coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 5e-3, 0, 1, &[0.5, 0.5, 0.5, 0.5]);
+        assert_eq!(padded, default_state);
+        let high = coupled_delayed_projection_tile(
+            0.4,
+            2.3,
+            2.3,
+            1,
+            5e-3,
+            0,
+            1,
+            &[99.0, -99.0, 99.0, -99.0],
+        );
+        let capped =
+            coupled_delayed_projection_tile(0.4, 2.3, 2.3, 1, 5e-3, 0, 1, &[4.0, -4.0, 4.0, -4.0]);
+        assert_eq!(high, capped);
+    }
+
+    #[test]
+    fn fractalization_reuses_the_delayed_logistic_kernel() {
+        let fractal = fractalization_attractor_tile(0.3, 1.8, 1.9, 2, 5, 4, &[0.4, 0.35]);
+        let delayed = delayed_logistic_attractor_tile(0.3, 1.8, 1.9, 2, 5, 4, &[0.4, 0.35]);
+        assert_eq!(fractal, delayed);
+    }
+
+    #[test]
+    fn fractalization_d_endpoints_use_its_own_range() {
+        // 1.4 is inside the delayed-logistic sweep and outside fractalization.
+        let low = fractalization_attractor_tile(0.3, 1.4, 1.4, 1, 0, 1, &[0.4, 0.35]);
+        let capped =
+            fractalization_attractor_tile(0.3, FRACTAL_D_MIN, FRACTAL_D_MIN, 1, 0, 1, &[0.4, 0.35]);
+        assert_eq!(low, capped);
+        let delayed = delayed_logistic_attractor_tile(0.3, 1.4, 1.4, 1, 0, 1, &[0.4, 0.35]);
+        assert_ne!(low, delayed);
+        let high = fractalization_attractor_tile(0.3, 1.8, 9.0, 2, 0, 1, &[0.4, 0.35]);
+        let at_max = fractalization_attractor_tile(0.3, 1.8, FRACTAL_D_MAX, 2, 0, 1, &[0.4, 0.35]);
+        assert_eq!(high, at_max);
+    }
+
+    #[test]
+    fn fractalization_a_and_counts_are_clamped() {
+        let high = fractalization_attractor_tile(-2.0, 1.8, 1.8, 1, 0, 1, &[0.4, 0.35]);
+        let capped = fractalization_attractor_tile(0.0, 1.8, 1.8, 1, 0, 1, &[0.4, 0.35]);
+        assert_eq!(high, capped);
+        let missing = fractalization_attractor_tile(f64::NAN, 1.8, 1.8, 1, 0, 1, &[0.4, 0.35]);
+        let fallback = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[0.4, 0.35]);
+        assert_eq!(missing, fallback);
+        let counts = fractalization_attractor_tile(
+            0.3,
+            1.8,
+            1.9,
+            MAX_FRACTAL_D + 8,
+            MAX_TRANSIENT + 3,
+            0,
+            &[0.4, 0.35],
+        );
+        assert_eq!(counts[0], MAX_FRACTAL_D as f64);
+        assert_eq!(counts[1], 1.0);
+        assert_eq!(counts[2], MAX_TRANSIENT as f64);
+        let wide =
+            fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, MAX_MAP_PLOT + 2, &[0.4, 0.35]);
+        assert_eq!(wide[1], MAX_MAP_PLOT as f64);
+    }
+
+    #[test]
+    fn fractalization_state_is_clamped_and_padded() {
+        let padded = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[]);
+        let default_state = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[0.5, 0.5]);
+        assert_eq!(padded, default_state);
+        let high = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[99.0, -99.0]);
+        let capped = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[4.0, -4.0]);
+        assert_eq!(high, capped);
+        let nan_state = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[f64::NAN, 0.4]);
+        let nan_fallback = fractalization_attractor_tile(0.3, 1.8, 1.8, 1, 0, 1, &[0.5, 0.4]);
+        assert_eq!(nan_state, nan_fallback);
+    }
+
+    #[test]
+    fn fractalization_d_non_finite_falls_back_to_its_own_endpoints() {
+        let out = fractalization_attractor_tile(0.3, f64::NAN, f64::NAN, 2, 0, 1, &[0.4, 0.35]);
+        let fallback =
+            fractalization_attractor_tile(0.3, FRACTAL_D_MIN, FRACTAL_D_MAX, 2, 0, 1, &[0.4, 0.35]);
+        assert_eq!(out, fallback);
     }
 }
