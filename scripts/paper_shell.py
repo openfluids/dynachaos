@@ -1682,6 +1682,7 @@ function unmountPlot(fig){
     if(i>=0) MOUNTED.splice(i,1);
   });
   fig._plots=[];
+  if(fig._live&&fig._live.destroy){try{fig._live.destroy();}catch(e){}}
   if(fig._pool){fig._pool.destroy();fig._pool=null;}
   fig._live=null;
   const body=fig.querySelector(".fig-body");
@@ -2069,6 +2070,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
         painted:af.store.painted,
         points:af.store.trace.x.length
       })
+      ,destroy:()=>af.destroy()
     };
     fig.dataset.state="live";
   }catch(err){
@@ -2182,6 +2184,7 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
         painted:tf.store.painted,
         points:tf.store.trace.x.length
       })
+      ,destroy:()=>tf.destroy()
     };
     fig.dataset.state="live";
   }catch(err){
@@ -2298,6 +2301,7 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
         painted:df.store.painted,
         points:df.store.trace.x.length
       })
+      ,destroy:()=>df.destroy()
     };
     fig.dataset.state="live";
   }catch(err){
@@ -2433,6 +2437,7 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
         rows:cf.store.field?cf.store.field.nRows:0,
         sites:cf.store.field?cf.store.field.nSites:0
       })
+      ,destroy:()=>cf.destroy()
     };
     fig.dataset.state="live";
   }catch(err){
@@ -2443,8 +2448,26 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
   }
 }
 
+function applyPendingLive(fig){
+  // A narrow viewport keeps the PNG, but the shared link's parameters must
+  // still be here when the reader later presses interact. The restore paths
+  // stash them; this applies the stash once a mount has actually happened.
+  if(fig._pendingLive&&fig._live&&fig._live.setParams){
+    fig._live.setParams(fig._pendingLive);
+    fig._pendingLive=null;
+  }
+  if(fig._pendingDomain&&fig._plots){
+    fig._pendingDomain.forEach((d,idx)=>{
+      const p=fig._plots[idx];
+      if(p) p.setDomain(d);
+    });
+    fig._pendingDomain=null;
+    if(window.figState) window.figState.notify(fig);
+  }
+}
 
-async function mountInteractive(fig){
+async function mountInteractive(fig, opts){
+  const requested=!!(opts&&opts.requested);
   const body=fig.querySelector(".fig-body");
   const src=fig.dataset.src;
   const btn=fig.querySelector(".act-interact");
@@ -2460,7 +2483,19 @@ async function mountInteractive(fig){
   btn.textContent="loading";btn.disabled=true;
   try{
     if(fig.dataset.live&&!reducedData){
+      // A shared link may mount live mode on its own. Below LIVE_MIN_WIDTH
+      // (a phone in portrait) keep the PNG until the reader presses interact.
+      if(!requested){
+        const liveFigure=await import(liveModuleUrl("live-figure.js"));
+        if(!liveFigure.liveAutoStarts(innerWidth)){
+          fig.dataset.liveHold="narrow";
+          btn.textContent="interact";
+          return;
+        }
+      }
+      delete fig.dataset.liveHold;
       await mountLive(fig);
+      applyPendingLive(fig);
       btn.textContent="image";
       return;
     }
@@ -2501,7 +2536,7 @@ async function mountInteractive(fig){
     n.textContent="tap to read values · drag to zoom · reset view button to restore · focus the plot and use arrow keys to pan, +/- to zoom, 0 or Esc to reset"
       +(d&&d.method!=="none"?" · resampled to "+d.to.toLocaleString()+" of "+d.from.toLocaleString()+" grid points; the static image is at full resolution":"");
     body.appendChild(n);
-    fig.dataset.state="live";btn.textContent="image";
+    fig.dataset.state="live";applyPendingLive(fig);btn.textContent="image";
   }catch(err){
     console.warn("figure data fetch failed:",src,err);
     btn.textContent="retry";
@@ -2514,7 +2549,7 @@ async function mountInteractive(fig){
 
 document.querySelectorAll("figure[data-src],figure[data-live]").forEach(fig=>{
   const btn=fig.querySelector(".act-interact");
-  if(btn) btn.addEventListener("click",()=>mountInteractive(fig));
+  if(btn) btn.addEventListener("click",()=>mountInteractive(fig,{requested:true}));
 });
 
 /* ---------------- figure code snippets ---------------- */
@@ -2647,6 +2682,7 @@ document.querySelectorAll("figure").forEach(fig=>{
   parseParam().forEach((panels,figid)=>{
     const fig=document.getElementById(figid);
     if(!fig||!fig.dataset||!fig.dataset.src) return;
+    fig._pendingDomain=panels;
     const mounted=fig.dataset.state==="live"?Promise.resolve():mountInteractive(fig);
     mounted.then(()=>{
       if(fig.dataset.state!=="live"||!fig._plots) return;   // fetch failed
@@ -2673,6 +2709,7 @@ document.querySelectorAll("figure").forEach(fig=>{
           if(!cfg||!cfg.paramSpecs) return;
           const values=paramsMod.parseHash(frag,cfg.paramSpecs,fig.id);
           if(!Object.keys(values).length) return;
+          fig._pendingLive=values;
           const mounted=fig.dataset.state==="live"?Promise.resolve():mountInteractive(fig);
           mounted.then(()=>{
             if(fig._live&&fig._live.setParams) fig._live.setParams(values);
@@ -3460,10 +3497,15 @@ const spy=new IntersectionObserver(es=>{
       hashTimer=setTimeout(()=>{
         // Live-figure params share the hash as &key=value tokens; keep them
         // when the spy rewrites the section id or a scroll would silently
-        // drop a shared view's parameters.
+        // drop a shared view's parameters. #live-debug is a bare token, not
+        // a key=value pair, and has to be kept the same way or telemetry
+        // turns off as soon as the reader scrolls.
         const cur=location.hash.slice(1);
-        const params=cur.split("&").filter(t=>t.indexOf("=")>=0).join("&");
-        const next=id+(params?"&"+params:"");
+        const parts=cur.split("&");
+        const params=parts.filter(t=>t.indexOf("=")>=0);
+        const debug=parts.filter(t=>t==="live-debug");
+        const extra=debug.concat(params).join("&");
+        const next=id+(extra?"&"+extra:"");
         if(cur!==next){
           history.replaceState(null,"",location.pathname+location.search+"#"+next);
         }

@@ -142,10 +142,16 @@ Live tiles are coloured once; redraw blits the cached ImageData. The cache
 key is `liveTileColorKey` in `raster.js` and does not include the page theme,
 because live colour is a fixed viridis ramp.
 
-Debug telemetry (`?debug=1` or `localStorage.dynachaosDebug`) logs per-tile
-compute milliseconds, worker count, queue depth, dropped generations (viewport
-changes that abandoned work), and dropped tiles (stale or error results).
-There is no `SharedArrayBuffer` anywhere in this path.
+Debug telemetry (`?debug=1`, `#live-debug` in the hash, or
+`localStorage.dynachaosDebug`) logs per-tile compute milliseconds, worker
+count, queue depth, dropped generations (viewport changes that abandoned
+work), and dropped tiles (stale or error results). It is off by default.
+A hidden tab pauses new tile issue in `pool.js` and new kernel calls in
+the shared runner (`visibility.js`, used by every direct-call figure).
+Work already in flight may finish; a result whose generation is no longer
+current is dropped, not painted. Below 480 CSS px the page does not mount
+live mode from a shared link; the interact button still does. There is no
+`SharedArrayBuffer` anywhere in this path.
 
 The devil's staircase (`figure#fig:devils_staircase`) is the second live
 figure and the first 1-D one: ρ(A) at a reader-chosen drive frequency D,
@@ -475,6 +481,14 @@ at once. These measurements do not separate the causes (other projects'
 jobs on the same box, shared cache, clock speed under load). In the first
 series two workers gave almost no gain over one (10.1 s against 10.8 s).
 The gain from 4 to 8 workers is smaller than from 2 to 4.
+
+The browser check in `tests/e2e/live_figure.mjs` reuses this full-paint
+definition (click until the pool queue and in-flight set are empty) under
+Chrome's `Emulation.setCPUThrottlingRate` of 4. Measured 2026-10-01 on
+this box (AMD Ryzen 9 9900X) that full paint took 8770 ms. The check's
+limit is 1.5 times that baseline, 13155 ms. The 3415 ms 8-worker row above
+is the unthrottled comparison point, not that limit.
+
 
 Worker tiling only helps figures whose cells are independent. These
 figures follow one orbit or one field forward in time and give no

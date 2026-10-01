@@ -15,6 +15,31 @@
 
 import { HEADER } from "./raster.js";
 import { clampValue, debounce, snapToStep } from "./params.js";
+import { pageHidden, watchVisibility } from "./visibility.js";
+
+/**
+ * Below this CSS width a live figure does not start by itself.
+ *
+ * 480px is a phone in portrait: common widths are 360-430 CSS px, and 480
+ * still sits under the page's 36rem (576px) tablet breakpoint. A wasm
+ * worker pool on that width is the load this guard exists to avoid. The
+ * interact button still starts live mode when the reader asks.
+ */
+export const LIVE_MIN_WIDTH = 480;
+
+/**
+ * True when a shared link may mount live mode without a click. A missing
+ * or non-positive width stays on the PNG: an unknown viewport is not a
+ * reason to start workers.
+ *
+ * @param {number} width CSS pixels
+ * @returns {boolean}
+ */
+export function liveAutoStarts(width) {
+  const w = Number(width);
+  if (!Number.isFinite(w) || w <= 0) return false;
+  return w >= LIVE_MIN_WIDTH;
+}
 
 /**
  * The published figure's iteration parameters. The readout's point.sample
@@ -739,12 +764,30 @@ export async function attractorKernelCall(req) {
  * @param {(req: object) => Promise<ArrayLike<number>>} deps.call
  * @param {(store: object, trace: {x: number[], y: number[]}, req: object) => void} [deps.onTrace]
  * @param {(err: unknown) => void} [deps.onError]
- * @returns {{ run: () => void, ready: () => boolean }}
+ * @param {object} [deps.document]
+ * @returns {{ run: () => void, ready: () => boolean, destroy: () => void }}
  */
-function createKernelRunner({ store, getState, request, fold, call, onTrace, onError }) {
+function createKernelRunner({ store, getState, request, fold, call, onTrace, onError, document: doc }) {
   let seq = 0;
   let ready = false;
+  let paused = pageHidden(doc);
+  let pending = false;
+  const unwatch = watchVisibility(doc, (hidden) => {
+    paused = hidden;
+    if (!hidden && pending) {
+      pending = false;
+      run();
+    }
+  });
   async function run() {
+    if (paused) {
+      pending = true;
+      // Bump the sequence so an in-flight call that resolves while the tab
+      // is hidden is dropped, the same way a newer request already is. The
+      // resume below issues the current parameters.
+      seq += 1;
+      return;
+    }
     const req = request(getState());
     const mySeq = ++seq;
     try {
@@ -770,7 +813,7 @@ function createKernelRunner({ store, getState, request, fold, call, onTrace, onE
       if (onError) onError(err);
     }
   }
-  return { run, ready: () => ready };
+  return { run, ready: () => ready, destroy: unwatch };
 }
 
 /**
@@ -806,6 +849,7 @@ export function createAttractorFigure({
   writeHash,
   onError,
   timers,
+  document: doc,
 }) {
   const store = { trace: { x: [], y: [] }, generation: 0, painted: 0 };
   const runner = createKernelRunner({
@@ -816,6 +860,7 @@ export function createAttractorFigure({
     call,
     onTrace,
     onError,
+    document: doc,
   });
   const wiring = createParamWiring({
     specs: params.paramSpecs,
@@ -836,6 +881,7 @@ export function createAttractorFigure({
       runner.run();
     },
     ready: runner.ready,
+    destroy: runner.destroy,
   };
 }
 
@@ -951,6 +997,7 @@ export function createTorusFigure({
   writeHash,
   onError,
   timers,
+  document: doc,
 }) {
   const store = { trace: { x: [], y: [] }, generation: 0, painted: 0 };
   const runner = createKernelRunner({
@@ -961,6 +1008,7 @@ export function createTorusFigure({
     call,
     onTrace,
     onError,
+    document: doc,
   });
   let activeKind = null;
   function syncState(name) {
@@ -1006,6 +1054,7 @@ export function createTorusFigure({
       runner.run();
     },
     ready: runner.ready,
+    destroy: runner.destroy,
   };
 }
 
@@ -1194,6 +1243,7 @@ export function createModulatedFigure({
   getPlot,
   onError,
   timers,
+  document: doc,
 }) {
   const store = { trace: { x: [], y: [], y2: [] }, generation: 0, painted: 0 };
   const fitY = createLineYFit({ store, getPlot });
@@ -1217,6 +1267,7 @@ export function createModulatedFigure({
       if (onTrace) onTrace(s, trace, req);
     },
     onError,
+    document: doc,
   });
   function syncRange(name) {
     // The edited end wins: pushing dMin past dMax moves dMax up to meet
@@ -1250,6 +1301,7 @@ export function createModulatedFigure({
       runner.run();
     },
     ready: runner.ready,
+    destroy: runner.destroy,
   };
 }
 /**
@@ -1473,6 +1525,7 @@ export function createSpacetimeFigure({
   writeHash,
   onError,
   timers,
+  document: doc,
 }) {
   const store = {
     trace: { x: [], y: [] },
@@ -1529,13 +1582,25 @@ export function createSpacetimeFigure({
       if (onField) onField(s, trace.field, req);
     },
     onError,
+    document: doc,
   });
   const schedule = (fn) => {
     if (timers && timers.set) return timers.set(fn, 0);
     return setTimeout(fn, 0);
   };
+  let playHeld = false;
+  const unwatchPlay = watchVisibility(doc, (hidden) => {
+    if (!hidden && playHeld && store.playing) {
+      playHeld = false;
+      schedule(playChunk);
+    }
+  });
   async function playChunk() {
     if (!store.playing) return;
+    if (pageHidden(doc)) {
+      playHeld = true;
+      return;
+    }
     const field = store.field;
     const req = cmlChunkRequest(wiring.state, field, params);
     if (!req) {
@@ -1622,8 +1687,14 @@ export function createSpacetimeFigure({
     },
     pause: () => {
       store.playing = false;
+      playHeld = false;
     },
     playing: () => store.playing,
     ready: runner.ready,
+    destroy() {
+      playHeld = false;
+      unwatchPlay();
+      runner.destroy();
+    },
   };
 }

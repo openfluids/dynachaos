@@ -535,6 +535,63 @@ function manualTimers() {
 
 const tick = () => new Promise((r) => setImmediate(r));
 
+function fakeDocument() {
+  const listeners = [];
+  return {
+    hidden: false,
+    visibilityState: "visible",
+    addEventListener(type, fn) {
+      if (type === "visibilitychange") listeners.push(fn);
+    },
+    removeEventListener(type, fn) {
+      const i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    },
+    hide() {
+      this.hidden = true;
+      this.visibilityState = "hidden";
+      for (const fn of listeners.slice()) fn();
+    },
+    show() {
+      this.hidden = false;
+      this.visibilityState = "visible";
+      for (const fn of listeners.slice()) fn();
+    },
+  };
+}
+
+test("a hidden document pauses the kernel runner and drops the in-flight call", async () => {
+  const doc = fakeDocument();
+  const releases = [];
+  const fig = createAttractorFigure({
+    debounceMs: 0,
+    echo: () => {},
+    onTrace: () => {},
+    writeHash: () => {},
+    document: doc,
+    call: () =>
+      new Promise((resolve) => {
+        releases.push(resolve);
+      }),
+  });
+  fig.refresh();
+  assert.equal(releases.length, 1);
+  doc.hide();
+  fig.refresh();
+  assert.equal(releases.length, 1);
+  releases[0](new Float64Array([1, 2, 20000, 2, 0.1, 0.2, 0.3, 0.4]));
+  await tick();
+  assert.equal(fig.store.painted, 0);
+  doc.show();
+  assert.equal(releases.length, 2);
+  releases[1](new Float64Array([1, 2, 20000, 2, 0.1, 0.2, 0.3, 0.4]));
+  await tick();
+  assert.equal(fig.store.painted, 2);
+  fig.destroy();
+  doc.show();
+  assert.equal(releases.length, 2);
+});
+
 test("LIVE_ATTRACTORS is frozen, registered, and holds the paper's parameters", () => {
   assert.equal(LIVE_FIGURES.delayed_logistic_attractors, LIVE_ATTRACTORS);
   assert.equal(LIVE_ATTRACTORS.A, 0.3);

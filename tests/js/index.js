@@ -190,6 +190,25 @@ test("debug telemetry is gated by query or localStorage", () => {
   assert.equal(debugEnabled({ localStorage: { dynachaosDebug: "1" } }), true);
 });
 
+test("debug telemetry turns on for the #live-debug hash and stays off by default", () => {
+  assert.equal(debugEnabled({}), false);
+  assert.equal(debugEnabled({ location: { search: "", hash: "" } }), false);
+  assert.equal(debugEnabled({ location: { hash: "#live-debug" } }), true);
+  assert.equal(
+    debugEnabled({ location: { hash: "#sec:circle_map&live-debug" } }),
+    true,
+  );
+  assert.equal(
+    debugEnabled({ location: { hash: "#sec:circle_map&live-debug&fig:devils_staircase.D=0.4" } }),
+    true,
+  );
+  assert.equal(
+    debugEnabled({ location: { hash: "#sec:circle_map&fig:devils_staircase.D=0.4" } }),
+    false,
+  );
+  assert.equal(debugEnabled({ location: { hash: "#live-debug-extra" } }), false);
+});
+
 test("a degenerate viewport is rejected", () => {
   const start = initialState(OPTIONS);
   const cases = [
@@ -386,6 +405,69 @@ test("a pan does not terminate any worker", () => {
   pool.destroy();
   assert.ok(FakeWorker.instances.every((worker) => worker.terminated));
   assert.ok(FakeWorker.instances.every((worker) => worker.terminateCount === 1));
+});
+
+function fakeDocument() {
+  const listeners = [];
+  return {
+    hidden: false,
+    visibilityState: "visible",
+    addEventListener(type, fn) {
+      if (type === "visibilitychange") listeners.push(fn);
+    },
+    removeEventListener(type, fn) {
+      const i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    },
+    hide() {
+      this.hidden = true;
+      this.visibilityState = "hidden";
+      for (const fn of listeners.slice()) fn();
+    },
+    show() {
+      this.hidden = false;
+      this.visibilityState = "visible";
+      for (const fn of listeners.slice()) fn();
+    },
+  };
+}
+
+test("a hidden document pauses tile issue and a visible document resumes it", () => {
+  const doc = fakeDocument();
+  const paints = [];
+  const FakeWorker = makeFakeWorkerClass();
+  const pool = createPool({
+    Worker: FakeWorker,
+    hardwareConcurrency: 1,
+    workerUrl: "fake",
+    scheduler: { levels: 2, tileCells: 4 },
+    document: doc,
+    onPaint: (cmd) => paints.push(cmd),
+  });
+  pool.setViewport(VIEWPORT);
+  const worker = FakeWorker.instances[0];
+  assert.equal(worker.posted.length, 1);
+  const first = worker.posted[0];
+  doc.hide();
+  pool.setViewport({ ...VIEWPORT, omegaMax: 0.5 });
+  assert.equal(worker.posted.length, 1);
+  assert.equal(pool.getState().generation, first.generation + 1);
+  worker.deliver({
+    type: "result",
+    id: first.id,
+    generation: first.generation,
+    data: [1, 2, 3],
+    computeMs: 4,
+  });
+  assert.equal(paints.length, 0);
+  assert.equal(pool.getState().droppedTiles, 1);
+  assert.equal(worker.posted.length, 1);
+  doc.show();
+  assert.equal(worker.posted.length, 2);
+  assert.equal(worker.posted[1].generation, first.generation + 1);
+  pool.destroy();
+  doc.show();
+  assert.equal(worker.posted.length, 2);
 });
 
 test("a stale pool result leaves the current generation's in-flight entry intact", () => {

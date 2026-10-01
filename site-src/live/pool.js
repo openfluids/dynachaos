@@ -11,6 +11,7 @@
  */
 
 import { initialState, reduce } from "./scheduler.js";
+import { pageHidden, watchVisibility } from "./visibility.js";
 
 const MAX_WORKERS = 8;
 
@@ -25,8 +26,9 @@ export function workerCount(hardwareConcurrency) {
 }
 
 /**
- * True when `?debug=1` is on the page URL or `localStorage.dynachaosDebug`
- * is set. Used by the e2e smoke and by a bug report from the wild.
+ * True when `?debug=1` is on the page URL, `#live-debug` is in the hash,
+ * or `localStorage.dynachaosDebug` is set. Off by default. Used by the e2e
+ * smoke and by a bug report from the wild.
  *
  * @param {object} [env]
  * @returns {boolean}
@@ -39,14 +41,30 @@ export function debugEnabled(env = globalThis) {
     // localStorage can throw in a locked-down document.
   }
   try {
-    const search = env.location && env.location.search;
-    if (typeof search === "string") {
-      return new URLSearchParams(search).get("debug") === "1";
+    const loc = env.location;
+    if (!loc) return false;
+    const search = loc.search;
+    if (typeof search === "string" && new URLSearchParams(search).get("debug") === "1") {
+      return true;
     }
+    return hashHasLiveDebug(loc.hash);
   } catch {
     // location may be inaccessible.
   }
   return false;
+}
+
+/**
+ * `#live-debug` as its own hash token, beside a section id or parameter
+ * tokens (`#sec:circle_map&live-debug&fig:devils_staircase.D=0.4`).
+ *
+ * @param {string} [hash]
+ * @returns {boolean}
+ */
+function hashHasLiveDebug(hash) {
+  if (typeof hash !== "string" || hash.length === 0) return false;
+  const body = hash.charAt(0) === "#" ? hash.slice(1) : hash;
+  return body.split("&").some((token) => token === "live-debug");
 }
 
 /**
@@ -57,6 +75,7 @@ export function debugEnabled(env = globalThis) {
  * @param {(cmd: object) => void} [options.onPaint]
  * @param {(cmd: object) => void} [options.onDrop]
  * @param {(info: object) => void} [options.onCapacityLost]
+ * @param {object} [options.document] document whose visibility pauses issue
  * @param {object} [options.scheduler]
  * @returns {object}
  */
@@ -75,6 +94,12 @@ export function createPool(options = {}) {
   const busy = new Map();
   const failed = new Set();
   let capacityAnnounced = false;
+  const doc = options.document;
+  let paused = pageHidden(doc);
+  const unwatch = watchVisibility(doc, (hidden) => {
+    paused = hidden;
+    if (!hidden) pump();
+  });
 
   function telemetry(extra) {
     return {
@@ -147,6 +172,7 @@ export function createPool(options = {}) {
   }
 
   function feed(worker) {
+    if (paused) return;
     if (!workers.includes(worker) || failed.has(worker) || busy.has(worker)) return;
     const { state: next, commands } = reduce(state, { type: "idle" });
     state = next;
@@ -258,6 +284,7 @@ export function createPool(options = {}) {
       pump();
     },
     destroy() {
+      unwatch();
       for (const worker of workers) {
         worker.terminate();
       }

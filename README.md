@@ -236,6 +236,27 @@ for all thirty-seven, in section order, with captions.
 | [![Complexity-entropy plane](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec11_diagnostics/complexity_entropy_plane.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec11_diagnostics/complexity_entropy_plane.png) | [![Type-I intermittency](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/thumbs/sec12_intermittency/type_i_intermittency.webp)](https://raw.githubusercontent.com/openfluids/dynachaos/main/figures/sec12_intermittency/type_i_intermittency.png) |
 | Complexity-entropy plane locations for the logistic and delayed logistic maps. | Type-I intermittency: a tangent-bifurcation channel, laminar-length statistics, and a Lorenz reinjection channel. |
 
+## Live figures
+
+Six figures on the paper page can be computed in the browser by the same
+WebAssembly kernels the published figure used. The PNG is what the page
+shows first, and what a reader without JavaScript gets. Press **interact**
+to compute live; press **image** to return to the PNG.
+
+That work does not start on its own in two cases. A hidden tab pauses new
+tiles and new kernel calls, and resumes them when the tab is visible again.
+A viewport below 480 CSS px — a phone in portrait — keeps the PNG until the
+reader presses interact. `prefers-reduced-data` does not download the
+WebAssembly module at all.
+
+Telemetry (per-tile milliseconds, worker count, tiles in flight) is off
+unless the URL has `?debug=1`, the hash contains `#live-debug`, or
+`localStorage.dynachaosDebug` is set. The PNG and the committed `.npz`
+caches stay the record of what the paper computed; a live view is a
+companion, not a replacement. See
+[docs/wasm-architecture.md](docs/wasm-architecture.md).
+
+
 ## Benchmarks
 
 The reproducible benchmark for Rust Grassberger-Procaccia parity and dense

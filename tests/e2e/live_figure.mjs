@@ -28,14 +28,32 @@ const REFINE_MS = 45_000;
 const SAMPLE_MS = 20_000;
 const VIEW_MS = 20_000;
 const REDUCED_WAIT_MS = 3_000;
+const NARROW_WAIT_MS = 8_000;
+const THROTTLE_RATE = 4;
+const THROTTLE_PAINT_MS = 120_000;
+// First full paint of fig:arnold_tongues under CPU throttling 4x, from the
+// interact click until the pool queue and in-flight set are empty.
+// Measured 2026-10-01 on nexus (AMD Ryzen 9 9900X, 12 cores / 24 threads):
+// 8770 ms. Limit is that baseline times 1.5 (13155 ms), so a later run on
+// this box has 4385 ms of slack. The unthrottled 8-worker full paint in
+// docs/wasm-architecture.md "Performance headroom" is 3415 ms (2026-09-24,
+// same machine class); 8770 / 3415 is 2.57, the 4x throttle's measured cost.
+const THROTTLE_BASELINE_MS = 8_770;
+const THROTTLE_LIMIT_MS = Math.round(THROTTLE_BASELINE_MS * 1.5);
 const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
   4 * FIRST_PAINT_MS +
   REFINE_MS +
   8 * SAMPLE_MS +
   VIEW_MS +
-  2 * REDUCED_WAIT_MS;
-const WATCHDOG_MS = DEADLINE_SUM_MS + 180_000;
+  2 * REDUCED_WAIT_MS +
+  NARROW_WAIT_MS +
+  FIRST_PAINT_MS +
+  2 * (PAGE_READY_MS + FIGURE_MS + FIRST_PAINT_MS) +
+  PAGE_READY_MS +
+  FIGURE_MS +
+  THROTTLE_PAINT_MS;
+const WATCHDOG_MS = DEADLINE_SUM_MS + 600_000;
 const WASM_RE = /dynachaos_wasm_bg\.wasm/;
 const TELEMETRY_EVENTS = ["paint", "drop", "error", "cancel"];
 const failures = [];
@@ -254,12 +272,16 @@ try {
       if (sessionId) payload.sessionId = sessionId;
       ws.send(JSON.stringify(payload));
     });
+  let cpuThrottle = 1;
   const onAttached = (params) => {
     attached.set(params.sessionId, params.targetInfo);
     attachChain = attachChain
       .then(async () => {
         await send("Network.enable", {}, params.sessionId);
         await send("Runtime.enable", {}, params.sessionId);
+        if (cpuThrottle > 1) {
+          await send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle }, params.sessionId);
+        }
         if (params.waitingForDebugger) {
           await send("Runtime.runIfWaitingForDebugger", {}, params.sessionId);
         }
@@ -1364,6 +1386,136 @@ try {
     JSON.stringify(sEnd),
   );
   await pullDebug();
+
+  // Guardrails. Each check navigates on its own so a hidden tab, a narrow
+  // viewport, or CPU throttling cannot leak into the figure checks above
+  // or the reduced-data checks below.
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 400,
+    height: 800,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await send("Page.navigate", {
+    url: `http://127.0.0.1:${httpPort}/index.html#fig:devils_staircase.D=0.4`,
+  });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  await waitFor(`!!${S}`, FIGURE_MS);
+  const held = await waitFor(
+    `${S} && ${S}.dataset.liveHold === "narrow" && ${S}.dataset.state !== "live"`,
+    NARROW_WAIT_MS,
+    50,
+  );
+  const narrowShown = await ev(`(() => {
+    const img = ${S} && ${S}.querySelector(".fig-body img");
+    if (!img) return false;
+    const s = getComputedStyle(img);
+    return s.display !== "none" && s.visibility !== "hidden";
+  })()`);
+  const narrowState = await ev(`(() => {
+    const fig = ${S};
+    if (!fig) return null;
+    return { state: fig.dataset.state, hold: fig.dataset.liveHold || "", width: innerWidth, live: !!fig._live };
+  })()`);
+  check(
+    "a narrow viewport keeps the PNG and does not go live by itself",
+    Boolean(held && narrowShown && narrowState && !narrowState.live && narrowState.state !== "live"),
+    JSON.stringify(narrowState),
+  );
+  await ev(`(${S}.querySelector(".act-interact").click(), true)`);
+  const narrowAsked = await waitFor(
+    `!!${S}._live && ${S}.dataset.state === "live"`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  check(
+    "a narrow viewport still goes live when the reader asks",
+    Boolean(narrowAsked),
+    await ev(`${S} ? JSON.stringify(${S}.dataset) : "missing"`),
+  );
+  const narrowD = await ev(
+    `${S} && ${S}.querySelector(".live-params input[type=number]") ? Number(${S}.querySelector(".live-params input[type=number]").value) : null`,
+  );
+  check(
+    "a narrow viewport applies the shared parameter when the reader asks",
+    narrowAsked && narrowD === 0.4,
+    JSON.stringify({ narrowD }),
+  );
+  await send("Emulation.clearDeviceMetricsOverride");
+
+  const debugLines = async () => {
+    await pullDebug();
+    return debugLogs.filter((line) => line.includes("[dynachaos-live]"));
+  };
+  debugLogs.length = 0;
+  await send("Page.navigate", {
+    url: `http://127.0.0.1:${httpPort}/index.html#live-debug`,
+  });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  await waitFor(`!!${F}`, FIGURE_MS);
+  await installLogHook();
+  await ev(`(${F}.querySelector(".act-interact").click(), true)`);
+  const hashPaint = await waitFor(
+    `!!${F}._live && ${F}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const hashLogs = await debugLines();
+  check(
+    "the #live-debug hash turns telemetry on",
+    Boolean(hashPaint && hashLogs.some((line) => line.includes('"event":"paint"') || line.includes('"event":"issue"'))),
+    JSON.stringify({ hash: await ev("location.hash"), sample: hashLogs.slice(0, 2) }),
+  );
+
+  debugLogs.length = 0;
+  await send("Page.navigate", { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  await waitFor(`!!${F}`, FIGURE_MS);
+  await installLogHook();
+  await ev(`(${F}.querySelector(".act-interact").click(), true)`);
+  const quietPaint = await waitFor(
+    `!!${F}._live && ${F}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    50,
+  );
+  const quietLogs = await debugLines();
+  check(
+    "telemetry stays off without #live-debug, ?debug=1, or localStorage",
+    Boolean(quietPaint && quietLogs.length === 0),
+    JSON.stringify({ hash: await ev("location.hash"), search: await ev("location.search"), sample: quietLogs.slice(0, 2) }),
+  );
+
+  cpuThrottle = THROTTLE_RATE;
+  await send("Emulation.setCPUThrottlingRate", { rate: THROTTLE_RATE });
+  await send("Page.navigate", { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  await waitFor(`!!${F}`, FIGURE_MS);
+  const throttleT0 = Date.now();
+  await ev(`(${F}.querySelector(".act-interact").click(), true)`);
+  const throttleDone = await waitFor(
+    `(() => {
+      const fig = ${F};
+      const pool = fig && fig._pool;
+      if (!pool || !fig._live) return false;
+      const st = pool.getState();
+      const painted = fig._live.stats().painted;
+      return painted > 1 && st.queueDepth === 0 && st.inFlight.length === 0;
+    })()`,
+    THROTTLE_PAINT_MS,
+    100,
+  );
+  const throttleElapsed = Date.now() - throttleT0;
+  console.log(
+    `throttled full paint: ${throttleElapsed} ms, baseline ${THROTTLE_BASELINE_MS} ms, limit ${THROTTLE_LIMIT_MS} ms`,
+  );
+  check(
+    "under 4x CPU throttle the flagship's first full paint stays within the budget",
+    Boolean(throttleDone && throttleElapsed <= THROTTLE_LIMIT_MS),
+    `elapsed ${throttleElapsed} ms, baseline ${THROTTLE_BASELINE_MS} ms, limit ${THROTTLE_LIMIT_MS} ms, done ${throttleDone}`,
+  );
+  cpuThrottle = 1;
+  await send("Emulation.setCPUThrottlingRate", { rate: 1 });
+
 
   await send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-data", value: "reduce" }],

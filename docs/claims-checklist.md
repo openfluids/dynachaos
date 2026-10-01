@@ -14,7 +14,7 @@
 | Removed/softened claims | Hype or unqualified superlatives about performance/scope | unsupported-removed |
 | Gallery site; any live-figure text | A live figure computes with the same kernels the published figure used | supported-by: shared `rust/core`, plus the CI wasm-vs-native parity check |
 | Gallery site; any live-figure text | A live figure reproduces the published pixel values everywhere | **unsupported-do-not-claim** — true where the dynamics are locked, false in the chaotic region; see below |
-| Gallery site; any live-figure text | A live view replaces the published figure as the record | **unsupported-do-not-claim** — the PNG and the committed `.npz` caches stay canonical; live views are companions, see `docs/wasm-architecture.md` |
+| Gallery site; any live-figure text | A live figure keeps computing in a hidden tab, starts itself on a phone, or logs telemetry for every reader | **unsupported-do-not-claim** — a hidden tab pauses new work, a viewport below 480 CSS px keeps the PNG until the reader asks, and telemetry is off unless `#live-debug`, `?debug=1`, or `localStorage.dynachaosDebug` is set |
 | sec12 intermittency; any manuscript text | The Lorenz laminar-channel fit recovers the type-I tangency slope (~1) | **unsupported-do-not-claim** — see below |
 
 
@@ -110,3 +110,8 @@ say it reproduces the published image pixel for pixel**, and do not invite a
 reader to compare a zoomed chaotic region against the PNG and infer that
 something is broken when the two differ. The PNG remains the record of what the
 paper computed; see `docs/wasm-architecture.md`.
+
+A live figure also does not run unasked. A hidden tab pauses new tiles and
+new kernel calls. A viewport below 480 CSS px keeps the PNG until the reader
+presses interact. Telemetry is off unless the hash contains `#live-debug`,
+the query is `?debug=1`, or `localStorage.dynachaosDebug` is set.
