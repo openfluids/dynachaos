@@ -1430,16 +1430,20 @@ try {
       }),
     );
     // The staircase under reduced data: no slider, no live canvas, no wasm —
-    // the published PNG (both panels) is all the reader gets.
+    // the published PNG (both panels), or its JSON chart when the site
+    // exports one, is all the reader gets. The chart must be displayed.
     await ev(`(${S}.querySelector(".act-interact") && ${S}.querySelector(".act-interact").click(), true)`);
     await sleep(REDUCED_WAIT_MS);
     const stReduced = await ev(`(() => {
       const fig = ${S};
       if (!fig) return { missing: true };
       const img = fig.querySelector(".fig-body img");
-      const shown = img && getComputedStyle(img).display !== "none";
+      const imgShown = img && getComputedStyle(img).display !== "none";
+      const jsonChart = Array.from(fig.querySelectorAll("canvas.plot")).some(
+        (el) => !el.classList.contains("live") && getComputedStyle(el).display !== "none",
+      );
       return {
-        shown,
+        shown: Boolean(imgShown || jsonChart),
         liveCanvas: !!fig.querySelector("canvas.plot.live"),
         slider: !!fig.querySelector(".live-params input"),
         hasLive: !!fig._live,
@@ -1447,7 +1451,7 @@ try {
       };
     })()`);
     check(
-      "under prefers-reduced-data the staircase keeps its PNG and mounts no slider",
+      "under prefers-reduced-data the staircase keeps its PNG or JSON chart and mounts no slider",
       Boolean(stReduced && stReduced.shown && !stReduced.liveCanvas && !stReduced.slider && !stReduced.hasLive),
       JSON.stringify(stReduced),
     );
