@@ -167,22 +167,11 @@ jobs:
       - run: uv sync --all-extras
       - name: Build the WebAssembly bundle
         run: uv run python scripts/build_wasm.py
-      - name: Export this figure's chart JSON
-        run: |
-          uv run --extra viz python - <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, "scripts")
-          from export_figure_data import export_arnold_tongues
-
-          out = Path("site/data/sec02_circle_map")
-          out.mkdir(parents=True, exist_ok=True)
-          (out / "arnold_tongues.json").write_text(
-              json.dumps(export_arnold_tongues(), separators=(",", ":"))
-          )
-          PY
+      - name: Export the chart JSON
+        # Export every figure, as the Pages build does, so the browser test
+        # sees the site readers get: a figure with chart JSON shows the chart,
+        # not the PNG, when it is not live.
+        run: DYNACHAOS_NO_RUST=1 uv run --extra viz python scripts/export_figure_data.py
       - name: Build the paper page
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
