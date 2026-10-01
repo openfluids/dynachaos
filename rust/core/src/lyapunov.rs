@@ -16,6 +16,7 @@
 //! polynomial maps is bit-identical to Python.
 
 use crate::CoreError;
+use crate::maps::{COUPLED_DA_OFFSET, coupled_delayed_step};
 
 /// Floor used when a circle-map derivative is zero.
 ///
@@ -28,9 +29,6 @@ const ZERO_DERIVATIVE_LOG: f64 = -100.0;
 /// `lyapunov_spectrum` uses `np.where(diag > 0, diag, 1e-300)`
 /// (`src/dynachaos/diagnostics/lyapunov.py:139`).
 const SINGULAR_VALUE_FLOOR: f64 = 1e-300;
-
-/// Paper offset `D_A = D_B + 0.1` (`src/dynachaos/maps/coupled_delayed.py:100`).
-const COUPLED_DA_OFFSET: f64 = 0.1;
 
 fn require_positive_iter(n_iter: usize) -> Result<(), CoreError> {
     if n_iter == 0 {
@@ -544,27 +542,6 @@ pub fn torus_doubling_lyapunov_tile(
         }
         Ok(out)
     }
-}
-
-/// Coupled delayed map, one iteration of `(x, y, z, w)`.
-///
-/// ```text
-/// x' = A x + D_A y (1 - y) + eps (z - w)
-/// y' = x
-/// z' = A z + D_B w (1 - w) + eps (y - x)
-/// w' = z
-/// ```
-///
-/// Same operation order as `coupled_delayed`
-/// (`src/dynachaos/maps/coupled_delayed.py:52`).
-#[inline]
-fn coupled_delayed_step(state: [f64; 4], a: f64, da: f64, db: f64, eps: f64) -> [f64; 4] {
-    let [x, y, z, w] = state;
-    let h1 = z - w;
-    let h2 = y - x;
-    let x_new = a * x + da * y * (1.0 - y) + eps * h1;
-    let z_new = a * z + db * w * (1.0 - w) + eps * h2;
-    [x_new, x, z_new, z]
 }
 
 /// Jacobian of the coupled delayed map

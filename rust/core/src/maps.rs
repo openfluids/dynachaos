@@ -352,7 +352,7 @@ pub fn modulated_circle_rotation_tile(
 }
 
 /// Paper offset `D_A = D_B + 0.1` (`src/dynachaos/maps/coupled_delayed.py:135`).
-const COUPLED_DA_OFFSET: f64 = 0.1;
+pub(crate) const COUPLED_DA_OFFSET: f64 = 0.1;
 
 /// One iteration of the 4D coupled delayed logistic map.
 ///
@@ -366,7 +366,13 @@ const COUPLED_DA_OFFSET: f64 = 0.1;
 /// Same operation order as `coupled_delayed`
 /// (`src/dynachaos/maps/coupled_delayed.py:52`). No product uses `mul_add`.
 #[inline]
-fn coupled_delayed_step(state: [f64; 4], a: f64, da: f64, db: f64, eps: f64) -> [f64; 4] {
+pub(crate) fn coupled_delayed_step(
+    state: [f64; 4],
+    a: f64,
+    da: f64,
+    db: f64,
+    eps: f64,
+) -> [f64; 4] {
     let [x, y, z, w] = state;
     let h1 = z - w;
     let h2 = y - x;
