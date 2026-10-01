@@ -1237,9 +1237,7 @@ def main() -> int:
         if bad_asym or bad_lyap:
             print("FAIL: coupled_logistic_phase_tile differs")
             failed = True
-        elif not self_check(
-            "coupled_logistic_phase_tile", phase_flat, phase_body, 0.0, 1.0
-        ):
+        elif not self_check("coupled_logistic_phase_tile", phase_flat, phase_body, 0.0, 1.0):
             print("FAIL: coupled_logistic_phase_tile self-check did not trip")
             failed = True
 
@@ -1270,9 +1268,7 @@ def main() -> int:
         if bad:
             print("FAIL: coupled_logistic_attractor_tile differs")
             failed = True
-        elif not self_check(
-            "coupled_logistic_attractor_tile", attractor_flat, out[4:], 0.0, 1.0
-        ):
+        elif not self_check("coupled_logistic_attractor_tile", attractor_flat, out[4:], 0.0, 1.0):
             print("FAIL: coupled_logistic_attractor_tile self-check did not trip")
             failed = True
 
@@ -1333,9 +1329,7 @@ def main() -> int:
         failed = True
     else:
         projection_flat = [float(v) for v in np.asarray(projection_native).ravel()]
-        bad, worst = compare(
-            "coupled_delayed_projection_tile", projection_flat, out[4:], 0.0
-        )
+        bad, worst = compare("coupled_delayed_projection_tile", projection_flat, out[4:], 0.0)
         print(
             f"coupled_delayed_projection_tile: {PROJECTION_N_DB} DB values x "
             f"{MAP_PLOT} samples, worst {worst:.3e}"
@@ -1343,9 +1337,7 @@ def main() -> int:
         if bad:
             print("FAIL: coupled_delayed_projection_tile differs")
             failed = True
-        elif not self_check(
-            "coupled_delayed_projection_tile", projection_flat, out[4:], 0.0, 1.0
-        ):
+        elif not self_check("coupled_delayed_projection_tile", projection_flat, out[4:], 0.0, 1.0):
             print("FAIL: coupled_delayed_projection_tile self-check did not trip")
             failed = True
 
@@ -1376,9 +1368,7 @@ def main() -> int:
         if bad:
             print("FAIL: fractalization_attractor_tile differs")
             failed = True
-        elif not self_check(
-            "fractalization_attractor_tile", fractal_flat, out[4:], 0.0, 1.0
-        ):
+        elif not self_check("fractalization_attractor_tile", fractal_flat, out[4:], 0.0, 1.0):
             print("FAIL: fractalization_attractor_tile self-check did not trip")
             failed = True
 

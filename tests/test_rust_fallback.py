@@ -1721,7 +1721,6 @@ class TestCmlSpacetimeParity:
             cml_spacetime_tile(0, np.nan, 10, 4, x0)
 
 
-
 @rust_extension
 class TestCircleMapLyapunovParity:
     """Verify the Rust circle-map exponent against ``lyapunov_exponent``.
@@ -1767,7 +1766,6 @@ class TestCircleMapLyapunovParity:
             circle_map_lyapunov_sum(np.nan, 0.25, 10, 10, 0.1)
         with pytest.raises(ValueError):
             circle_map_lyapunov_sum(0.1, np.inf, 10, 10, 0.1)
-
 
 
 @rust_extension
@@ -1824,12 +1822,9 @@ class TestDelayedLogisticLyapunovParity:
         with pytest.raises(ValueError):
             delayed_logistic_lyapunov_tile(0.3, np.array([]), 10, 10, np.array([0.5, 0.5]))
         with pytest.raises(ValueError):
-            delayed_logistic_lyapunov_tile(
-                0.3, np.array([1.55]), 10, 0, np.array([0.5, 0.5])
-            )
+            delayed_logistic_lyapunov_tile(0.3, np.array([1.55]), 10, 0, np.array([0.5, 0.5]))
         with pytest.raises(ValueError):
             delayed_logistic_lyapunov_tile(0.3, np.array([1.55]), 10, 10, np.array([0.5]))
-
 
 
 @rust_extension
@@ -1908,7 +1903,6 @@ class TestTorusDoublingLyapunovParity:
             torus_doubling_lyapunov_tile(1, 0.4, np.array([2.19]), 10, 0, np.array([0.5] * 3))
 
 
-
 @rust_extension
 class TestCoupledDelayedLyapunovParity:
     """Verify the Rust coupled-delayed spectrum against ``lyapunov_spectrum``.
@@ -1958,9 +1952,7 @@ class TestCoupledDelayedLyapunovParity:
         with pytest.raises(ValueError):
             coupled_delayed_lyapunov_tile(0.4, np.array([]), 0.005, 10, 10, self.STATE0)
         with pytest.raises(ValueError):
-            coupled_delayed_lyapunov_tile(
-                0.4, np.array([2.3]), 0.005, 10, 10, np.array([0.5] * 3)
-            )
+            coupled_delayed_lyapunov_tile(0.4, np.array([2.3]), 0.005, 10, 10, np.array([0.5] * 3))
 
 
 @rust_extension
@@ -2080,9 +2072,7 @@ class TestCoupledDelayedProjectionParity:
             da = float(db) + 0.1
             python = trajectory_after_transient(
                 self.STATE0,
-                lambda state, da=da, db=float(db): coupled_delayed(
-                    state, self.A, da, db, self.EPS
-                ),
+                lambda state, da=da, db=float(db): coupled_delayed(state, self.A, da, db, self.EPS),
                 self.N_TRANSIENT,
                 self.N_RECORD,
                 project_fn=lambda state: state[[0, 2]],
