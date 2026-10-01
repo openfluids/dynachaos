@@ -546,3 +546,51 @@ defined in `rust/wasm/src/lib.rs:32`.
 | sec12_intermittency | type_ii_intermittency.png | diagnostics.type_ii_intermittency_figure | C | none | precomputed | C: stochastic reinjection proof data and bootstrap fits are published values |
 | sec12_intermittency | type_iii_intermittency.png | diagnostics.type_iii_intermittency_figure | C | none | precomputed | C: stochastic reinjection, escape episodes, and bootstrap fits are proof data |
 | sec12_intermittency | sti_spine.png | cml.sti_spine_figure | C | none | precomputed | C: 512-site spacetime plus a nine-point coupling sweep and cluster fit are a diagnostic cache |
+
+## Live figure checklist
+
+Six figures on the paper page are live. Each row below checks one figure
+against the same six items. The browser checks are in
+`tests/e2e/live_figure.mjs`, quoted by their printed name. The parity scripts
+run in the CI job "WASM matches native" (`.github/workflows/ci.yml`), and the
+browser test runs in the CI job "Live figure" on a site built with every
+figure's chart JSON, as the Pages build makes it.
+
+Items common to all six:
+
+- **PNG first, and the fallback.** `scripts/build_paper.py` writes the PNG
+  into every figure block whether or not the figure is live, so a reader
+  without JavaScript gets the published image. Each figure loads static and
+  goes live only on "interact" (e2e: "... is marked live-capable", state
+  `static`). Under `prefers-reduced-data` the page downloads no WebAssembly
+  and starts no worker (e2e: "under prefers-reduced-data the WebAssembly
+  module is never downloaded", "... no worker target is attached").
+- **No change to the paper pipeline.** The live code lives in `site-src/live/`,
+  `scripts/paper_shell.py` and `rust/wasm/`. The figure modules, the
+  committed `.npz` caches and the captions are not touched by any of the
+  commits below.
+- **House style.** Curves and points use the page's `--slate` and
+  `--vermilion` tokens (`scripts/paper_shell.py`). Axis labels use the
+  page's serif, TeX Gyre Pagella, not the Computer Modern of the PNGs; this
+  is listed as open below.
+
+| figure (`data-live`) | commit | parity against the paper | browser check of one value | reduced-data check | mutation check at review |
+|---|---|---|---|---|---|
+| `arnold_tongues` | aa0e334 | `check_wasm_parity.py`: tight bound where the map is well conditioned, rare divergence where the orbit is chaotic | "rho ~ 0.0743 at (Omega 0.08, K 0.03)"; "the readout is the point kernel, not the tile lookup" | "a PNG or JSON chart is shown and no live canvas is created" | yes: dropping the tile reset in `onView` fails a node test |
+| `devils_staircase` | 7499ab4 | `check_wasm_staircase.py`: npz at D = 0.25, with the thresholds of `check_wasm_parity.py` | "the staircase readout is the point kernel at (D, A)" | "the staircase keeps its PNG or JSON chart and mounts no slider" | yes: (A, D) swapped in the readout fails a node test |
+| `delayed_logistic_attractors` | fe8a64d | `check_wasm_delayed_logistic.py`: bit-exact | "a plotted state equals the kernel's at the same (A, D, n)" | "the attractors figure keeps its PNG and mounts no slider" | yes: a moved initial state fails a node test |
+| `torus_doubling_attractors` | 359f99a | `check_wasm_torus_doubling.py`: bit-exact, maps (I) and (IV) | "a plotted torus state equals the kernel's at the same (map, A, D, n)" | "the torus figure keeps its PNG and mounts no controls" | yes: map IV initial state, A/D swap and projection swap each fail a test |
+| `double_staircase` | cc25155 | `check_wasm_modulated_circle.py`: rho_theta within 1e-6, rho_phi within 1e-12 of C | "a plotted rho_theta equals the kernel's at the same D" | "the double staircase keeps its PNG and mounts no controls" | yes: theta0 0.1 to 0.2 fails two node tests |
+| `spacetime_diagrams` | e6d1c61 | `check_wasm_cml_spacetime.py`: models A and C bit-exact; model B against a numpy ensemble with a 1-ulp error on every `sin` | "a plotted field value equals the kernel's at the same (model, eps, sites)" | "the spacetime figure keeps its PNG and mounts no controls" | NOT MET: no mutation run is recorded |
+
+Open items:
+
+- The space-time figure needs a mutation check: revert one interaction (the
+  eps snap, the model switch, or the play continuation) and show that a test
+  fails.
+- The reduced-data checks for the Arnold-tongue and torus figures count a
+  static chart that exists, not one that is displayed. With every static
+  chart hidden by CSS, both still pass. The staircase check requires a
+  displayed chart.
+- Typeface: decide whether the live axis labels use the page's Pagella or
+  the Computer Modern of the PNGs.
