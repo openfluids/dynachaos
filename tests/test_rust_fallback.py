@@ -1437,39 +1437,58 @@ class TestZeroOneScaling:
 
     The kernel it replaced summed the autocovariance directly: n_c x n_cut x N
     multiply-adds, which at the default n_cut = N/10 grows as N^2. From N to
-    4N an N^2 kernel takes 16x longer (the old one measured 33x, with cache
-    misses), the FFT kernel about 4.5x. The bound of 8 catches a return to
-    N^2 with room for noise; it does not prove N log N.
+    32N that sum takes 1024x longer. An N log N kernel takes
+    32 * log(32N) / log(N) = 46.5x at these sizes (N = 2048, 32N = 65536;
+    log2(65536) / log2(2048) = 16/11). The bound of 200 is 4.3x above 46.5
+    and 5.1x below 1024, clear of both by more than 3x.
+
+    Timing uses time.process_time, not wall-clock. The old N-to-4N wall-clock
+    bound of 8 (expected ~4.5x) failed on CI at ratio 8.68 when other workers
+    stole time from the longer burst. process_time is this process's CPU time,
+    all threads included, so preemption does not inflate one size more than
+    the other. The wider step is what separates the two asymptotes; a higher
+    bound on the old pair would not.
     """
 
     N_C = 8
+    N_SMALL = 2_048
+    N_LARGE = 65_536
     ROUNDS = 5
 
     def test_rust_kernel_scales_below_n_squared(self):
         from dynachaos._rust import zero_one_k
 
         c_values = np.random.default_rng(7).uniform(np.pi / 5, 4 * np.pi / 5, self.N_C)
-        cases = {n: logistic_series(n=n, a=1.99, burn=2000) for n in (25_000, 100_000)}
-        repeats = {25_000: 10, 100_000: 5}
+        cases = {n: logistic_series(n=n, a=1.99, burn=2000) for n in (self.N_SMALL, self.N_LARGE)}
         best = dict.fromkeys(cases, float("inf"))
 
         for n, phi in cases.items():
             zero_one_k(phi, c_values, n // 10)  # warm up: first call pays pool spin-up
-        # Interleave the two sizes so a busy interval (other test workers,
-        # the rayon pool) slows both, not one; keep the fastest burst of each.
-        # A single call is a few ms, so each timing is a burst divided by count.
+        # Windows updates process CPU time on the scheduler tick (~15.6 ms).
+        # A burst that finishes between ticks reads as 0, and the minimum
+        # over rounds then divides by zero. Span several ticks of wall time
+        # (perf_counter moves between ticks; process_time may not) and
+        # divide by the call count. Interleave the sizes so a busy interval
+        # slows both, not one; keep the fastest per-call sample of each.
+        tick_span_s = 0.10
         for _ in range(self.ROUNDS):
             for n, phi in cases.items():
-                start = time.perf_counter()
-                for _ in range(repeats[n]):
+                count = 0
+                cpu_start = time.process_time()
+                wall_start = time.perf_counter()
+                while True:
                     zero_one_k(phi, c_values, n // 10)
-                best[n] = min(best[n], (time.perf_counter() - start) / repeats[n])
+                    count += 1
+                    cpu = time.process_time() - cpu_start
+                    if time.perf_counter() - wall_start >= tick_span_s and cpu > 0.0:
+                        best[n] = min(best[n], cpu / count)
+                        break
 
-        ratio = best[100_000] / best[25_000]
-        assert ratio < 8.0, (
-            f"zero_one_k took {best[25_000]:.3f}s at N = 25000 and "
-            f"{best[100_000]:.3f}s at N = 100000: ratio {ratio:.2f} "
-            "approaches the 16x of an N^2 kernel"
+        ratio = best[self.N_LARGE] / best[self.N_SMALL]
+        assert ratio < 200.0, (
+            f"zero_one_k took {best[self.N_SMALL]:.4f}s at N = {self.N_SMALL} and "
+            f"{best[self.N_LARGE]:.4f}s at N = {self.N_LARGE}: ratio {ratio:.1f} "
+            "approaches the 1024x of an N^2 kernel"
         )
 
 
