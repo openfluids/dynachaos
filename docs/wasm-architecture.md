@@ -585,8 +585,9 @@ Items common to all six:
   commits below.
 - **House style.** Curves and points use the page's `--slate` and
   `--vermilion` tokens (`scripts/paper_shell.py`). Axis labels use the
-  page's serif, TeX Gyre Pagella, not the Computer Modern of the PNGs; this
-  is listed as open below.
+  page's serif, TeX Gyre Pagella, not the Computer Modern of the PNGs. This
+  is a decision (2026-10-02): the labels match the page around them, and the
+  page loads no extra webfont.
 
 | figure (`data-live`) | commit | parity against the paper | browser check of one value | reduced-data check | mutation check at review |
 |---|---|---|---|---|---|
@@ -606,5 +607,3 @@ Open items:
   static chart that exists, not one that is displayed. With every static
   chart hidden by CSS, both still pass. The staircase check requires a
   displayed chart.
-- Typeface: decide whether the live axis labels use the page's Pagella or
-  the Computer Modern of the PNGs.
