@@ -45,7 +45,10 @@ const THROTTLE_PAINT_MS = 120_000;
 // this box has 4385 ms of slack. The unthrottled 8-worker full paint in
 // docs/wasm-architecture.md "Performance headroom" is 3415 ms (2026-09-24,
 // same machine class); 8770 / 3415 is 2.57, the 4x throttle's measured cost.
-const THROTTLE_BASELINE_MS = 8_770;
+// GitHub Actions runners (CI=true) are slower and vary by run: five runs of
+// CI 37048288529 (2026-10-02) measured 12694, 7358, 12834, 11912 and 7752 ms.
+// On CI the baseline is their median, 11912 ms, so the limit is 17868 ms.
+const THROTTLE_BASELINE_MS = process.env.CI === "true" ? 11_912 : 8_770;
 const THROTTLE_LIMIT_MS = Math.round(THROTTLE_BASELINE_MS * 1.5);
 const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
