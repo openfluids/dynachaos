@@ -597,10 +597,3 @@ Items common to all six:
 | `torus_doubling_attractors` | 359f99a | `check_wasm_torus_doubling.py`: bit-exact, maps (I) and (IV) | "a plotted torus state equals the kernel's at the same (map, A, D, n)" | "the torus figure keeps its PNG and mounts no controls" | yes: map IV initial state, A/D swap and projection swap each fail a test |
 | `double_staircase` | cc25155 | `check_wasm_modulated_circle.py`: rho_theta within 1e-6, rho_phi within 1e-12 of C | "a plotted rho_theta equals the kernel's at the same D" | "the double staircase keeps its PNG and mounts no controls" | yes: theta0 0.1 to 0.2 fails two node tests |
 | `spacetime_diagrams` | e6d1c61 | `check_wasm_cml_spacetime.py`: models A and C bit-exact; model B against a numpy ensemble with a 1-ulp error on every `sin` | "a plotted field value equals the kernel's at the same (model, eps, sites)" | "the spacetime figure keeps its PNG and mounts no controls" | yes: unsnapped eps fails "the spacetime figure snaps eps to its decimal literal"; a model switch that keeps the old eps fails "switching the spacetime model resets eps to the new model's default"; play from the initial field fails "play appends a chunk from the last row and pause stops the transport" |
-
-Open items:
-
-- The reduced-data checks for the Arnold-tongue and torus figures count a
-  static chart that exists, not one that is displayed. With every static
-  chart hidden by CSS, both still pass. The staircase check requires a
-  displayed chart.

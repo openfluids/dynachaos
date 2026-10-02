@@ -20,6 +20,13 @@ import { join, resolve } from "node:path";
 const SITE = resolve(process.argv[2] || "site");
 const F = "document.getElementById('fig:arnold_tongues')";
 const S = "document.getElementById('fig:devils_staircase')";
+// Displayed non-live canvas.plot. Every reduced-data JSON-chart check uses this.
+function shownStaticChart(root) {
+  return (
+    `Array.from(${root}.querySelectorAll("canvas.plot")).some(` +
+    `(el) => !el.classList.contains("live") && getComputedStyle(el).display !== "none")`
+  );
+}
 const CHROME_CMDS = ["google-chrome", "google-chrome-stable"];
 const PAGE_READY_MS = 20_000;
 const FIGURE_MS = 20_000;
@@ -1536,9 +1543,7 @@ try {
     const st = await stats();
     const hasLive = await ev(`!!(${F} && ${F}._live)`);
     const liveCanvas = await ev(`!!(${F} && ${F}.querySelector("canvas.plot.live"))`);
-    const jsonChart = await ev(
-      `!!(${F} && Array.from(${F}.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live")))`,
-    );
+    const jsonChart = await ev(`!!(${F} && ${shownStaticChart(F)})`);
     const pngAfter = await imgShown();
     const shown = Boolean(pngAfter || jsonChart);
     const workers = attachedWorkers();
@@ -1591,9 +1596,7 @@ try {
       if (!fig) return { missing: true };
       const img = fig.querySelector(".fig-body img");
       const imgShown = img && getComputedStyle(img).display !== "none";
-      const jsonChart = Array.from(fig.querySelectorAll("canvas.plot")).some(
-        (el) => !el.classList.contains("live") && getComputedStyle(el).display !== "none",
-      );
+      const jsonChart = ${shownStaticChart("fig")};
       return {
         shown: Boolean(imgShown || jsonChart),
         liveCanvas: !!fig.querySelector("canvas.plot.live"),
@@ -1639,7 +1642,7 @@ try {
       if (!fig) return { missing: true };
       const img = fig.querySelector(".fig-body img");
       const imgShown = img && getComputedStyle(img).display !== "none";
-      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      const jsonChart = ${shownStaticChart("fig")};
       return {
         shown: Boolean(imgShown || jsonChart),
         liveCanvas: !!fig.querySelector("canvas.plot.live"),
@@ -1663,7 +1666,7 @@ try {
       if (!fig) return { missing: true };
       const img = fig.querySelector(".fig-body img");
       const imgShown = img && getComputedStyle(img).display !== "none";
-      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      const jsonChart = ${shownStaticChart("fig")};
       return {
         shown: Boolean(imgShown || jsonChart),
         liveCanvas: !!fig.querySelector("canvas.plot.live"),
@@ -1688,7 +1691,7 @@ try {
       if (!fig) return { missing: true };
       const img = fig.querySelector(".fig-body img");
       const imgShown = img && getComputedStyle(img).display !== "none";
-      const jsonChart = !!Array.from(fig.querySelectorAll("canvas.plot")).some((el) => !el.classList.contains("live"));
+      const jsonChart = ${shownStaticChart("fig")};
       return {
         shown: Boolean(imgShown || jsonChart),
         liveCanvas: !!fig.querySelector("canvas.plot.live"),
