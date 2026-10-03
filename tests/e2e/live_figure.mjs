@@ -36,20 +36,30 @@ const SAMPLE_MS = 20_000;
 const VIEW_MS = 20_000;
 const REDUCED_WAIT_MS = 3_000;
 const NARROW_WAIT_MS = 8_000;
-const THROTTLE_RATE = 4;
-const THROTTLE_PAINT_MS = 120_000;
-// First full paint of fig:arnold_tongues under CPU throttling 4x, from the
-// interact click until the pool queue and in-flight set are empty.
-// Measured 2026-10-01 on nexus (AMD Ryzen 9 9900X, 12 cores / 24 threads):
-// 8770 ms. Limit is that baseline times 1.5 (13155 ms), so a later run on
-// this box has 4385 ms of slack. The unthrottled 8-worker full paint in
-// docs/wasm-architecture.md "Performance headroom" is 3415 ms (2026-09-24,
-// same machine class); 8770 / 3415 is 2.57, the 4x throttle's measured cost.
-// GitHub Actions runners (CI=true) are slower and vary by run: five runs of
-// CI 37048288529 (2026-10-02) measured 12694, 7358, 12834, 11912 and 7752 ms.
-// On CI the baseline is their median, 11912 ms, so the limit is 17868 ms.
-const THROTTLE_BASELINE_MS = process.env.CI === "true" ? 11_912 : 8_770;
-const THROTTLE_LIMIT_MS = Math.round(THROTTLE_BASELINE_MS * 1.5);
+const KERNEL_PAINT_MS = 120_000;
+// Hang ceiling for the flagship's first full paint, from the interact click
+// until the pool queue and in-flight set are empty. One value on every
+// machine. This is not a kernel budget. The old 4x CPU-throttle wall-clock
+// check is removed: wasm download and worker start-up dominated it, so a
+// worker that calls the kernel three times still finished (2026-10-02: 3x
+// passed both 13155 ms here and 17868 ms on CI). On this shared box the
+// throttle also stalled tile issue (26 tiles in 120 s) while computeMs stayed
+// ~29 ms, so a throttled wall clock does not measure the kernel. 120000 ms
+// only fails a paint that does not finish.
+// Kernel-cost ratio, one limit on every machine. Numerator: median per-tile
+// computeMs of the finest-level tiles in that paint (pool telemetry under
+// #live-debug; tile id "<level>:<ix>:<iy>", finest level is the highest level
+// in that paint). Denominator: median of three timed plain-JS circle-map
+// loops in the same page, same run — 8000000 iterations of
+// theta += 0.3 + 0.12*sin(2*pi*theta), one warmup discarded,
+// performance.now(). Both sides are CPU arithmetic of the same kind, so
+// machine speed scales out.
+// Measured 2026-10-03 on this box after the same wasm build the gate runs,
+// five runs each. Unchanged ratio min/median/max: 0.734 / 0.741 / 0.772.
+// 3x-mutation ratio min/median/max: 2.153 / 2.192 / 2.235. Bound 1.3 is
+// 1.68x the highest unchanged ratio and 1.66x below the lowest 3x ratio.
+const KERNEL_REF_ITERS = 8_000_000;
+const KERNEL_RATIO_LIMIT = 1.3;
 const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
   4 * FIRST_PAINT_MS +
@@ -62,7 +72,7 @@ const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS + FIRST_PAINT_MS) +
   PAGE_READY_MS +
   FIGURE_MS +
-  THROTTLE_PAINT_MS;
+  KERNEL_PAINT_MS;
 const WATCHDOG_MS = DEADLINE_SUM_MS + 600_000;
 const WASM_RE = /dynachaos_wasm_bg\.wasm/;
 const TELEMETRY_EVENTS = ["paint", "drop", "error", "cancel"];
@@ -108,6 +118,43 @@ function isTelemetry(line) {
   return TELEMETRY_EVENTS.some(
     (event) => line.includes(`"event":"${event}"`) || line.includes(`event:${event}`),
   );
+}
+
+function median(values) {
+  if (values.length === 0) return Number.NaN;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function paintTiles(lines) {
+  const tiles = [];
+  for (const line of lines) {
+    const at = line.indexOf("{");
+    if (at < 0) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line.slice(at));
+    } catch {
+      continue;
+    }
+    if (!obj || obj.event !== "paint" || !Number.isFinite(obj.computeMs)) continue;
+    tiles.push(obj);
+  }
+  return tiles;
+}
+
+function finestComputeMs(tiles) {
+  let level = -1;
+  for (const tile of tiles) {
+    const parsed = Number(String(tile.tile).split(":")[0]);
+    if (Number.isFinite(parsed) && parsed > level) level = parsed;
+  }
+  const ms = [];
+  for (const tile of tiles) {
+    if (Number(String(tile.tile).split(":")[0]) === level) ms.push(tile.computeMs);
+  }
+  return { level, ms };
 }
 
 function dumpConsole() {
@@ -275,23 +322,27 @@ try {
   const attached = new Map();
   let attachChain = Promise.resolve();
   const send = (method, params = {}, sessionId) =>
-    new Promise((r) => {
+    new Promise((resolve, reject) => {
       const id = ++nextId;
-      waiters.set(id, r);
+      const timer = setTimeout(() => {
+        if (!waiters.has(id)) return;
+        waiters.delete(id);
+        reject(new Error(`cdp ${method} timed out`));
+      }, 15_000);
+      waiters.set(id, (msg) => {
+        clearTimeout(timer);
+        resolve(msg);
+      });
       const payload = { id, method, params };
       if (sessionId) payload.sessionId = sessionId;
       ws.send(JSON.stringify(payload));
     });
-  let cpuThrottle = 1;
   const onAttached = (params) => {
     attached.set(params.sessionId, params.targetInfo);
     attachChain = attachChain
       .then(async () => {
         await send("Network.enable", {}, params.sessionId);
         await send("Runtime.enable", {}, params.sessionId);
-        if (cpuThrottle > 1) {
-          await send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle }, params.sessionId);
-        }
         if (params.waitingForDebugger) {
           await send("Runtime.runIfWaitingForDebugger", {}, params.sessionId);
         }
@@ -326,7 +377,7 @@ try {
   const waitFor = async (expression, ms, step = 100) => {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) {
-      await attachChain;
+      await Promise.race([attachChain, sleep(5_000)]);
       try {
         if (await ev(expression)) return true;
       } catch {}
@@ -359,8 +410,8 @@ try {
       if (Array.isArray(hooked)) debugLogs.push(...hooked);
     } catch {}
   };
-  const load = async () => {
-    await send("Page.navigate", { url: pageUrl });
+  const load = async (url = pageUrl) => {
+    await send("Page.navigate", { url });
     await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
     await waitFor(`!!${F}`, FIGURE_MS);
     await installLogHook();
@@ -393,7 +444,7 @@ try {
     flatten: true,
   });
 
-  await load();
+  await load(`${pageUrl}#live-debug`);
   check(
     "the figure is marked live-capable",
     await ev(`!!${F} && !!${F}.dataset.live`),
@@ -401,6 +452,7 @@ try {
   );
   check("it has an interact button", await ev(`!!(${F} && ${F}.querySelector(".act-interact"))`));
 
+  const kernelT0 = Date.now();
   await ev(`(${F}.querySelector(".act-interact").click(), true)`);
   const firstPaint = await waitFor(`!!${F}._live && ${F}._live.stats().painted >= 1`, FIRST_PAINT_MS, 50);
   await attachChain;
@@ -469,6 +521,62 @@ try {
     Boolean(captured && refined && lastPainted > coarsePainted && compare && compare.comparable && compare.differ),
     JSON.stringify({ captured, coarsePainted, refinedPainted: lastPainted, refined, compare }),
   );
+  const kernelPaintDone = await waitFor(
+    `(() => {
+      const fig = ${F};
+      const pool = fig && fig._pool;
+      if (!pool || !fig._live) return false;
+      const st = pool.getState();
+      return fig._live.stats().painted > 1 && st.queueDepth === 0 && st.inFlight.length === 0;
+    })()`,
+    Math.max(1_000, KERNEL_PAINT_MS - (Date.now() - kernelT0)),
+    100,
+  );
+  const kernelElapsed = Date.now() - kernelT0;
+  await pullDebug();
+  const kernelLogs = debugLogs.filter((line) => line.includes("[dynachaos-live]"));
+  const paintedTiles = paintTiles(kernelLogs);
+  const finest = finestComputeMs(paintedTiles);
+  const kernelMedianMs = median(finest.ms);
+  const reference = await ev(`(() => {
+    const n = ${KERNEL_REF_ITERS};
+    const twoPi = 2 * Math.PI;
+    const samples = [];
+    let sink = 0.1;
+    for (let rep = 0; rep < 4; rep++) {
+      let theta = 0.1;
+      const t0 = performance.now();
+      for (let i = 0; i < n; i++) theta += 0.3 + 0.12 * Math.sin(twoPi * theta);
+      samples.push(performance.now() - t0);
+      sink = theta;
+    }
+    const timed = samples.slice(1).sort((a, b) => a - b);
+    return { ms: timed[1], samples, sink, n };
+  })()`);
+  const referenceMs = reference && Number.isFinite(reference.ms) ? reference.ms : Number.NaN;
+  const kernelRatio = kernelMedianMs / referenceMs;
+  console.log(
+    `flagship full paint: ${kernelElapsed} ms, hang ceiling ${KERNEL_PAINT_MS} ms`,
+  );
+  console.log(
+    `kernel cost ratio: ${kernelRatio} = median finest-tile computeMs ${kernelMedianMs} / circle-map reference ${referenceMs} ms (level ${finest.level}, tiles ${finest.ms.length}/${paintedTiles.length}, limit ${KERNEL_RATIO_LIMIT})`,
+  );
+  check(
+    "the flagship's first full paint finishes within the hang ceiling",
+    Boolean(kernelPaintDone && kernelElapsed <= KERNEL_PAINT_MS),
+    `elapsed ${kernelElapsed} ms, hang ceiling ${KERNEL_PAINT_MS} ms, done ${kernelPaintDone}`,
+  );
+  check(
+    "the flagship kernel cost stays within the same-run circle-map reference budget",
+    Boolean(
+      kernelPaintDone &&
+        finest.ms.length >= 16 &&
+        Number.isFinite(kernelRatio) &&
+        kernelRatio <= KERNEL_RATIO_LIMIT,
+    ),
+    `ratio ${kernelRatio} = median computeMs ${kernelMedianMs} / reference ${referenceMs} ms, limit ${KERNEL_RATIO_LIMIT}, level ${finest.level}, finest tiles ${finest.ms.length}, paint events ${paintedTiles.length}, done ${kernelPaintDone}`,
+  );
+
 
   const sLive = await stats();
   const nIter = sLive && sLive.nIter ? sLive.nIter : 2000;
@@ -1495,36 +1603,7 @@ try {
     JSON.stringify({ hash: await ev("location.hash"), search: await ev("location.search"), sample: quietLogs.slice(0, 2) }),
   );
 
-  cpuThrottle = THROTTLE_RATE;
-  await send("Emulation.setCPUThrottlingRate", { rate: THROTTLE_RATE });
-  await send("Page.navigate", { url: `http://127.0.0.1:${httpPort}/index.html` });
-  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
-  await waitFor(`!!${F}`, FIGURE_MS);
-  const throttleT0 = Date.now();
-  await ev(`(${F}.querySelector(".act-interact").click(), true)`);
-  const throttleDone = await waitFor(
-    `(() => {
-      const fig = ${F};
-      const pool = fig && fig._pool;
-      if (!pool || !fig._live) return false;
-      const st = pool.getState();
-      const painted = fig._live.stats().painted;
-      return painted > 1 && st.queueDepth === 0 && st.inFlight.length === 0;
-    })()`,
-    THROTTLE_PAINT_MS,
-    100,
-  );
-  const throttleElapsed = Date.now() - throttleT0;
-  console.log(
-    `throttled full paint: ${throttleElapsed} ms, baseline ${THROTTLE_BASELINE_MS} ms, limit ${THROTTLE_LIMIT_MS} ms`,
-  );
-  check(
-    "under 4x CPU throttle the flagship's first full paint stays within the budget",
-    Boolean(throttleDone && throttleElapsed <= THROTTLE_LIMIT_MS),
-    `elapsed ${throttleElapsed} ms, baseline ${THROTTLE_BASELINE_MS} ms, limit ${THROTTLE_LIMIT_MS} ms, done ${throttleDone}`,
-  );
-  cpuThrottle = 1;
-  await send("Emulation.setCPUThrottlingRate", { rate: 1 });
+
 
 
   await send("Emulation.setEmulatedMedia", {

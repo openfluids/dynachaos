@@ -483,11 +483,29 @@ series two workers gave almost no gain over one (10.1 s against 10.8 s).
 The gain from 4 to 8 workers is smaller than from 2 to 4.
 
 The browser check in `tests/e2e/live_figure.mjs` reuses this full-paint
-definition (click until the pool queue and in-flight set are empty) under
-Chrome's `Emulation.setCPUThrottlingRate` of 4. Measured 2026-10-01 on
-this box (AMD Ryzen 9 9900X) that full paint took 8770 ms. The check's
-limit is 1.5 times that baseline, 13155 ms. The 3415 ms 8-worker row above
-is the unthrottled comparison point, not that limit.
+definition (click until the pool queue and in-flight set are empty). The
+old 4x CPU-throttle wall-clock budget is removed. Wasm download and worker
+start-up dominated that time, so a tile worker that calls
+`rotation_number_tile` three times per tile still finished inside both old
+limits (13155 ms on this box, 17868 ms on a GitHub runner). On this shared
+box the throttle also stalled tile issue (26 tiles in 120 s) while
+`computeMs` stayed near 29 ms, so a throttled wall clock does not measure
+the kernel. What remains is one hang ceiling, 120000 ms, on every machine.
+It only fails a paint that does not finish.
+
+Kernel cost is a ratio from that same paint, so one limit is valid here and
+on a GitHub runner. The numerator is the median per-tile `computeMs` of the
+finest-level tiles, from pool telemetry under `#live-debug`. The denominator
+is a plain-JS circle-map loop (`theta += Omega + K * sin(2π theta)`,
+8000000 iterations, median of three timed reps after one warmup) measured
+with `performance.now()` in the same page, in the same run. Both sides are
+CPU arithmetic of the same kind, so a slower machine scales out of the
+ratio. Measured 2026-10-03 on this box, after the wasm build the check
+runs against, five runs each: unchanged min/median/max 0.734 / 0.741 /
+0.772, and a worker that calls the kernel three times 2.153 / 2.192 /
+2.235. The bound is 1.3, 1.68 times the highest unchanged ratio and 1.66
+times below the lowest 3x ratio. The same numbers are in the comment next
+to `KERNEL_RATIO_LIMIT`.
 
 
 Worker tiling only helps figures whose cells are independent. These
