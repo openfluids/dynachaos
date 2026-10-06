@@ -493,19 +493,39 @@ box the throttle also stalled tile issue (26 tiles in 120 s) while
 the kernel. What remains is one hang ceiling, 120000 ms, on every machine.
 It only fails a paint that does not finish.
 
-Kernel cost is a ratio from that same paint, so one limit is valid here and
-on a GitHub runner. The numerator is the median per-tile `computeMs` of the
-finest-level tiles, from pool telemetry under `#live-debug`. The denominator
-is a plain-JS circle-map loop (`theta += Omega + K * sin(2π theta)`,
-8000000 iterations, median of three timed reps after one warmup) measured
-with `performance.now()` in the same page, in the same run. Both sides are
-CPU arithmetic of the same kind, so a slower machine scales out of the
-ratio. Measured 2026-10-03 on this box, after the wasm build the check
-runs against, five runs each: unchanged min/median/max 0.734 / 0.741 /
-0.772, and a worker that calls the kernel three times 2.153 / 2.192 /
-2.235. The bound is 1.3, 1.68 times the highest unchanged ratio and 1.66
-times below the lowest 3x ratio. The same numbers are in the comment next
-to `KERNEL_RATIO_LIMIT`.
+Kernel cost is a ratio from the first full paint, with one numeric limit and no
+machine/CI branch. The numerator is the **25th percentile**, with linear
+interpolation between sorted ranks, of per-tile `computeMs` for the finest-level
+tiles from pool telemetry under `#live-debug`. The e2e also logs the p10 and p50
+values and ratios; p10 was pre-registered as the only fallback if p25 failed
+the margin criterion. The denominator is the median of five worker-timed
+batches of exactly 20 calls each to
+`circle_map_lyapunov_sum(0.12, 0.25, 2000, 200000, 0.1)` in a module `Blob`
+worker importing `wasm/dynachaos_wasm.js` by absolute URL. One equally-sized
+warmup batch is discarded. The worker's `performance.now()` times each complete
+batch; there is no duration target. Twenty calls were calibrated to take about
+100 ms per batch on the local unloaded box. Since the reference is fixed work
+on worker wasm, load or a slower machine lengthens it along with the kernel
+timing.
+
+Known blind spot: a slowdown of all wasm at once moves both sides and is not
+caught by the ratio. The local measurements support the 0.75 limit on this box;
+they do not independently establish transfer to a different machine.
+
+On 2026-10-06, final calibration bands (min / median / max) were:
+
+| set | kernel p25 (ms) | reference (ms) | ratio |
+|---|---:|---:|---:|
+| unchanged, 10 runs | 40.075 / 41.288 / 41.950 | 96.900 / 99.250 / 100.700 | 0.4026 / 0.4152 / 0.4329 |
+| four `nice -n 19` busy loops, 5 runs | 41.000 / 41.575 / 41.875 | 104.900 / 105.100 / 105.200 | 0.3901 / 0.3952 / 0.3984 |
+| tile kernel called 3x, 5 runs | 122.125 / 125.200 / 126.275 | 97.900 / 98.400 / 99.700 | 1.2474 / 1.2689 / 1.2756 |
+
+The one limit is **0.75**. It is at least 1.5x the largest unchanged or
+loaded p25 ratio (`1.5 × 0.4329 = 0.6494`) and at most the lowest 3x p25
+ratio / 1.5 (`1.2474 / 1.5 = 0.8316`). The margin window is
+`[0.6494, 0.8316]`; the chosen limit is within it. The 2x ratios
+(0.8156 / 0.8258 / 0.8569) all fail this limit. The 120000 ms hang ceiling
+and other checks are unchanged.
 
 
 Worker tiling only helps figures whose cells are independent. These

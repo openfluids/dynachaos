@@ -46,20 +46,31 @@ const KERNEL_PAINT_MS = 120_000;
 // throttle also stalled tile issue (26 tiles in 120 s) while computeMs stayed
 // ~29 ms, so a throttled wall clock does not measure the kernel. 120000 ms
 // only fails a paint that does not finish.
-// Kernel-cost ratio, one limit on every machine. Numerator: median per-tile
-// computeMs of the finest-level tiles in that paint (pool telemetry under
-// #live-debug; tile id "<level>:<ix>:<iy>", finest level is the highest level
-// in that paint). Denominator: median of three timed plain-JS circle-map
-// loops in the same page, same run — 8000000 iterations of
-// theta += 0.3 + 0.12*sin(2*pi*theta), one warmup discarded,
-// performance.now(). Both sides are CPU arithmetic of the same kind, so
-// machine speed scales out.
-// Measured 2026-10-03 on this box after the same wasm build the gate runs,
-// five runs each. Unchanged ratio min/median/max: 0.734 / 0.741 / 0.772.
-// 3x-mutation ratio min/median/max: 2.153 / 2.192 / 2.235. Bound 1.3 is
-// 1.68x the highest unchanged ratio and 1.66x below the lowest 3x ratio.
-const KERNEL_REF_ITERS = 8_000_000;
-const KERNEL_RATIO_LIMIT = 1.3;
+// One numeric limit, with no machine/CI branch; cross-machine transfer is not
+// established by the local runs below.
+// Numerator: the 25th percentile (linear interpolation between sorted ranks)
+// of per-tile computeMs for the finest-level tiles in the first full paint.
+// Also report p10 and p50 so measured runs retain the pre-registered p10
+// fallback and the former median for comparison. Telemetry is under
+// #live-debug; tile ids are "<level>:<ix>:<iy>". Denominator: median of five
+// timed batches of exactly KERNEL_REF_CALLS calls to
+// circle_map_lyapunov_sum(0.12, 0.25, 2000, 200000, 0.1) inside a module Blob
+// worker importing the site's wasm/dynachaos_wasm.js by absolute URL. Discard
+// one equally sized warmup batch. Each call runs 2000 transient plus 200000
+// measured wrapped circle-map steps (theta' = theta + D + A sin(2 pi theta),
+// lambda = mean log|d theta' / d theta|). Worker performance.now() times each
+// batch. N=20 was calibrated to make an unloaded batch about 100 ms here; there
+// is no duration target. A slowdown/load lengthens the fixed-work reference.
+// Known blind spot: a slowdown of all wasm at once moves both sides.
+// Margin: limit must be >= 1.5x the highest unchanged/loaded ratio and <= the
+// lowest 3x ratio / 1.5.
+// Final p25 ratio bands (min/median/max): unchanged 0.4026/0.4152/0.4329,
+// loaded 0.3901/0.3952/0.3984, and 3x 1.2474/1.2689/1.2756.
+// KERNEL_RATIO_LIMIT is 0.75; the 1.5x margin window is [0.6494, 0.8316].
+// Calibration tables and the selected limit are in the goal answer file.
+const KERNEL_REF_CALLS = 20;
+const KERNEL_REF_BATCHES = 5;
+const KERNEL_RATIO_LIMIT = 0.75;
 const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS) +
   4 * FIRST_PAINT_MS +
@@ -125,6 +136,15 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function percentile(values, p) {
+  if (values.length === 0) return Number.NaN;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (sorted.length - 1) * p;
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  return sorted[low] + (sorted[high] - sorted[low]) * (rank - low);
 }
 
 function paintTiles(lines) {
@@ -537,44 +557,85 @@ try {
   const kernelLogs = debugLogs.filter((line) => line.includes("[dynachaos-live]"));
   const paintedTiles = paintTiles(kernelLogs);
   const finest = finestComputeMs(paintedTiles);
-  const kernelMedianMs = median(finest.ms);
-  const reference = await ev(`(() => {
-    const n = ${KERNEL_REF_ITERS};
-    const twoPi = 2 * Math.PI;
-    const samples = [];
-    let sink = 0.1;
-    for (let rep = 0; rep < 4; rep++) {
-      let theta = 0.1;
-      const t0 = performance.now();
-      for (let i = 0; i < n; i++) theta += 0.3 + 0.12 * Math.sin(twoPi * theta);
-      samples.push(performance.now() - t0);
-      sink = theta;
+  const kernelP10Ms = percentile(finest.ms, 0.1);
+  const kernelP25Ms = percentile(finest.ms, 0.25);
+  const kernelP50Ms = percentile(finest.ms, 0.5);
+  const reference = await ev(`(async () => {
+    const wasmUrl = new URL("/wasm/dynachaos_wasm.js", location.origin).href;
+    const src =
+      "import init, { circle_map_lyapunov_sum } from " + JSON.stringify(wasmUrl) + ";\\n" +
+      "onmessage = async (e) => {\\n" +
+      "  const n = (e.data && e.data.batches) || 5;\\n" +
+      "  const calls = (e.data && e.data.calls) || 5;\\n" +
+      "  const samples = [];\\n" +
+      "  try {\\n" +
+      "    await init();\\n" +
+      "    let sum = 0;\\n" +
+      "    for (let i = 0; i < calls; i++) {\\n" +
+      "      sum += circle_map_lyapunov_sum(0.12, 0.25, 2000, 200000, 0.1)[2];\\n" +
+      "    }\\n" +
+      "    for (let i = 0; i < n; i++) {\\n" +
+      "      const t0 = performance.now();\\n" +
+      "      for (let j = 0; j < calls; j++) {\\n" +
+      "        sum += circle_map_lyapunov_sum(0.12, 0.25, 2000, 200000, 0.1)[2];\\n" +
+      "      }\\n" +
+      "      samples.push(performance.now() - t0);\\n" +
+      "    }\\n" +
+      "    postMessage({ samples, sum });\\n" +
+      "  } catch (err) {\\n" +
+      "    postMessage({ error: String(err && err.message ? err.message : err) });\\n" +
+      "  }\\n" +
+      "};";
+    const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    const w = new Worker(url, { type: "module" });
+    try {
+      return await new Promise((resolve) => {
+        const t = setTimeout(
+          () => resolve({ error: "kernel-reference worker timed out" }),
+          30000,
+        );
+        w.onmessage = (m) => {
+          clearTimeout(t);
+          resolve(m.data);
+        };
+        w.onerror = (e) => {
+          clearTimeout(t);
+          resolve({ error: "kernel-reference worker failed: " + e.message });
+        };
+        w.postMessage({ batches: ${KERNEL_REF_BATCHES}, calls: ${KERNEL_REF_CALLS} });
+      });
+    } finally {
+      w.terminate();
+      URL.revokeObjectURL(url);
     }
-    const timed = samples.slice(1).sort((a, b) => a - b);
-    return { ms: timed[1], samples, sink, n };
   })()`);
-  const referenceMs = reference && Number.isFinite(reference.ms) ? reference.ms : Number.NaN;
-  const kernelRatio = kernelMedianMs / referenceMs;
+  const referenceSamples = reference && Array.isArray(reference.samples)
+    ? reference.samples
+    : [];
+  const referenceMs = median(referenceSamples);
   console.log(
     `flagship full paint: ${kernelElapsed} ms, hang ceiling ${KERNEL_PAINT_MS} ms`,
-  );
-  console.log(
-    `kernel cost ratio: ${kernelRatio} = median finest-tile computeMs ${kernelMedianMs} / circle-map reference ${referenceMs} ms (level ${finest.level}, tiles ${finest.ms.length}/${paintedTiles.length}, limit ${KERNEL_RATIO_LIMIT})`,
   );
   check(
     "the flagship's first full paint finishes within the hang ceiling",
     Boolean(kernelPaintDone && kernelElapsed <= KERNEL_PAINT_MS),
     `elapsed ${kernelElapsed} ms, hang ceiling ${KERNEL_PAINT_MS} ms, done ${kernelPaintDone}`,
   );
+  const kernelP10Ratio = kernelP10Ms / referenceMs;
+  const kernelP25Ratio = kernelP25Ms / referenceMs;
+  const kernelP50Ratio = kernelP50Ms / referenceMs;
+  console.log(
+    `kernel cost ratio percentiles: p10 ${kernelP10Ratio} (${kernelP10Ms} ms), p25 ${kernelP25Ratio} (${kernelP25Ms} ms), p50 ${kernelP50Ratio} (${kernelP50Ms} ms), reference ${referenceMs} ms (level ${finest.level}, tiles ${finest.ms.length}/${paintedTiles.length}, limit ${KERNEL_RATIO_LIMIT}, ref batches ${JSON.stringify(referenceSamples)}, calls/batch ${KERNEL_REF_CALLS}, warmup calls ${KERNEL_REF_CALLS}, ref error ${reference && reference.error})`,
+  );
   check(
-    "the flagship kernel cost stays within the same-run circle-map reference budget",
+    "the flagship kernel cost stays within the same-run wasm-worker reference budget",
     Boolean(
       kernelPaintDone &&
         finest.ms.length >= 16 &&
-        Number.isFinite(kernelRatio) &&
-        kernelRatio <= KERNEL_RATIO_LIMIT,
+        Number.isFinite(kernelP25Ratio) &&
+        kernelP25Ratio <= KERNEL_RATIO_LIMIT,
     ),
-    `ratio ${kernelRatio} = median computeMs ${kernelMedianMs} / reference ${referenceMs} ms, limit ${KERNEL_RATIO_LIMIT}, level ${finest.level}, finest tiles ${finest.ms.length}, paint events ${paintedTiles.length}, done ${kernelPaintDone}`,
+    `p25 ratio ${kernelP25Ratio} = interpolated p25 computeMs ${kernelP25Ms} / wasm-worker reference ${referenceMs} ms, limit ${KERNEL_RATIO_LIMIT}, p10 ${kernelP10Ratio}, p50 ${kernelP50Ratio}, level ${finest.level}, finest tiles ${finest.ms.length}, paint events ${paintedTiles.length}, done ${kernelPaintDone}, ref error ${reference && reference.error}`,
   );
 
 
