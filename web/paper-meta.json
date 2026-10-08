@@ -2,7 +2,7 @@
   "title": "From Locking to Collective Chaos: A Reproducible, Mechanism-Based Review of Kaneko-Style Dynamical Systems",
   "authors": "Ricardo Frantz",
   "affil": "Laboratory of Fluid Mechanics and Instabilities, \u00c9cole Polytechnique F\u00e9d\u00e9rale de Lausanne, CH-1015 Lausanne, Switzerland",
-  "lede": "We investigate whether this body of work can be reconstructed as a single mechanism-based atlas rather than a chronology, organised around six physical mechanisms that run from phase instability to mean-field coupling.",
+  "lede": "Kunihiko Kaneko\u2019s papers of 1982 to 1998, recomputed from public code and arranged by mechanism: six steps from phase instability to mean-field coupling.",
   "eq_tags": [
     "\u2605",
     "\u2605\u2605",

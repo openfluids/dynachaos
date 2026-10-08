@@ -214,8 +214,7 @@ def test_a_missing_reproduction_index_fails_the_build():
 
 def _hero_body() -> str:
     return (
-        "<table><caption>Mechanistic atlas of Kaneko-style systems.</caption>"
-        "<tbody><tr><td>circle</td></tr></tbody></table>"
+        "<figure><figcaption>Circle map staircase.</figcaption></figure>"
         "Diagnostic spotlight"
     )
 

@@ -876,8 +876,8 @@ def figure_block(
             attrs += f' data-src="data/{section}/{name}.json"'
             badge = (
                 '<button type="button" class="fig-badge" hidden'
-                ' aria-label="Figure modified from published defaults — reset to published values">'
-                "modified — reset</button>"
+                ' aria-label="Figure modified from published defaults. Reset to published values">'
+                "modified: reset</button>"
             )
 
     code_html, has_snippet = figure_code_block(section, name)
@@ -1195,21 +1195,11 @@ def build_nav(nav: list[tuple[int, str, str, str]]) -> str:
     return "".join(out)
 
 
-ATLAS_TABLE_RE = re.compile(
-    r'<table\b[^>]*>\s*<caption>(?:<span class="num">[^<]*</span>\s*)?Mechanistic atlas.*?</table>',
-    re.S,
-)
-
-
-def count_model_systems(body: str) -> int:
-    """Count the rows of the Mechanistic atlas table -- the model systems it covers."""
-    table = ATLAS_TABLE_RE.search(body)
-    if not table:
-        raise SystemExit("could not find the 'Mechanistic atlas' table to count model systems")
-    tbody = re.search(r"<tbody>(.*?)</tbody>", table.group(0), re.S)
-    count = len(re.findall(r"<tr>", tbody.group(1))) if tbody else 0
+def count_figures(body: str) -> int:
+    """Count the figures in the manuscript body. Each one has a figcaption."""
+    count = len(CAP_RE.findall(body))
     if not count:
-        raise SystemExit("the 'Mechanistic atlas' table has no body rows to count")
+        raise SystemExit("found no <figcaption> to count")
     return count
 
 
@@ -1225,10 +1215,7 @@ def hero(meta: dict[str, str], body: str) -> str:
     stats = "".join(
         f"<li><b>{b}</b><span>{lab}</span></li>"
         for b, lab in (
-            (str(count_model_systems(body)), "model systems"),
-            # "at 100x finer resolution" (stated twice) and "10-100x" are the
-            # manuscript's own claim; "1000x" was never made in the text.
-            ("100&times;", "finer resolution"),
+            (str(count_figures(body)), "figures recomputed"),
             (str(count_diagnostic_spotlights(body)), "diagnostic spotlights"),
         )
     )
@@ -1337,7 +1324,7 @@ def minify_js(js_code: str) -> str:
 def minify_html(html_str: str) -> str:
     tokens = re.split(r"(<pre\b[^>]*>.*?</pre>|<code\b[^>]*>.*?</code>)", html_str, flags=re.S)
     for i in range(0, len(tokens), 2):
-        tokens[i] = re.sub(r">\s+<", "><", tokens[i])
+        tokens[i] = re.sub(r">\s+<", "> <", tokens[i])
         tokens[i] = re.sub(r"\s+", " ", tokens[i])
     return "".join(tokens).strip()
 
@@ -1376,7 +1363,7 @@ def assemble(body: str, nav: str, meta: dict[str, str], js_hash: str = "") -> st
 </main>
 </div>
 <footer class="foot">
-<p>Every figure is recomputed from scratch by the same public commands, on any machine:</p>
+<p>Every figure is recomputed by the same public commands:</p>
 <pre><code>pip install dynachaos
 dynachaos list
 dynachaos run all</code></pre>
