@@ -73,7 +73,12 @@ export const LIVE_STAIRCASE = Object.freeze({
  * fixed. The paper computes A = 0.3, n_transient 20000, n_plot 100000
  * (maps/delayed_logistic.py compute_attractors); the live figure plots at
  * most 4096 states, the wasm kernel's cap. D's range is the kernel's own
- * clamp [1.4, 3.5]; the default 1.90 is one of the published panels. `n`
+ * clamp [1.4, 3.5]; the default 1.90 is one of the published panels. The
+ * slider's own max is narrower: measured with this kernel at A = 0.3,
+ * n_transient 20000, the orbit is bounded through D = 2.815 and first
+ * escapes at D = 2.8155 (2026-10-08, step 0.0005), so 2.765 keeps the
+ * bounded side with 0.05 of margin and a hash value above it lands back
+ * on the max instead of painting a blank plot. `n`
  * is the plotted-state count: the control that trades cloud density for
  * response time. `domain` is the published figure's shared axis limits —
  * the union of both committed npz files padded by 5% — so the slider
@@ -85,7 +90,7 @@ export const LIVE_ATTRACTORS = Object.freeze({
   nPlot: 2048,
   domain: Object.freeze({ x0: -0.5642697119632384, x1: 0.9817445276044394, y0: -0.5642697119632384, y1: 0.9817445276044394 }),
   paramSpecs: Object.freeze([
-    Object.freeze({ name: "D", label: "map parameter D", min: 1.4, max: 3.5, step: 0.005, default: 1.9 }),
+    Object.freeze({ name: "D", label: "map parameter D", min: 1.4, max: 2.765, step: 0.005, default: 1.9 }),
     Object.freeze({ name: "n", label: "plotted states n", min: 256, max: 4096, step: 256, default: 2048 }),
   ]),
 });

@@ -81,6 +81,7 @@ const DEADLINE_SUM_MS =
   NARROW_WAIT_MS +
   FIRST_PAINT_MS +
   2 * (PAGE_READY_MS + FIGURE_MS + FIRST_PAINT_MS) +
+  2 * (PAGE_READY_MS + FIRST_PAINT_MS) +
   PAGE_READY_MS +
   FIGURE_MS +
   FIRST_PAINT_MS +
@@ -1140,6 +1141,40 @@ try {
     100,
   );
 
+  // The slider's top end is capped below the measured escape boundary, so
+  // even its maximum paints a bounded, finite cloud. A range input snaps
+  // out-of-range sets to the max, so value = max + 1 exercises the top
+  // without depending on the number.
+  const atTopBefore = await atStats();
+  const atTopSet = await ev(`(() => {
+    const r = ${A}.querySelector(".live-params input[type=range]");
+    r.value = String(Number(r.max) + 1);
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+    return r.value;
+  })()`);
+  const atTopPaint = await waitFor(
+    `!!${A}._live && ${A}._live.stats().generation > ${atTopBefore ? atTopBefore.generation : -1} && ${A}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  const atTop = await ev(`(() => {
+    const r = ${A}.querySelector(".live-params input[type=range]");
+    const tr = ${A}._live.trace();
+    return { D: ${A}._live.params().D, max: Number(r.max), painted: ${A}._live.stats().painted, finite: tr.x.length > 0 && tr.x.every(Number.isFinite) };
+  })()`);
+  check(
+    "at the slider's top the orbit is still bounded and finite",
+    Boolean(
+      atTopSet === String(atTop ? atTop.max : "") &&
+        atTopPaint &&
+        atTop &&
+        atTop.D === atTop.max &&
+        atTop.painted >= 1 &&
+        atTop.finite,
+    ),
+    JSON.stringify({ atTopSet, atTop }),
+  );
+
   // ---- torus-doubling attractors: the (X, Y) cloud with a map selector ----
   // The fourth live figure: one canvas serving map (I) and map (IV). The
   // select switches the map — and with it A, x0, the D slider's window and
@@ -1567,6 +1602,58 @@ try {
     JSON.stringify(sEnd),
   );
   await pullDebug();
+
+  // A shared link that still carries the old slider's D range: the hash
+  // parse clamps 3 to the max, the figure mounts live on the link, and the
+  // reader sees the bounded orbit there, its value in the controls and the
+  // title (read through textContent), not a blank plot.
+  await send("Page.navigate", {
+    url: `http://127.0.0.1:${httpPort}/index.html#fig:delayed_logistic_attractors.D=3`,
+  });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  const atClamp = await waitFor(
+    `!!${A} && !!${A}._live && ${A}._live.stats().painted >= 1`,
+    FIRST_PAINT_MS,
+    100,
+  );
+  const atClampState = await ev(`(() => {
+    const fig = ${A};
+    if (!fig || !fig._live) return null;
+    const r = fig.querySelector(".live-params input[type=range]");
+    const num = fig.querySelector(".live-params input[type=number]");
+    const h = fig.querySelector(".plot-title");
+    const tr = fig._live.trace();
+    return {
+      D: fig._live.params().D,
+      max: Number(r.max),
+      rangeValue: Number(r.value),
+      numValue: Number(num.value),
+      title: h ? h.textContent : "",
+      painted: fig._live.stats().painted,
+      finite: tr.x.length > 0 && tr.x.every(Number.isFinite),
+    };
+  })()`);
+  check(
+    "a shared link with D=3 clamps to the slider max and paints its orbit",
+    Boolean(
+      atClamp &&
+        atClampState &&
+        atClampState.D === atClampState.max &&
+        atClampState.rangeValue === atClampState.max &&
+        atClampState.numValue === atClampState.max &&
+        atClampState.title.includes("D = " + atClampState.max) &&
+        atClampState.painted >= 1 &&
+        atClampState.finite,
+    ),
+    JSON.stringify(atClampState),
+  );
+  // Page.navigate with only a fragment change stays in the document
+  // (Chrome's same-document rule), so after this check the page URL still
+  // carries no query — the guardrails' own hash navigation below would not
+  // reload either. Land back on ?debug=1 so the next navigation differs
+  // in the query and reloads for real.
+  await send("Page.navigate", { url: pageUrl });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
 
   // Guardrails. Each check navigates on its own so a hidden tab, a narrow
   // viewport, or CPU throttling cannot leak into the figure checks above

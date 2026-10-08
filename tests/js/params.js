@@ -8,7 +8,7 @@ import {
   snapToStep,
   writeParamsIntoHash,
 } from "../../site-src/live/params.js";
-import { createParamWiring, LIVE_MODULATED, LIVE_SPACETIME, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
+import { createParamWiring, LIVE_ATTRACTORS, LIVE_MODULATED, LIVE_SPACETIME, LIVE_STAIRCASE } from "../../site-src/live/live-figure.js";
 
 const SPECS = [
   { name: "D", min: 0, max: 0.5, step: 0.005, default: 0.25 },
@@ -67,6 +67,21 @@ test("parseHash clamps out-of-range values and skips junk", () => {
 test("the prefixed key wins over a bare key", () => {
   const parsed = parseHash("#D=0.1&fig:devils_staircase.D=0.4", SPECS, "fig:devils_staircase");
   assert.equal(parsed.D, 0.4);
+});
+
+test("an old shared link with D above the slider max clamps to it", () => {
+  // Links shared while the delayed-logistic slider ran to the kernel's 3.5
+  // still carry fig:delayed_logistic_attractors.D=3: the parse must clamp
+  // to the narrowed max so the link shows the bounded orbit at the max
+  // rather than an escaping NaN block on a blank plot.
+  const d = LIVE_ATTRACTORS.paramSpecs.find((s) => s.name === "D");
+  const parsed = parseHash(
+    "#fig:delayed_logistic_attractors.D=3&fig:delayed_logistic_attractors.n=512",
+    LIVE_ATTRACTORS.paramSpecs,
+    "fig:delayed_logistic_attractors",
+  );
+  assert.equal(parsed.D, d.max);
+  assert.equal(parsed.n, 512);
 });
 
 test("writeParamsIntoHash keeps the section id and replaces only this figure's tokens", () => {

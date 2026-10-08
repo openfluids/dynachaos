@@ -701,11 +701,13 @@ test("LIVE_ATTRACTORS is frozen, registered, and holds the paper's parameters", 
   assert.equal(LIVE_ATTRACTORS.A, 0.3);
   assert.equal(LIVE_ATTRACTORS.nTransient, 20000);
   const [d, n] = LIVE_ATTRACTORS.paramSpecs;
-  // The D slider's range is the wasm kernel's own clamp, so the control can
-  // never ask for a value the kernel would silently move.
+  // The kernel clamps D to [1.4, 3.5], but the orbit escapes to infinity
+  // past D = 2.8155 and a NaN block paints a blank plot. The slider's max
+  // is the measured boundary minus a 0.05 margin, snapped to the 0.005
+  // grid, so every value the control can ask for stays bounded.
   assert.deepEqual(
     { name: d.name, min: d.min, max: d.max, default: d.default },
-    { name: "D", min: 1.4, max: 3.5, default: 1.9 },
+    { name: "D", min: 1.4, max: 2.765, default: 1.9 },
   );
   // The iteration-count control is bounded by the kernel's 4096 cap.
   assert.equal(n.name, "n");
@@ -828,6 +830,47 @@ test("the attractor store's trace arrays keep their identity across paints", asy
   assert.equal(fig.store.trace.x, xs);
   assert.equal(fig.store.trace.y, ys);
   assert.deepEqual([...xs], [0.1, 0.3]);
+});
+
+test("every delayed-logistic slider value keeps a finite orbit", async () => {
+  // The kernel itself decides: for each D on the slider grid, the request
+  // the page would send must return 4096 fully finite states. A max pushed
+  // back past the escape boundary — where the kernel writes a NaN block —
+  // fails here before a reader ever sees the blank plot. The glue file is
+  // the same one the site serves, site/wasm/dynachaos_wasm.js, loaded the
+  // way live-figure.js's loader does under node.
+  const [spec] = LIVE_ATTRACTORS.paramSpecs;
+  let kernel = null;
+  try {
+    const glue = await import("../../site/wasm/dynachaos_wasm.js");
+    const { readFile } = await import("node:fs/promises");
+    const bytes = await readFile(new URL("../../site/wasm/dynachaos_wasm_bg.wasm", import.meta.url));
+    glue.initSync({ module: bytes });
+    kernel = glue.delayed_logistic_attractor_tile;
+  } catch {
+    kernel = null;
+  }
+  if (kernel) {
+    for (let k = 0, n = Math.round((spec.max - spec.min) / spec.step); k <= n; k++) {
+      const D = spec.min + k * spec.step;
+      const req = attractorRequest({ D, n: 4096 });
+      const tile = kernel(req.a, req.dMin, req.dMax, req.nD, req.nTransient, req.nPlot, req.state0);
+      const nPlot = Math.floor(tile[1]);
+      assert.ok(nPlot >= 1, `empty tile at D=${D}`);
+      for (let i = 0; i < nPlot; i++) {
+        assert.ok(
+          Number.isFinite(tile[4 + 2 * i]) && Number.isFinite(tile[4 + 2 * i + 1]),
+          `non-finite state at D=${D}`,
+        );
+      }
+    }
+    return;
+  }
+  // No build artifact under site/wasm: pin the measurement instead. The
+  // kernel's orbit first escapes at D = 2.8155 (2026-10-08, A = 0.3,
+  // n_transient 20000, step 0.0005), so the slider max must stay at least
+  // 0.05 below it; the e2e check at the max exercises the real kernel.
+  assert.ok(spec.max <= 2.8155 - 0.05, `slider max ${spec.max} reaches the escape boundary`);
 });
 
 test("LIVE_TORUS is frozen, registered, and holds the paper's parameters", () => {
