@@ -508,10 +508,15 @@ export function tilesToTrace(tiles, generation) {
 }
 
 /**
- * Refit the plot's y domain to the trace once per generation. The base
- * domain is [0, 1] so a reset always shows the full rotation-number range;
- * the first paint of a generation tightens it to what the curve actually
- * spans. Later paints of the same generation leave the user's view alone.
+ * Refit the plot's y domain to the trace as it refines. The base domain is
+ * [0, 1] so a reset always shows the full rotation-number range. While the
+ * reader has not moved the y range, each paint refits: the first tile is
+ * coarse and its min/max is not the curve's. A call that finds the y range
+ * away from the last fitted value (or the base, before the first fit) means
+ * the reader zoomed, panned or reset, so the fit latches off for good and
+ * leaves the view alone. The setDomain call is silent: an automatic fit is
+ * not a reader change and must not mark the figure modified or touch the
+ * URL.
  *
  * @param {object} deps
  * @param {object} deps.store
@@ -519,19 +524,30 @@ export function tilesToTrace(tiles, generation) {
  * @returns {() => void}
  */
 export function createLineYFit({ store, getPlot }) {
-  let fittedGen = -1;
+  let locked = false;
+  let fittedY = null;
   return function fitLineY() {
-    if (store.generation === fittedGen) return;
-    const xs = store.trace.y;
-    if (!xs.length) return;
-    fittedGen = store.generation;
-    const lo = Math.min(...xs);
-    const hi = Math.max(...xs);
-    const pad = (hi - lo) * 0.08 || 0.05;
+    if (locked) return;
+    const ys = store.trace.y;
+    if (!ys.length) return;
     const plot = getPlot();
     if (!plot) return;
     const dom = plot.getDomain();
-    plot.setDomain({ x0: dom.x0, x1: dom.x1, y0: lo - pad, y1: hi + pad });
+    const base = plot.getBase ? plot.getBase() : null;
+    const ref = fittedY || base;
+    if (ref && (dom.y0 !== ref.y0 || dom.y1 !== ref.y1)) {
+      // The reader moved the y range since the last fit (or the base view).
+      locked = true;
+      return;
+    }
+    const lo = Math.min(...ys);
+    const hi = Math.max(...ys);
+    const pad = (hi - lo) * 0.08 || 0.05;
+    const y0 = lo - pad;
+    const y1 = hi + pad;
+    if (dom.y0 === y0 && dom.y1 === y1) return;
+    fittedY = { y0, y1 };
+    plot.setDomain({ x0: dom.x0, x1: dom.x1, y0, y1 }, { silent: true });
   };
 }
 

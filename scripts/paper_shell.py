@@ -347,8 +347,10 @@ details.fig-code code.fig-snippet{font-family:var(--mono);font-size:0.72rem;line
 .tok-fn{color:var(--ink);font-weight:700;}
 .tok-mod{color:var(--ink);font-weight:700;}
 .plot-wrap{position:relative;padding:0.35rem;}
+/* text-transform would fold rho/eps/alpha into P/E/A, so app.js applies the
+   same caps to the title text one ASCII letter at a time (titleCaps). */
 .plot-title{margin:0 0 0.15rem;text-align:center;font-family:var(--mono);font-size:0.62rem;
-  letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-low);}
+  letter-spacing:0.1em;color:var(--ink-low);}
 canvas.plot{width:100%;display:block;touch-action:pan-y;}
 canvas.plot.live{touch-action:none;}
 .hint{margin:0;padding:0 0.8rem 0.6rem;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;color:var(--ink-low);}
@@ -947,6 +949,10 @@ const MOUNTED=[];
 // and a bare numeric compare against null silently coerces it to 0 instead
 // of skipping it.
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
+// Plot titles get their small-caps look here instead of CSS text-transform:
+// uppercasing ASCII a-z leaves rho/eps/alpha alone.
+function titleCaps(s){return s.replace(/[a-z]/g,c=>c.toUpperCase());}
+
 const LEGEND_ROWH=14;
 
 function Plot(canvas,panel,meta){
@@ -963,7 +969,7 @@ function Plot(canvas,panel,meta){
   resetBtn.type="button";resetBtn.className="plot-reset";resetBtn.hidden=true;
   resetBtn.textContent="reset view";
   wrap.appendChild(resetBtn);
-  let W=0,H=0,dom=null,base=null,drag=null,kx=null,dpr=1,legendLayout=null;
+  let W=0,H=0,dom=null,base=null,anchor=null,drag=null,kx=null,dpr=1,legendLayout=null;
   // Set by afterDomain() -- every real view change funnels through it -- so
   // the next arrow key reads the snapped position instead of stepping off it.
   let viewChanged=false;
@@ -985,7 +991,7 @@ function Plot(canvas,panel,meta){
     if(meta.onDomainChange)meta.onDomainChange();
     if(live&&live.onView)live.onView(dom);
   }
-  function resetDom(){kx=null;dom={...base};draw();afterDomain();}
+  function resetDom(){kx=null;dom={...base};anchor={...base};draw();afterDomain();}
   function applyDom(d){dom=d;draw();afterDomain();}
   resetBtn.addEventListener("click",resetDom);
   function syncResetBtn(){
@@ -1649,7 +1655,7 @@ function Plot(canvas,panel,meta){
     }
   });
 
-  base=extent();dom={...base};
+  base=extent();dom={...base};anchor={...base};
   const ro=new ResizeObserver(resize);ro.observe(canvas);resize();
   // destroy() lets the toggle-off path in mountInteractive fully retire this
   // instance: without disconnecting the observer here, an unmounted canvas
@@ -1660,17 +1666,29 @@ function Plot(canvas,panel,meta){
     // that came from a shared link rather than a live drag or keypress.
     getDomain:()=>({...dom}),
     getBase:()=>({...base}),
-    setDomain:d=>{const n={...base,...d};
+    // setDomain's silent option is for the automatic staircase y-fit: the
+    // view moves but no reader change happened, so onDomainChange does not
+    // fire (no modified badge, no ?fig= write) and live.onView is skipped
+    // for the same reason afterDomain skips it. The anchor folds the
+    // machine-moved keys into the unmodified reference so isModified()
+    // still sees the fit as stock while a reader change elsewhere stays
+    // flagged.
+    setDomain:(d,opts)=>{const n={...base,...d};
       // Same floor zoomAt applies: a degenerate span would make sx()/sy()
       // divide by zero and the readout show a non-finite value.
       n.x1=n.x0+Math.max(1e-9,n.x1-n.x0);
       n.y1=n.y0+Math.max(1e-9,n.y1-n.y0);
-      dom=n;draw();afterDomain();},
+      if(opts&&opts.silent){
+        for(const k of ["x0","x1","y0","y1"]) if(n[k]!==dom[k]) anchor[k]=n[k];
+        dom=n;viewChanged=true;draw();
+      }else{
+        dom=n;draw();afterDomain();
+      }},
     // rebase recomputes the base extent from live.base and resets the view
     // onto it: the CML figure's site-count control changes the field's
     // width, so the published domain itself moves, not just the view.
-    rebase:()=>{base=extent();dom={...base};draw();afterDomain();},
-    isModified:()=>!!dom&&!!base&&(dom.x0!==base.x0||dom.x1!==base.x1||dom.y0!==base.y0||dom.y1!==base.y1),
+    rebase:()=>{base=extent();dom={...base};anchor={...base};draw();afterDomain();},
+    isModified:()=>!!dom&&!!anchor&&(dom.x0!==anchor.x0||dom.x1!==anchor.x1||dom.y0!==anchor.y0||dom.y1!==anchor.y1),
     reset:resetDom};
 }
 
@@ -1737,7 +1755,7 @@ async function mountLive(fig){
     c.setAttribute("aria-label",capText+" — "+title);
     w.appendChild(c);body.appendChild(w);
     const h=document.createElement("p");h.className="plot-title";
-    h.textContent=title;w.insertBefore(h,c);
+    h.textContent=titleCaps(title);w.insertBefore(h,c);
     const store=liveFigure.createStore();
     const params=liveFigure.LIVE_ARNOLD;
     let pool=null,plot=null;
@@ -1876,7 +1894,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
     c.setAttribute("tabindex","0");
     c.setAttribute("aria-label",capText+" — "+title);
     const h=document.createElement("p");h.className="plot-title";
-    h.textContent=title;w.appendChild(h);
+    h.textContent=titleCaps(title);w.appendChild(h);
     w.appendChild(c);
     const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
     w.appendChild(ctrls);
@@ -1961,6 +1979,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
       rasterSample:(a)=>raster.sampleAt(store.tiles,store.generation,wiring.state.D,a),
       pointReady:()=>point.isReady(),
       setParams:(values)=>{wiring.setParams(values);},
+      trace:()=>({x:trace.x.slice(),y:trace.y.slice()}),
       setView(v){
         const cur=plot.getDomain();
         plot.setDomain({x0:v.x0!==undefined?v.x0:v.kMin,x1:v.x1!==undefined?v.x1:v.kMax,y0:cur.y0,y1:cur.y1});
@@ -1999,7 +2018,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
     c.setAttribute("tabindex","0");
     c.setAttribute("aria-label",capText+" — "+title);
     const h=document.createElement("p");h.className="plot-title";
-    h.textContent=title;w.appendChild(h);
+    h.textContent=titleCaps(title);w.appendChild(h);
     w.appendChild(c);
     const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
     w.appendChild(ctrls);
@@ -2020,7 +2039,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
       debounceMs:150,
       echo:(name,v)=>{
         const f=inputs[name];if(f){f.range.value=v;f.num.value=v;}
-        if(name==="D") h.textContent=title+" — D = "+v;
+        if(name==="D") h.textContent=titleCaps(title+" — D = "+v);
       },
       onTrace:(store,trace,req)=>{
         // panel.traces holds these arrays; replacing them would orphan the
@@ -2109,7 +2128,7 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
     note.textContent="the image below is the published figure — three panels at fixed D values; the cloud above is computed in your browser at the map and D you choose";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
-    const setTitle=()=>{h.textContent=cfg.maps[liveFigure.torusMapKind(tf.state.map)].title+" — D = "+tf.state.D;};
+    const setTitle=()=>{h.textContent=titleCaps(cfg.maps[liveFigure.torusMapKind(tf.state.map)].title+" — D = "+tf.state.D);};
     const setDBounds=(m)=>{
       const f=inputs.D;
       f.range.min=m.dMin;f.range.max=m.dMax;f.range.step=m.dStep;
@@ -2213,7 +2232,7 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
     c.setAttribute("tabindex","0");
     c.setAttribute("aria-label",capText+" — "+title);
     const h=document.createElement("p");h.className="plot-title";
-    const setTitle=()=>{h.textContent=title+" — \u03b5 = "+df.state.eps;};
+    const setTitle=()=>{h.textContent=titleCaps(title+" — \u03b5 = "+df.state.eps);};
     w.appendChild(h);
     w.appendChild(c);
     const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
@@ -2352,7 +2371,7 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
     note.textContent="the image below is the published figure — nine panels at fixed \u03b5 values; the field above is computed in your browser at the model, \u03b5 and site count you choose";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
-    const setTitle=()=>{h.textContent=cfg.models[liveFigure.cmlModelKind(cf.state.model)].title+" — \u03b5 = "+cf.state.eps;};
+    const setTitle=()=>{h.textContent=titleCaps(cfg.models[liveFigure.cmlModelKind(cf.state.model)].title+" — \u03b5 = "+cf.state.eps);};
     const setEpsBounds=(m)=>{
       const f=inputs.eps;
       f.range.min=m.epsMin;f.range.max=m.epsMax;
@@ -2522,7 +2541,7 @@ async function mountInteractive(fig, opts){
       w.appendChild(c);body.appendChild(w);
       if(spec.panels.length>1&&panel.title){
         const h=document.createElement("p");h.className="plot-title";
-        h.textContent=panel.title;w.insertBefore(h,c);
+        h.textContent=titleCaps(panel.title);w.insertBefore(h,c);
       }
       const p=Plot(c,panel,{
         kind:spec.kind,

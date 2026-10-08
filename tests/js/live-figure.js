@@ -12,6 +12,7 @@ import {
   attractorRequest,
   attractorTrace,
   createAttractorFigure,
+  createLineYFit,
   createModulatedFigure,
   createModulatedReadout,
   createPaintHandler,
@@ -458,6 +459,109 @@ test("the staircase view pushes (D, A range) and resets the store once", () => {
   view.applyD();
   assert.deepEqual(seen[1], { omegaMin: 0.4, omegaMax: 0.4, kMin: 0, kMax: 0.25 });
   assert.equal(store.generation, 3);
+});
+
+test("the staircase y-fit follows a wider tile inside one generation", () => {
+  const store = { generation: 1, trace: { x: [0, 0.1], y: [0.4, 0.6] } };
+  let dom = { x0: 0, x1: 0.25, y0: 0, y1: 1 };
+  const base = { ...dom };
+  const calls = [];
+  const fit = createLineYFit({
+    store,
+    getPlot: () => ({
+      getDomain: () => ({ ...dom }),
+      getBase: () => ({ ...base }),
+      setDomain: (d, opts) => {
+        calls.push({ d, opts });
+        dom = { ...dom, ...d };
+      },
+    }),
+  });
+  fit();
+  assert.equal(calls.length, 1);
+  assert.ok(dom.y0 > 0 && dom.y0 <= 0.4);
+  assert.ok(dom.y1 < 1 && dom.y1 >= 0.6);
+  // A finer tile widens the trace: the fit must move again, not freeze on
+  // the first coarse tile.
+  store.trace.x.push(0.05);
+  store.trace.y.push(0.1);
+  fit();
+  assert.equal(calls.length, 2);
+  assert.ok(dom.y0 <= 0.1);
+});
+
+test("the staircase y-fit leaves a reader-set domain alone", () => {
+  const store = { generation: 1, trace: { x: [0, 0.1], y: [0.4, 0.6] } };
+  let dom = { x0: 0, x1: 0.25, y0: 0, y1: 1 };
+  const base = { ...dom };
+  const calls = [];
+  const fit = createLineYFit({
+    store,
+    getPlot: () => ({
+      getDomain: () => ({ ...dom }),
+      getBase: () => ({ ...base }),
+      setDomain: (d, opts) => {
+        calls.push({ d, opts });
+        dom = { ...dom, ...d };
+      },
+    }),
+  });
+  fit();
+  assert.equal(calls.length, 1);
+  // The reader zooms the y range, then a wider tile lands: the view is the
+  // reader's now, so no more fitting — not even on a new generation.
+  dom = { ...dom, y0: 0.45, y1: 0.55 };
+  store.trace.y.push(0.1);
+  fit();
+  assert.equal(calls.length, 1);
+  store.generation = 2;
+  store.trace.y.push(0.9);
+  fit();
+  assert.equal(calls.length, 1);
+  // A reader zoom that lands before the first paint stops the first fit too.
+  const store2 = { generation: 1, trace: { x: [0, 0.1], y: [0.4, 0.6] } };
+  let dom2 = { x0: 0, x1: 0.25, y0: 0.2, y1: 0.7 };
+  const base2 = { x0: 0, x1: 0.25, y0: 0, y1: 1 };
+  const calls2 = [];
+  const fit2 = createLineYFit({
+    store: store2,
+    getPlot: () => ({
+      getDomain: () => ({ ...dom2 }),
+      getBase: () => ({ ...base2 }),
+      setDomain: (d, opts) => {
+        calls2.push({ d, opts });
+        dom2 = { ...dom2, ...d };
+      },
+    }),
+  });
+  fit2();
+  assert.equal(calls2.length, 0);
+});
+
+test("the staircase y-fit sets the domain silently, off the domain-change hook", () => {
+  const store = { generation: 1, trace: { x: [0, 0.1], y: [0.4, 0.6] } };
+  let dom = { x0: 0, x1: 0.25, y0: 0, y1: 1 };
+  const base = { ...dom };
+  const calls = [];
+  const fit = createLineYFit({
+    store,
+    getPlot: () => ({
+      getDomain: () => ({ ...dom }),
+      getBase: () => ({ ...base }),
+      setDomain: (d, opts) => {
+        calls.push({ d, opts });
+        dom = { ...dom, ...d };
+      },
+    }),
+  });
+  fit();
+  assert.equal(calls.length, 1);
+  // silent:true keeps the set off afterDomain, so figState.notify never
+  // fires and no ?fig= reaches the URL.
+  assert.equal(calls[0].opts && calls[0].opts.silent, true);
+  assert.equal(calls[0].d.x0, 0);
+  assert.equal(calls[0].d.x1, 0.25);
+  assert.ok(calls[0].d.y0 <= 0.4 && calls[0].d.y1 >= 0.6);
 });
 
 test("tilesToTrace folds 1-D tiles into a sorted polyline, finest level winning", () => {

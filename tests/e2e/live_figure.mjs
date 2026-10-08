@@ -83,6 +83,8 @@ const DEADLINE_SUM_MS =
   2 * (PAGE_READY_MS + FIGURE_MS + FIRST_PAINT_MS) +
   PAGE_READY_MS +
   FIGURE_MS +
+  FIRST_PAINT_MS +
+  REFINE_MS +
   KERNEL_PAINT_MS;
 const WATCHDOG_MS = DEADLINE_SUM_MS + 600_000;
 const WASM_RE = /dynachaos_wasm_bg\.wasm/;
@@ -1664,7 +1666,53 @@ try {
     JSON.stringify({ hash: await ev("location.hash"), search: await ev("location.search"), sample: quietLogs.slice(0, 2) }),
   );
 
-
+  // ---- staircase y-fit and the Greek plot titles ----
+  // A fresh navigation, since the flagship zooms above put ?fig= in
+  // location.search. On this load the only figure that mounts is the
+  // staircase, so the automatic y-fit is the only writer a clean URL can
+  // come from.
+  await send("Page.navigate", { url: pageUrl });
+  await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
+  await waitFor(`!!${S}`, FIGURE_MS);
+  await ev(`(${S}.querySelector(".act-interact").click(), true)`);
+  const gkPaint = await waitFor(`!!${S}._live && ${S}._live.stats().painted >= 1`, FIRST_PAINT_MS, 50);
+  check(
+    "the staircase title keeps its Greek letter and is not CSS-uppercased",
+    await ev(`(() => {
+      const h = ${S} && ${S}.querySelector(".plot-title");
+      if (!h) return false;
+      return h.textContent.includes("\\u03c1") && getComputedStyle(h).textTransform !== "uppercase";
+    })()`),
+    await ev(`(() => {
+      const h = ${S} && ${S}.querySelector(".plot-title");
+      return h ? JSON.stringify({ text: h.textContent, transform: getComputedStyle(h).textTransform }) : "no title";
+    })()`),
+  );
+  const gkRefined = await waitFor(`!!${S}._live && ${S}._live.stats().points > 64`, REFINE_MS, 150);
+  const gkDom = await ev(`(() => {
+    const p = ${S} && ${S}._plots && ${S}._plots[0];
+    const tr = ${S} && ${S}._live && ${S}._live.trace();
+    if (!p || !tr || !tr.y.length) return null;
+    const d = p.getDomain();
+    let lo = Infinity, hi = -Infinity;
+    for (const y of tr.y) { if (y < lo) lo = y; if (y > hi) hi = y; }
+    return { y0: d.y0, y1: d.y1, lo, hi, modified: p.isModified(), search: location.search, badge: !!(${S}.querySelector(".fig-badge:not([hidden])")) };
+  })()`);
+  check(
+    "after refinement the staircase domain covers the whole trace",
+    Boolean(gkPaint && gkRefined && gkDom && gkDom.y0 <= gkDom.lo && gkDom.y1 >= gkDom.hi),
+    JSON.stringify({ gkDom, stats: await ev(`${S} && ${S}._live ? ${S}._live.stats() : null`) }),
+  );
+  check(
+    "the automatic y-fit leaves the staircase unmodified and the URL clean",
+    Boolean(
+      gkDom &&
+        gkDom.modified === false &&
+        gkDom.badge === false &&
+        !new URLSearchParams(gkDom.search).has("fig"),
+    ),
+    JSON.stringify(gkDom),
+  );
 
 
   await send("Emulation.setEmulatedMedia", {
