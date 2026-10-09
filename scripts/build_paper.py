@@ -1161,9 +1161,9 @@ def fold_back_matter(body: str) -> tuple[str, int]:
     )
     marker = '<table id="tab:repro_index"'
     if marker not in body:
-        # Without the note a reader meets the programme-arc figure at the end of
-        # the page carrying the number 1, with no explanation -- fail the build
-        # rather than ship that silently.
+        # Without the note a reader has no way to know that a figure number
+        # cited from this page is the paper's own -- fail the build rather than
+        # ship that silently.
         raise SystemExit(
             "fold_back_matter: reproduction-index table not found; "
             "the figure-numbering note has nowhere to go"
