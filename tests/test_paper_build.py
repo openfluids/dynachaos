@@ -499,3 +499,14 @@ def test_minify_keeps_the_space_before_an_inline_tag_only():
     minify = _load().minify_html
     assert minify("</em> <span class=\"citation\">(x)</span>") == "</em> <span class=\"citation\">(x)</span>"
     assert minify("<li>a</li>\n<li>b</li>") == "<li>a</li><li>b</li>"
+
+
+def test_the_lede_comes_from_the_sitelede_macro_when_the_manuscript_defines_one():
+    """Check the page lede is the hand-written macro, not a sentence cut from the abstract."""
+    extract_meta = _load().extract_meta
+    tex = (
+        "\\newcommand{\\sitelede}{Kaneko\u2019s papers, recomputed.}\n"
+        "\\begin{abstract}\nOld work. We investigate whether it holds.\n\\end{abstract}\n"
+    )
+    assert extract_meta(tex)["lede"] == "Kaneko\u2019s papers, recomputed."
+    assert extract_meta(tex.split("\n", 1)[1])["lede"] == "We investigate whether it holds."

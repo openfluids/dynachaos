@@ -260,7 +260,8 @@ def extract_meta(tex: str) -> dict[str, str]:
 
     Cached to ``web/paper-meta.json`` at import so the build never needs the
     LaTeX source. Anything not found is left blank rather than invented --- an
-    author list is not something to guess at.
+    author list is not something to guess at. The lede is the manuscript's
+    ``\\sitelede`` macro when it defines one, else the abstract's claim.
     """
 
     def clean(raw: str) -> str:
@@ -295,7 +296,7 @@ def extract_meta(tex: str) -> dict[str, str]:
         "title": find(r"\\title\{(.+?)\}\s*\n"),
         "authors": find(r"\\author\{(.+?)\}"),
         "affil": find(r"\\affil[^{]*\{(.+?)\}"),
-        "lede": lede or abstract[:320],
+        "lede": find(r"\\newcommand\{\\sitelede\}\{(.+?)\}\s*\n") or lede or abstract[:320],
     }
 
 
