@@ -1223,7 +1223,7 @@ def hero(meta: dict[str, str], body: str) -> str:
 <canvas id="bifurcation" aria-hidden="true"></canvas>
 <canvas id="hero-motes" aria-hidden="true"></canvas>
 <div class="hero-inner">
-<p class="eyebrow">Interactive study &middot; built on dynachaos</p>
+<p class="eyebrow">Recomputed with dynachaos</p>
 <h1>{html.escape(meta["title"])}</h1>
 <p class="byline">{html.escape(meta["authors"])}<span class="affil">{html.escape(meta["affil"])}</span></p>
 <p class="lede">{html.escape(meta["lede"])}</p>
@@ -1233,7 +1233,7 @@ def hero(meta: dict[str, str], body: str) -> str:
 <span><span class="swatch" style="background:var(--locked)"></span><b>&lambda; &lt; 0</b> &nbsp;mode-locked</span>
 <span><span class="swatch" style="background:var(--torus)"></span><b>&lambda; &asymp; 0</b> &nbsp;quasiperiodic</span>
 <span><span class="swatch" style="background:var(--chaotic)"></span><b>&lambda; &gt; 0</b> &nbsp;chaotic</span>
-<span style="color:var(--ink-low)">above &mdash; logistic attractor, computed live in your browser</span>
+<span style="color:var(--ink-low)">above: logistic attractor, computed live in your browser</span>
 </div>
 </header>"""
 
@@ -1324,7 +1324,9 @@ def minify_js(js_code: str) -> str:
 def minify_html(html_str: str) -> str:
     tokens = re.split(r"(<pre\b[^>]*>.*?</pre>|<code\b[^>]*>.*?</code>)", html_str, flags=re.S)
     for i in range(0, len(tokens), 2):
-        tokens[i] = re.sub(r">\s+<", "> <", tokens[i])
+        # Keep one space before an inline tag: pandoc puts U+00A0 between an
+        # italic term and its citation span, and dropping it glues them.
+        tokens[i] = re.sub(r">\s+<(?!/?(?:a|span|em|strong|code|sub|sup|i|b)\b)", "><", tokens[i])
         tokens[i] = re.sub(r"\s+", " ", tokens[i])
     return "".join(tokens).strip()
 

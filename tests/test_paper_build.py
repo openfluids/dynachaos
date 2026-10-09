@@ -448,3 +448,54 @@ def test_the_assembled_page_numbers_everything_the_way_the_manuscript_does():
         head = page.index(f'id="{sec_id}"')
         heading = page[head : page.index("</h", head)]
         assert f'<span class="secno">{letter}</span>' in heading, sec_id
+
+
+def _body_text() -> str:
+    """Return the cached manuscript body with tags stripped and U+00A0 folded to a space."""
+    raw = (ROOT / "web" / "paper-body.html").read_text(encoding="utf-8")
+    raw = re.sub(r"<math.*?</math>", "[m]", raw, flags=re.S)
+    return re.sub(r"<[^>]+>", "", raw).replace(" ", " ")
+
+
+def test_the_body_has_no_em_dash_and_no_doubled_author_citation():
+    """Check the two prose defects of the referee pass stay fixed."""
+    raw = (ROOT / "web" / "paper-body.html").read_text(encoding="utf-8")
+    assert "—" not in raw
+    doubled = re.findall(
+        r"([A-Z][a-z]+)[  ]<span class=\"citation\"[^>]*>\(<a [^>]*>\1 \d{4}", raw
+    )
+    assert doubled == []
+
+
+def test_the_body_has_no_plain_text_section_reference():
+    """Check every 'Section N' is a cross-reference link the builder renumbers."""
+    raw = (ROOT / "web" / "paper-body.html").read_text(encoding="utf-8")
+    assert re.findall(r"Section[  ]\d+(?:\.\d+)?", raw) == []
+
+
+def test_the_body_has_no_banned_phrase():
+    """Check the phrases the referee pass removed do not come back."""
+    text = _body_text()
+    for phrase in (
+        "honest negative",
+        "honest non-power",
+        "striking",
+        "remarkable",
+        "ground-breaking",
+        "substrate",
+        "flagship",
+        "fundamental paradigm",
+        "In summary",
+        "Taken together",
+        "deep links",
+        "remains elusive",
+        "stated sharply",
+    ):
+        assert phrase not in text, phrase
+
+
+def test_minify_keeps_the_space_before_an_inline_tag_only():
+    """Check minification glues block tags but not an italic term to its citation."""
+    minify = _load().minify_html
+    assert minify("</em> <span class=\"citation\">(x)</span>") == "</em> <span class=\"citation\">(x)</span>"
+    assert minify("<li>a</li>\n<li>b</li>") == "<li>a</li><li>b</li>"
