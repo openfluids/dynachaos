@@ -1326,7 +1326,9 @@ def minify_html(html_str: str) -> str:
     for i in range(0, len(tokens), 2):
         # Keep one space before an inline tag: pandoc puts U+00A0 between an
         # italic term and its citation span, and dropping it glues them.
-        tokens[i] = re.sub(r">\s+<(?!/?(?:a|span|em|strong|code|sub|sup|i|b|math)\b)", "><", tokens[i])
+        tokens[i] = re.sub(
+            r">\s+<(?!/?(?:a|span|em|strong|code|sub|sup|i|b|math)\b)", "><", tokens[i]
+        )
         tokens[i] = re.sub(r"\s+", " ", tokens[i])
     return "".join(tokens).strip()
 

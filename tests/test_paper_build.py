@@ -213,10 +213,7 @@ def test_a_missing_reproduction_index_fails_the_build():
 
 
 def _hero_body() -> str:
-    return (
-        "<figure><figcaption>Circle map staircase.</figcaption></figure>"
-        "Diagnostic spotlight"
-    )
+    return "<figure><figcaption>Circle map staircase.</figcaption></figure>Diagnostic spotlight"
 
 
 def _hero_html(module) -> str:
@@ -461,9 +458,7 @@ def test_the_body_has_no_em_dash_and_no_doubled_author_citation():
     """Check the two prose defects of the referee pass stay fixed."""
     raw = (ROOT / "web" / "paper-body.html").read_text(encoding="utf-8")
     assert "—" not in raw
-    doubled = re.findall(
-        r"([A-Z][a-z]+)[  ]<span class=\"citation\"[^>]*>\(<a [^>]*>\1 \d{4}", raw
-    )
+    doubled = re.findall(r"([A-Z][a-z]+)[  ]<span class=\"citation\"[^>]*>\(<a [^>]*>\1 \d{4}", raw)
     assert doubled == []
 
 
@@ -497,7 +492,10 @@ def test_the_body_has_no_banned_phrase():
 def test_minify_keeps_the_space_before_an_inline_tag_only():
     """Check minification glues block tags but not an italic term to its citation."""
     minify = _load().minify_html
-    assert minify("</em> <span class=\"citation\">(x)</span>") == "</em> <span class=\"citation\">(x)</span>"
+    assert (
+        minify('</em> <span class="citation">(x)</span>')
+        == '</em> <span class="citation">(x)</span>'
+    )
     assert minify("<li>a</li>\n<li>b</li>") == "<li>a</li><li>b</li>"
     assert minify("</span> <math><mi>x</mi></math>") == "</span> <math><mi>x</mi></math>"
 
