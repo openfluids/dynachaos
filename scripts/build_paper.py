@@ -1157,8 +1157,7 @@ def fold_back_matter(body: str) -> tuple[str, int]:
     # this is where the numbering is most likely to be compared.
     note = (
         '<p class="fig-note">Figure numbers on this page are the manuscript\'s own, so a '
-        "number cited from here means the same figure in the paper. One figure sits out "
-        "of order: the programme arc is Figure 1 but is shown at the end of this page.</p>"
+        "number cited from here means the same figure in the paper.</p>"
     )
     marker = '<table id="tab:repro_index"'
     if marker not in body:
@@ -1327,7 +1326,7 @@ def minify_html(html_str: str) -> str:
     for i in range(0, len(tokens), 2):
         # Keep one space before an inline tag: pandoc puts U+00A0 between an
         # italic term and its citation span, and dropping it glues them.
-        tokens[i] = re.sub(r">\s+<(?!/?(?:a|span|em|strong|code|sub|sup|i|b)\b)", "><", tokens[i])
+        tokens[i] = re.sub(r">\s+<(?!/?(?:a|span|em|strong|code|sub|sup|i|b|math)\b)", "><", tokens[i])
         tokens[i] = re.sub(r"\s+", " ", tokens[i])
     return "".join(tokens).strip()
 

@@ -191,9 +191,9 @@ def test_unnumbered_display_equations_get_an_anchor_but_no_number():
 
 
 def test_the_numbering_note_lands_before_the_reproduction_index():
-    """The page shows the programme-arc figure at the end while it keeps the
-    number 1; shipping without the note would leave that unexplained, so its
-    absence must fail the build rather than pass silently."""
+    """The page keeps the manuscript's figure numbers; shipping without the note
+    that says so would leave a cited number unexplained, so its absence must
+    fail the build rather than pass silently."""
     module = _load()
     body = '<table id="tab:repro_index"><caption>Reproduction index.</caption></table>'
 
@@ -499,6 +499,7 @@ def test_minify_keeps_the_space_before_an_inline_tag_only():
     minify = _load().minify_html
     assert minify("</em> <span class=\"citation\">(x)</span>") == "</em> <span class=\"citation\">(x)</span>"
     assert minify("<li>a</li>\n<li>b</li>") == "<li>a</li><li>b</li>"
+    assert minify("</span> <math><mi>x</mi></math>") == "</span> <math><mi>x</mi></math>"
 
 
 def test_the_lede_comes_from_the_sitelede_macro_when_the_manuscript_defines_one():
