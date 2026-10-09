@@ -351,3 +351,15 @@ This project is licensed under Apache-2.0.
 Originally developed by Ricardo A S Frantz. See `LICENSE` and `NOTICE` for
 license terms and attribution notices. As of v0.3.0, this project is licensed
 under Apache-2.0; earlier (unpublished) versions were MIT.
+
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind. To the extent
+permitted by law, the authors and contributors are not liable for any damage, loss
+or claim arising from its use or misuse. You are responsible for how you use it and
+for following the laws and rules that apply to you. The full terms are in
+[LICENSE](LICENSE).
+
+This is research software. It has not been validated for engineering design,
+certification or safety-critical use. Check its results independently before you
+rely on them.
