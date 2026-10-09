@@ -1413,7 +1413,7 @@ function Plot(canvas,panel,meta){
             if(!finite(s.x[i])||!finite(s.y[i]))continue;
             const q=Math.abs(s.x[i]-xv);if(q<d){d=q;b=i;}
           }
-          lines.push((s.name||"y")+" = "+(d===Infinity?"—":fmt(s.y[b])));
+          lines.push((s.name||"y")+" = "+(d===Infinity?"n/a":fmt(s.y[b])));
         }
       }
     }
@@ -1752,7 +1752,7 @@ async function mountLive(fig){
     const c=document.createElement("canvas");c.className="plot live";
     c.setAttribute("role","img");
     c.setAttribute("tabindex","0");
-    c.setAttribute("aria-label",capText+" — "+title);
+    c.setAttribute("aria-label",capText+". "+title);
     w.appendChild(c);body.appendChild(w);
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=titleCaps(title);w.insertBefore(h,c);
@@ -1796,7 +1796,7 @@ async function mountLive(fig){
       workerUrl:new URL("live/tile-worker.js", document.baseURI),
       scheduler:liveFigure.createSchedulerOptions({levels:liveLevels,tileCells,params}),
       onCapacityLost(){
-        hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
+        hint.textContent="live figure incomplete: every worker failed. Reload the page to retry";
       },
       onPaint:liveFigure.createPaintHandler({store,raster,getPool:()=>pool,getPlot:()=>plot})
     });
@@ -1892,7 +1892,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
     const c=document.createElement("canvas");c.className="plot live";
     c.setAttribute("role","img");
     c.setAttribute("tabindex","0");
-    c.setAttribute("aria-label",capText+" — "+title);
+    c.setAttribute("aria-label",capText+". "+title);
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=titleCaps(title);w.appendChild(h);
     w.appendChild(c);
@@ -1903,7 +1903,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
     w.appendChild(hint);
     body.insertBefore(w,body.firstChild);
     const note=document.createElement("p");note.className="hint";
-    note.textContent="the image below is the published figure — its lower panel (Lyapunov exponent) is not live; only the \u03c1(A) curve above is computed in your browser";
+    note.textContent="the image below is the published figure; its lower panel (Lyapunov exponent) is not live; only the \u03c1(A) curve above is computed in your browser";
     body.insertBefore(note,w.nextSibling);
     const store=liveFigure.createStore(cfg);
     let pool=null,plot=null;
@@ -1957,7 +1957,7 @@ async function mountStaircase(fig,body,{poolMod,raster,point,liveFigure,paramsMo
       workerUrl:new URL("live/tile-worker.js", document.baseURI),
       scheduler:liveFigure.createSchedulerOptions({levels:5,tileCells,params:cfg,lockOmega:true}),
       onCapacityLost(){
-        hint.textContent="live figure incomplete: every worker failed — reload the page to retry";
+        hint.textContent="live figure incomplete: every worker failed. Reload the page to retry";
       },
       onPaint:liveFigure.createPaintHandler({store,raster,getPool:()=>pool,getPlot:()=>plot,onStore:(s)=>{
         // Fold the new tile into the polyline in place: panel.traces[0]
@@ -2016,7 +2016,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
     const c=document.createElement("canvas");c.className="plot live";
     c.setAttribute("role","img");
     c.setAttribute("tabindex","0");
-    c.setAttribute("aria-label",capText+" — "+title);
+    c.setAttribute("aria-label",capText+". "+title);
     const h=document.createElement("p");h.className="plot-title";
     h.textContent=titleCaps(title);w.appendChild(h);
     w.appendChild(c);
@@ -2027,7 +2027,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
     w.appendChild(hint);
     body.insertBefore(w,body.firstChild);
     const note=document.createElement("p");note.className="hint";
-    note.textContent="the image below is the published figure — twelve panels at fixed D values; the cloud above is computed in your browser at the D you choose";
+    note.textContent="the image below is the published figure; twelve panels at fixed D values; the cloud above is computed in your browser at the D you choose";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
     const writeHash=()=>{
@@ -2039,7 +2039,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
       debounceMs:150,
       echo:(name,v)=>{
         const f=inputs[name];if(f){f.range.value=v;f.num.value=v;}
-        if(name==="D") h.textContent=titleCaps(title+" — D = "+v);
+        if(name==="D") h.textContent=titleCaps(title+", D = "+v);
       },
       onTrace:(store,trace,req)=>{
         // panel.traces holds these arrays; replacing them would orphan the
@@ -2051,7 +2051,7 @@ async function mountAttractors(fig,body,{liveFigure,paramsMod,capText}){
         if(plot) plot.redraw();
       },
       onError:()=>{
-        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+        hint.textContent="live figure failed: the wasm kernel did not answer. Reload the page to retry";
       },
       writeHash
     });
@@ -2125,10 +2125,10 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
     w.appendChild(hint);
     body.insertBefore(w,body.firstChild);
     const note=document.createElement("p");note.className="hint";
-    note.textContent="the image below is the published figure — three panels at fixed D values; the cloud above is computed in your browser at the map and D you choose";
+    note.textContent="the image below is the published figure; three panels at fixed D values; the cloud above is computed in your browser at the map and D you choose";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
-    const setTitle=()=>{h.textContent=titleCaps(cfg.maps[liveFigure.torusMapKind(tf.state.map)].title+" — D = "+tf.state.D);};
+    const setTitle=()=>{h.textContent=titleCaps(cfg.maps[liveFigure.torusMapKind(tf.state.map)].title+", D = "+tf.state.D);};
     const setDBounds=(m)=>{
       const f=inputs.D;
       f.range.min=m.dMin;f.range.max=m.dMax;f.range.step=m.dStep;
@@ -2137,7 +2137,7 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
     const applyMap=(m)=>{
       inputs.map.select.value=String(m.kind);
       setDBounds(m);
-      c.setAttribute("aria-label",capText+" — "+m.title);
+      c.setAttribute("aria-label",capText+". "+m.title);
     };
     const writeHash=()=>{
       const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,tf.state);
@@ -2162,7 +2162,7 @@ async function mountTorus(fig,body,{liveFigure,paramsMod,capText}){
         if(plot) plot.redraw();
       },
       onError:()=>{
-        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+        hint.textContent="live figure failed: the wasm kernel did not answer. Reload the page to retry";
       },
       writeHash
     });
@@ -2230,9 +2230,9 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
     const c=document.createElement("canvas");c.className="plot live";
     c.setAttribute("role","img");
     c.setAttribute("tabindex","0");
-    c.setAttribute("aria-label",capText+" — "+title);
+    c.setAttribute("aria-label",capText+". "+title);
     const h=document.createElement("p");h.className="plot-title";
-    const setTitle=()=>{h.textContent=titleCaps(title+" — \u03b5 = "+df.state.eps);};
+    const setTitle=()=>{h.textContent=titleCaps(title+", \u03b5 = "+df.state.eps);};
     w.appendChild(h);
     w.appendChild(c);
     const {ctrls,inputs}=buildParamControls(cfg.paramSpecs);
@@ -2242,7 +2242,7 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
     w.appendChild(hint);
     body.insertBefore(w,body.firstChild);
     const note=document.createElement("p");note.className="hint";
-    note.textContent="the image below is the published figure — the curves above are computed in your browser at the \u03b5 and D window you choose; the two preset buttons reproduce the zoom panels' windows";
+    note.textContent="the image below is the published figure; the curves above are computed in your browser at the \u03b5 and D window you choose; the two preset buttons reproduce the zoom panels' windows";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
     const writeHash=()=>{
@@ -2261,7 +2261,7 @@ async function mountDoubleStaircase(fig,body,{liveFigure,paramsMod,capText}){
         if(plot) plot.redraw();
       },
       onError:()=>{
-        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+        hint.textContent="live figure failed: the wasm kernel did not answer. Reload the page to retry";
       },
       writeHash,
       getPlot:()=>plot
@@ -2352,7 +2352,7 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
     const c=document.createElement("canvas");c.className="plot live";
     c.setAttribute("role","img");
     c.setAttribute("tabindex","0");
-    c.setAttribute("aria-label",capText+" — "+title);
+    c.setAttribute("aria-label",capText+". "+title);
     const h=document.createElement("p");h.className="plot-title";
     w.appendChild(h);
     w.appendChild(c);
@@ -2368,10 +2368,10 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
     w.appendChild(hint);
     body.insertBefore(w,body.firstChild);
     const note=document.createElement("p");note.className="hint";
-    note.textContent="the image below is the published figure — nine panels at fixed \u03b5 values; the field above is computed in your browser at the model, \u03b5 and site count you choose";
+    note.textContent="the image below is the published figure; nine panels at fixed \u03b5 values; the field above is computed in your browser at the model, \u03b5 and site count you choose";
     body.insertBefore(note,w.nextSibling);
     let plot=null;
-    const setTitle=()=>{h.textContent=titleCaps(cfg.models[liveFigure.cmlModelKind(cf.state.model)].title+" — \u03b5 = "+cf.state.eps);};
+    const setTitle=()=>{h.textContent=titleCaps(cfg.models[liveFigure.cmlModelKind(cf.state.model)].title+", \u03b5 = "+cf.state.eps);};
     const setEpsBounds=(m)=>{
       const f=inputs.eps;
       f.range.min=m.epsMin;f.range.max=m.epsMax;
@@ -2380,7 +2380,7 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
     const applyModel=(m)=>{
       inputs.model.select.value=String(m.kind);
       setEpsBounds(m);
-      c.setAttribute("aria-label",capText+" — "+m.title);
+      c.setAttribute("aria-label",capText+". "+m.title);
     };
     const writeHash=()=>{
       const frag=paramsMod.writeParamsIntoHash(location.hash,fig.id,cf.state);
@@ -2406,7 +2406,7 @@ async function mountSpacetime(fig,body,{liveFigure,paramsMod,raster,capText}){
         if(plot) plot.redraw();
       },
       onError:()=>{
-        hint.textContent="live figure failed: the wasm kernel did not answer — reload the page to retry";
+        hint.textContent="live figure failed: the wasm kernel did not answer. Reload the page to retry";
       },
       writeHash
     });
@@ -2537,7 +2537,7 @@ async function mountInteractive(fig, opts){
       const c=document.createElement("canvas");c.className="plot";
       c.setAttribute("role","img");
       c.setAttribute("tabindex","0");
-      c.setAttribute("aria-label",panel.title?capText+" — "+panel.title:capText);
+      c.setAttribute("aria-label",panel.title?capText+". "+panel.title:capText);
       w.appendChild(c);body.appendChild(w);
       if(spec.panels.length>1&&panel.title){
         const h=document.createElement("p");h.className="plot-title";
@@ -2561,7 +2561,7 @@ async function mountInteractive(fig, opts){
     btn.textContent="retry";
     const msg=document.createElement("span");
     msg.className="fetch-err";
-    msg.textContent="couldn't load the figure data — tap retry";
+    msg.textContent="couldn't load the figure data. Tap retry";
     fig.querySelector(".fig-head").appendChild(msg);
   }finally{btn.disabled=false;}
 }
