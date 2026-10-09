@@ -1688,7 +1688,7 @@ try {
   check(
     "a narrow viewport keeps the PNG and does not go live by itself",
     Boolean(held && narrowShown && narrowState && !narrowState.live && narrowState.state !== "live"),
-    JSON.stringify(narrowState),
+    JSON.stringify({ ...narrowState, held: Boolean(held), imgShown: narrowShown }),
   );
   await ev(`(${S}.querySelector(".act-interact").click(), true)`);
   const narrowAsked = await waitFor(
