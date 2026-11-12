@@ -3151,7 +3151,20 @@ try {
     });
     await waitFor("document.readyState === 'complete'", PAGE_READY_MS);
     await sleep(150);
-    await ev(`window.scrollTo({top: ${targetScroll}, behavior: "instant"})`);
+    // A reader scrolls with the wheel, a touch, a key or the scrollbar, and the
+    // page cancels its realignment on each of those. window.scrollTo sends no
+    // input event, so the page cannot tell it from its own layout correction
+    // and rightly realigns after the content-visibility sections re-measure.
+    // Send a real wheel event to the page through the protocol instead, in the
+    // left margin so that no live canvas takes it for a zoom.
+    const yBefore = await ev("window.scrollY");
+    await send("Input.dispatchMouseEvent", {
+      type: "mouseWheel",
+      x: 10,
+      y: 450,
+      deltaX: 0,
+      deltaY: targetScroll - yBefore,
+    });
     await sleep(350);
     const y05 = await ev("window.scrollY");
     await sleep(1500);
