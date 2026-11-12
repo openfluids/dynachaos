@@ -56,7 +56,12 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
           enable-cache: true
-      - run: uv sync --all-extras
+      # Pin the interpreter. Without it uv takes the newest system Python:
+      # Homebrew's 3.15 on macos-latest, which this package does not support
+      # and for which scipy ships no wheel, so uv builds scipy from source and
+      # fails on the missing Fortran compiler. 3.12 is what the other two
+      # runners already select.
+      - run: uv sync --all-extras --python 3.12
       - name: Run the core crate's own tests
         # The Python tests reach the core only through the extension. Tests
         # such as the FFT check against direct sums live in the crate itself
@@ -178,6 +183,12 @@ jobs:
         # sees the site readers get: a figure with chart JSON shows the chart,
         # not the PNG, when it is not live.
         run: DYNACHAOS_NO_RUST=1 uv run --extra viz python scripts/export_figure_data.py
+      - name: Build the figure gallery
+        # Writes thumbs/, full/ and gallery.html. The paper page links to those
+        # images and to the gallery; without this step every figure image is a
+        # 404 and the gallery checks find no gallery. It runs before the paper
+        # build because the paper picks a thumbnail when one exists.
+        run: DYNACHAOS_NO_RUST=1 uv run --extra viz python scripts/build_gallery.py
       - name: Build the paper page
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
@@ -208,6 +219,12 @@ jobs:
         # sees the site readers get: a figure with chart JSON shows the chart,
         # not the PNG, when it is not live.
         run: DYNACHAOS_NO_RUST=1 uv run --extra viz python scripts/export_figure_data.py
+      - name: Build the figure gallery
+        # Writes thumbs/, full/ and gallery.html. The paper page links to those
+        # images and to the gallery; without this step every figure image is a
+        # 404 and the gallery checks find no gallery. It runs before the paper
+        # build because the paper picks a thumbnail when one exists.
+        run: DYNACHAOS_NO_RUST=1 uv run --extra viz python scripts/build_gallery.py
       - name: Build the paper page
         run: uv run python scripts/build_paper.py
       - name: Run the node unit tests
