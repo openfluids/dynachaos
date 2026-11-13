@@ -173,7 +173,7 @@ test("liveTileColorKey misses on a replaced record and hits an unchanged one", (
 // and run it against the definition it replaced: linear interpolation
 // between the colour stops, rounded to the nearest integer. Every comparison
 // is exact (tolerance 0): the channels are integers.
-function pageRamp(cmap) {
+function pageRamp(cmap, zmin = 0, zmax = 1, css = () => "#000000") {
   const text = readFileSync(new URL("../../scripts/paper_shell.py", import.meta.url), "utf8");
   const start = text.indexOf("const hex=c=>");
   const marker = text.indexOf("function rampRGB(t)", start);
@@ -186,7 +186,7 @@ function pageRamp(cmap) {
     "css",
     `${body}\nreturn { rampRGB, rampInto, round8, STOPS };`,
   );
-  return make({ cmap }, 0, 1, () => "#000000");
+  return make({ cmap }, zmin, zmax, css);
 }
 
 function referenceRamp(stops, t) {
@@ -250,4 +250,25 @@ test("the page's channel rounding equals Math.round on every non-negative value 
     }
   }
   for (let n = 0; n <= 8; n++) assert.equal(round8(nudge(0, n)), 0);
+});
+
+test("the page's signed ramp interpolates between the three theme colours", () => {
+  // The signed map reads its stops from the theme at every call; stub three
+  // distinct colours and check the ends, the middle and both half-way points.
+  const theme = { "--locked": "#102030", "--torus": "#405060", "--chaotic": "#708090" };
+  const stops = [
+    [0x10, 0x20, 0x30],
+    [0x40, 0x50, 0x60],
+    [0x70, 0x80, 0x90],
+  ];
+  const { rampRGB, rampInto } = pageRamp("signed", -1, 1, (name) => theme[name]);
+  assert.deepEqual(rampRGB(0), stops[0]);
+  assert.deepEqual(rampRGB(0.5), stops[1]);
+  assert.deepEqual(rampRGB(1), stops[2]);
+  for (const t of [0.25, 0.75, 0.1, 0.9, 0.3333]) {
+    assert.deepEqual(rampRGB(t), referenceRamp(stops, t), `t = ${t}`);
+  }
+  const buf = new Uint8ClampedArray(9).fill(7);
+  rampInto(0.25, buf, 3);
+  assert.deepEqual(Array.from(buf), [7, 7, 7, ...referenceRamp(stops, 0.25), 7, 7, 7]);
 });
