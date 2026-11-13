@@ -1161,17 +1161,25 @@ function Plot(canvas,panel,meta){
                [254,207,146],[252,253,191]];
   const STOPS=(panel.cmap==="magma")?MAGMA:VIRIDIS;
   const signed=(panel.cmap||"viridis")==="signed"&&zmin<0&&zmax>0;
-  function lerp3(a,b,f){return [0,1,2].map(j=>Math.round(a[j]+(b[j]-a[j])*f));}
-  function rampRGB(t){
+  // lerp3 writes into out[o..o+2] and allocates nothing: a live heatmap
+  // colours up to 10^5 cells per repaint on the main thread.
+  function lerp3(a,b,f,out,o){
+    out[o]=Math.round(a[0]+(b[0]-a[0])*f);
+    out[o+1]=Math.round(a[1]+(b[1]-a[1])*f);
+    out[o+2]=Math.round(a[2]+(b[2]-a[2])*f);
+  }
+  function rampInto(t,out,o){
     t=Math.max(0,Math.min(1,t));
     if(signed){
       const stops=[hex(css("--locked")),hex(css("--torus")),hex(css("--chaotic"))];
       const k=t*2,i=Math.min(1,Math.floor(k));
-      return lerp3(stops[i],stops[i+1],k-i);
+      lerp3(stops[i],stops[i+1],k-i,out,o);
+      return;
     }
     const k=t*(STOPS.length-1),i=Math.min(STOPS.length-2,Math.floor(k));
-    return lerp3(STOPS[i],STOPS[i+1],k-i);
+    lerp3(STOPS[i],STOPS[i+1],k-i,out,o);
   }
+  function rampRGB(t){const c=[0,0,0];rampInto(t,c,0);return c;}
   // The colour limits: the panel's own extent for a static heatmap, or the
   // live figure's current window limits (the CML field's 1st/99th
   // percentiles, recomputed each publish). draw() refreshes zlo/zhi so a
@@ -1336,8 +1344,7 @@ function Plot(canvas,panel,meta){
             const v=data[4+iy*nOmega+ix];
             const p=(dstRow*nOmega+ix)*4;
             if(v===null||Number.isNaN(v)){pix[p+3]=0;continue;}
-            const c=rampRGB(znorm(v));
-            pix[p]=c[0];pix[p+1]=c[1];pix[p+2]=c[2];pix[p+3]=255;
+            rampInto(znorm(v),pix,p);pix[p+3]=255;
           }
         }
         sctx.putImageData(img,0,0);

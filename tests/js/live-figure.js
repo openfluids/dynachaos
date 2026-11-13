@@ -1450,6 +1450,54 @@ test("cmlColorLimits are the shown field's 1st and 99th percentiles", () => {
   assert.deepEqual(cmlColorLimits([]), [0, 1]);
 });
 
+test("cmlColorLimits equal the sorted-copy percentiles and leave the input alone", () => {
+  // The limits are chosen by selection, not by sorting the window. Compare
+  // with a full sort for sizes around the rank boundaries, for sorted,
+  // reversed, repeated and constant fields, and for a plain array.
+  const reference = (values) => {
+    const sorted = Float64Array.from(values).filter(Number.isFinite).sort();
+    if (!sorted.length) return [0, 1];
+    const at = (p) => {
+      const h = (p / 100) * (sorted.length - 1);
+      const lo = Math.floor(h);
+      const hi = Math.min(sorted.length - 1, lo + 1);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (h - lo);
+    };
+    let vmin = at(1);
+    let vmax = at(99);
+    if (vmax - vmin < 1e-12) {
+      vmin -= 0.5;
+      vmax += 0.5;
+    }
+    return [vmin, vmax];
+  };
+  let seed = 12345;
+  const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  for (const n of [1, 2, 3, 5, 50, 99, 100, 101, 200, 1000, 20000]) {
+    const fields = {
+      uniform: Float64Array.from({ length: n }, rand),
+      sorted: Float64Array.from({ length: n }, (_, i) => i / n),
+      reversed: Float64Array.from({ length: n }, (_, i) => (n - i) / n),
+      repeated: Float64Array.from({ length: n }, () => Math.floor(rand() * 3) / 3),
+      constant: new Float64Array(n).fill(0.4),
+      plain: Array.from({ length: n }, rand),
+    };
+    for (const [name, values] of Object.entries(fields)) {
+      const before = Array.from(values);
+      assert.deepEqual(cmlColorLimits(values), reference(values), `${name}, n = ${n}`);
+      assert.deepEqual(Array.from(values), before, `${name}, n = ${n}: input unchanged`);
+    }
+  }
+});
+
+test("cmlColorLimits skip every non-finite value", () => {
+  const values = Float64Array.from([0.3, NaN, 0.1, Infinity, -Infinity, 0.9, 0.5, NaN, 0.2, 0.7, 0.4]);
+  const finite = Float64Array.from([0.3, 0.1, 0.9, 0.5, 0.2, 0.7, 0.4]);
+  assert.deepEqual(cmlColorLimits(values), cmlColorLimits(finite));
+  assert.deepEqual(cmlColorLimits(new Float64Array([NaN, Infinity])), [0, 1]);
+  assert.deepEqual(cmlColorLimits([0.2, null, 0.8, NaN, 0.5]), cmlColorLimits([0.2, 0.8, 0.5]));
+});
+
 test("the spacetime figure snaps eps to its decimal literal", () => {
   // A range input's stepped value is a double like 0.07000000000000001;
   // the kernel must see 0.07 exactly — a one-ulp eps change moves a
