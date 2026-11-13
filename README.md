@@ -349,7 +349,7 @@ If you use dynachaos in published work, please cite the software:
 
 This project is licensed under Apache-2.0.
 
-Originally developed by Ricardo A S Frantz. See `LICENSE` and `NOTICE` for
+Originally developed by Ricardo Frantz. See `LICENSE` and `NOTICE` for
 license terms and attribution notices. As of v0.3.0, this project is licensed
 under Apache-2.0; earlier (unpublished) versions were MIT.
 
