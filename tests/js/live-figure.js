@@ -1453,7 +1453,9 @@ test("cmlColorLimits are the shown field's 1st and 99th percentiles", () => {
 test("cmlColorLimits equal the sorted-copy percentiles and leave the input alone", () => {
   // The limits are chosen by selection, not by sorting the window. Compare
   // with a full sort for sizes around the rank boundaries, for sorted,
-  // reversed, repeated and constant fields, and for a plain array.
+  // reversed, repeated and constant fields, and for a plain array. The
+  // tolerance is 0: both sides read the same order statistics and combine
+  // them with the same formula, so the limits agree to the last bit.
   const reference = (values) => {
     const sorted = Float64Array.from(values).filter(Number.isFinite).sort();
     if (!sorted.length) return [0, 1];

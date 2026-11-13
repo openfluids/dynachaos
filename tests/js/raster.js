@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   HEADER,
   liveTileColorKey,
@@ -166,3 +167,87 @@ test("liveTileColorKey misses on a replaced record and hits an unchanged one", (
 
 // The onPaint paint-sequence assertions moved to tests/js/live-figure.js,
 // which imports the handler from site-src/live/live-figure.js.
+
+// The page's colour ramp is code inside the inline script of
+// scripts/paper_shell.py, which no module imports. Cut it out of the source
+// and run it against the definition it replaced: linear interpolation
+// between the colour stops, rounded to the nearest integer. Every comparison
+// is exact (tolerance 0): the channels are integers.
+function pageRamp(cmap) {
+  const text = readFileSync(new URL("../../scripts/paper_shell.py", import.meta.url), "utf8");
+  const start = text.indexOf("const hex=c=>");
+  const marker = text.indexOf("function rampRGB(t)", start);
+  assert.ok(start >= 0 && marker > start, "the ramp code moved in paper_shell.py: update this test");
+  const body = text.slice(start, text.indexOf("\n", marker));
+  const make = new Function(
+    "panel",
+    "zmin",
+    "zmax",
+    "css",
+    `${body}\nreturn { rampRGB, rampInto, round8, STOPS };`,
+  );
+  return make({ cmap }, 0, 1, () => "#000000");
+}
+
+function referenceRamp(stops, t) {
+  const c = Math.max(0, Math.min(1, t));
+  const k = c * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(k));
+  return [0, 1, 2].map((j) => Math.round(stops[i][j] + (stops[i + 1][j] - stops[i][j]) * (k - i)));
+}
+
+for (const cmap of ["viridis", "magma"]) {
+  test(`the page's ${cmap} ramp hits every colour stop and clamps outside [0, 1]`, () => {
+    const { rampRGB, STOPS } = pageRamp(cmap);
+    STOPS.forEach((stop, i) => {
+      assert.deepEqual(rampRGB(i / (STOPS.length - 1)), stop, `stop ${i}`);
+    });
+    assert.deepEqual(rampRGB(-0.5), STOPS[0]);
+    assert.deepEqual(rampRGB(1.5), STOPS[STOPS.length - 1]);
+  });
+
+  test(`the page's ${cmap} ramp equals rounded linear interpolation between the stops`, () => {
+    const { rampRGB, STOPS } = pageRamp(cmap);
+    const n = STOPS.length - 1;
+    const ts = [];
+    for (let i = 0; i <= 4000; i++) ts.push(i / 4000);
+    // The stop boundaries, a few ulps either side.
+    for (let i = 0; i <= n; i++) for (const d of [-3e-16, -1e-16, 0, 1e-16, 3e-16]) ts.push(i / n + d);
+    for (const t of ts) assert.deepEqual(rampRGB(t), referenceRamp(STOPS, t), `t = ${t}`);
+  });
+
+  test(`the page's ${cmap} ramp writes its three channels at the given offset only`, () => {
+    const { rampInto, rampRGB } = pageRamp(cmap);
+    for (const t of [0, 0.25, 0.5, 0.999, 1]) {
+      const buf = new Uint8ClampedArray(12).fill(7);
+      rampInto(t, buf, 4);
+      assert.deepEqual(Array.from(buf.subarray(4, 7)), rampRGB(t), `t = ${t}`);
+      assert.deepEqual(Array.from(buf.subarray(0, 4)), [7, 7, 7, 7]);
+      assert.deepEqual(Array.from(buf.subarray(7)), [7, 7, 7, 7, 7]);
+    }
+  });
+}
+
+test("the page's channel rounding equals Math.round on every non-negative value tried", () => {
+  // floor(x + 0.5) is wrong for one double, 0.5 - 2^-54, so the page tests
+  // x < 0.5 first. Try that value and the doubles around every integer and
+  // half-integer from 0 to 256.
+  const { round8 } = pageRamp("magma");
+  const f64 = new Float64Array(1);
+  const u64 = new BigUint64Array(f64.buffer);
+  const nudge = (x, n) => {
+    f64[0] = x;
+    u64[0] += BigInt(n);
+    return f64[0];
+  };
+  assert.equal(round8(0.49999999999999994), 0);
+  for (let h = 1; h <= 256; h++) {
+    for (const base of [h - 0.5, h]) {
+      for (let n = -8; n <= 8; n++) {
+        const x = nudge(base, n);
+        assert.equal(round8(x), Math.round(x), `x = ${x}`);
+      }
+    }
+  }
+  for (let n = 0; n <= 8; n++) assert.equal(round8(nudge(0, n)), 0);
+});

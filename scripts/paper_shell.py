@@ -1161,12 +1161,17 @@ function Plot(canvas,panel,meta){
                [254,207,146],[252,253,191]];
   const STOPS=(panel.cmap==="magma")?MAGMA:VIRIDIS;
   const signed=(panel.cmap||"viridis")==="signed"&&zmin<0&&zmax>0;
-  // lerp3 writes into out[o..o+2] and allocates nothing: a live heatmap
-  // colours up to 10^5 cells per repaint on the main thread.
+  // Math.round(x) for x >= 0, three times faster. floor(x+0.5) differs from
+  // it only at x = 0.5-2^-54, where x+0.5 rounds up to 1, so x < 0.5 is
+  // answered first. A live heatmap colours up to 10^5 cells per repaint on
+  // the main thread.
+  const round8=x=>x<0.5?0:Math.floor(x+0.5);
+  // lerp3 writes into out[o..o+2] and allocates nothing. The channel values
+  // lie between those of a and b, so they are never negative.
   function lerp3(a,b,f,out,o){
-    out[o]=Math.round(a[0]+(b[0]-a[0])*f);
-    out[o+1]=Math.round(a[1]+(b[1]-a[1])*f);
-    out[o+2]=Math.round(a[2]+(b[2]-a[2])*f);
+    out[o]=round8(a[0]+(b[0]-a[0])*f);
+    out[o+1]=round8(a[1]+(b[1]-a[1])*f);
+    out[o+2]=round8(a[2]+(b[2]-a[2])*f);
   }
   function rampInto(t,out,o){
     t=Math.max(0,Math.min(1,t));

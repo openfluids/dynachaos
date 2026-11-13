@@ -113,12 +113,12 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 - The live space-time figure does less work on the main thread after each kernel reply. It reads
   its colour limits (the 1st and 99th percentiles) by selecting four values instead of sorting the
-  whole 100000-value window, and it colours the cells without allocating an array per cell. The
-  colour limits and the pixels are identical to before. Non-finite values are skipped in the
-  limits, as the code comment already said; an input of minus infinity used to make the lower
-  limit NaN. A slider move at a four-fold CPU throttle now leaves no main-thread task above
-  the browser's 50 ms long-task threshold; it used to reach 82 to 94 ms on the development machine
-  and up to 146 ms on shared CI runners.
+  whole 100000-value window, and it colours the cells without allocating an array per cell and
+  without `Math.round`. The colour limits and the pixels are identical to before. Non-finite values
+  are skipped in the limits, as the code comment already said; an input of minus infinity used to
+  make the lower limit NaN. The work per reply in a micro-benchmark falls by about 80 percent, and
+  the longest main-thread task during a slider move at a four-fold CPU throttle falls by more than
+  half (at an eight-fold throttle, from 171 to 185 ms down to 68 to 71 ms).
 
 - The live Arnold-tongue figure displays fraction labels above the plot along a top axis matching
   the published figure, tracking the visible frequency window during drag zooms in the standard
