@@ -1468,6 +1468,37 @@ export function cmlAppend(field, tile, nRecord) {
 }
 
 /**
+ * Rearrange a[left..right] so that a[k] holds the value a sorted copy would
+ * hold at index k, with no larger value before it and no smaller one after
+ * it (Wirth's selection). Expected linear time. The values must not be NaN.
+ *
+ * @param {Float64Array} a
+ * @param {number} k target index, left <= k <= right
+ * @param {number} left
+ * @param {number} right
+ */
+function selectRank(a, k, left, right) {
+  while (left < right) {
+    const pivot = a[(left + right) >> 1];
+    let i = left;
+    let j = right;
+    do {
+      while (a[i] < pivot) i++;
+      while (pivot < a[j]) j--;
+      if (i <= j) {
+        const t = a[i];
+        a[i] = a[j];
+        a[j] = t;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) left = i;
+    if (k < i) right = j;
+  }
+}
+
+/**
  * The colour limits of the shown field: the 1st and 99th percentiles,
  * linear interpolation on the sorted values — the same rule plot() uses
  * on each row's stacked panels, including the ±0.5 pad when the field is
@@ -1479,21 +1510,35 @@ export function cmlAppend(field, tile, nRecord) {
  */
 export function cmlColorLimits(values) {
   if (!values || !values.length) return [0, 1];
-  let sorted;
-  if (values instanceof Float64Array) {
-    sorted = values.slice().sort();
-    let end = sorted.length;
-    while (end > 0 && !Number.isFinite(sorted[end - 1])) end--;
-    if (end < sorted.length) sorted = sorted.subarray(0, end);
-  } else {
-    sorted = Array.from(values).filter(Number.isFinite).sort((a, b) => a - b);
+  // Four order statistics are enough for two percentiles, so select them
+  // instead of sorting the whole window: the field is 10^5 values and this
+  // runs on the main thread after every worker reply.
+  const finite = new Float64Array(values.length);
+  let n = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (Number.isFinite(v)) finite[n++] = v;
   }
-  if (!sorted.length) return [0, 1];
+  if (!n) return [0, 1];
+  const ranks = [];
+  for (const p of [1, 99]) {
+    const lo = Math.floor((p / 100) * (n - 1));
+    ranks.push(lo, Math.min(n - 1, lo + 1));
+  }
+  ranks.sort((a, b) => a - b);
+  // Ascending order: once rank r is placed, every value after it is >= it,
+  // so the next rank is searched only in the part after r.
+  let from = 0;
+  for (const r of ranks) {
+    if (r < from) continue;
+    selectRank(finite, r, from, n - 1);
+    from = r + 1;
+  }
   const at = (p) => {
-    const h = (p / 100) * (sorted.length - 1);
+    const h = (p / 100) * (n - 1);
     const lo = Math.floor(h);
-    const hi = Math.min(sorted.length - 1, lo + 1);
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (h - lo);
+    const hi = Math.min(n - 1, lo + 1);
+    return finite[lo] + (finite[hi] - finite[lo]) * (h - lo);
   };
   let vmin = at(1);
   let vmax = at(99);
