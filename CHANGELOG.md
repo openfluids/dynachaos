@@ -5,6 +5,8 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 ## Unreleased
 
+## 0.4.2 — 2026-11-14
+
 ### Added
 
 - The paper page computes the devil's staircase live: the rotation number
