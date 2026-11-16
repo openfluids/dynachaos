@@ -14,6 +14,7 @@ from dynachaos.diagnostics.embedding import (
     optimal_dimension,
     select_dimension_cao,
 )
+from dynachaos.diagnostics.ensemble_growth import EnsembleGrowthResult, ensemble_growth
 from dynachaos.diagnostics.entropy import (
     approximate_entropy,
     fuzzy_entropy,
@@ -79,6 +80,8 @@ from dynachaos.diagnostics.sali_gali import gali, sali
 from dynachaos.diagnostics.zero_one_test import zero_one_statistic
 
 __all__ = [
+    "EnsembleGrowthResult",
+    "ensemble_growth",
     "approximate_entropy",
     "average_mutual_information",
     "cao_method",

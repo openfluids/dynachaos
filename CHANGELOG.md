@@ -7,6 +7,9 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 ### Added
 
+- Ensemble spread in linear units, with a finite-time growth rate, a bootstrap
+  interval over runs, and peak amplification against a permutation null.
+
 - The paper page computes the devil's staircase live: the rotation number
   rho(A) is drawn in the browser at a drive frequency D the reader sets with a
   slider or number field (default 0.25). The values go into the page address,
