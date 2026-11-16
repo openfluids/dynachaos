@@ -33,7 +33,8 @@ print(result.null_exceedance)
 ```
 
 Input shape is `(runs, steps, state)` or `(runs, steps)` for scalar states.
-Values must be finite and real, and every axis must be nonempty. `times`
+Values must be finite and real, every axis must be nonempty, and ensembles accept
+float16, float32, float64, and integers exactly representable in float64. `times`
 defaults to integer sample indices and must otherwise be strictly increasing.
 The window uses sample indices, with an inclusive start and exclusive stop;
 it defaults to the whole curve. At least five points are required. The rate

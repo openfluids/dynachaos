@@ -50,14 +50,14 @@ def _spread(ensemble: NDArray[np.float64]) -> NDArray[np.float64]:
     return scale * np.sqrt(np.mean(np.sum(scaled * scaled, axis=2), axis=0))
 
 
-def _rate(spread: NDArray[np.float64], weights: NDArray[np.float64]) -> float:
+def _rate(spread: NDArray[np.float64], weights: NDArray[np.float64], time_scale: float) -> float:
     if np.any(spread <= 0):
         raise ValueError(
             "fit spread must be positive at every point, including bootstrap draws; "
             "pass nonzero trajectories or choose another window"
         )
     log_spread = np.log(spread)
-    return float(weights @ (log_spread - log_spread.mean()))
+    return float(weights @ (log_spread - log_spread.mean()) / time_scale)
 
 
 def ensemble_growth(
@@ -79,6 +79,8 @@ def ensemble_growth(
     ensemble : array_like, shape (runs, steps, state) or (runs, steps)
         Finite real states, perturbations, or scalar error curves in linear
         units. Every axis must be nonempty. No mean subtraction is performed.
+        Accepted dtypes are integers exactly representable in float64,
+        float16, float32, and float64.
     initial_floor : float
         Required positive minimum for ``S(0)``. Raise if the initial spread is
         below this floor; never clamp it. To change the baseline, slice the
@@ -129,12 +131,22 @@ def ensemble_growth(
     is not a Lyapunov exponent for stochastic, discrete data.
     """
     shape_message = (
-        "pass finite real ensemble values with shape (runs, steps, state) or (runs, steps)"
+        "pass finite real ensemble values with shape (runs, steps, state) or (runs, steps); "
+        "accepted dtypes are integers exactly representable in float64, float16, float32, float64"
     )
     try:
-        if np.iscomplexobj(np.asarray(ensemble)):
+        input_values = np.asarray(ensemble)
+        dtype = input_values.dtype
+        if dtype.kind not in "iu" and not (dtype.kind == "f" and dtype.itemsize <= 8):
             raise ValueError(shape_message)
-        values = np.asarray(ensemble, dtype=np.float64)
+        if dtype.kind in "iu":
+            # Only integers outside float64's consecutive range need checking.
+            large = input_values > 2**53
+            if dtype.kind == "i":
+                large |= input_values < -(2**53)
+            if any(int(value) != float(value) for value in input_values[large]):
+                raise ValueError(shape_message)
+        values = np.asarray(input_values, dtype=np.float64)
     except (TypeError, ValueError) as exc:
         raise ValueError(shape_message) from exc
     if values.ndim not in (2, 3) or any(size == 0 for size in values.shape):
@@ -154,8 +166,13 @@ def ensemble_growth(
             or seed < 0
         ):
             raise ValueError(f"{name} must be a nonnegative integer; pass an explicit seed")
+    confidence_message = "confidence must be strictly between 0 and 1"
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(confidence_message) from exc
     if not np.isfinite(confidence) or not 0 < confidence < 1:
-        raise ValueError("confidence must be strictly between 0 and 1")
+        raise ValueError(confidence_message)
 
     times_message = "pass times as a finite real, strictly increasing array with shape (steps,)"
     try:
@@ -201,13 +218,15 @@ def ensemble_growth(
             )
         fit_times = time_values[start:stop] - time_values[start]
         centered = fit_times - fit_times.mean()
+        time_scale = float(np.max(np.abs(centered)))
+        centered = centered / time_scale
         weights = centered / (centered @ centered)
-        g = _rate(spread[start:stop], weights)
+        g = _rate(spread[start:stop], weights, time_scale)
         bootstrap_rng = np.random.default_rng(bootstrap_seed)
         bootstrap_rates = np.empty(n_bootstrap)
         for draw in range(n_bootstrap):
             indices = bootstrap_rng.integers(runs, size=runs)
-            bootstrap_rates[draw] = _rate(_spread(values[indices, start:stop]), weights)
+            bootstrap_rates[draw] = _rate(_spread(values[indices, start:stop]), weights, time_scale)
         tail = (1 - confidence) / 2
         lower, upper = np.quantile(bootstrap_rates, [tail, 1 - tail])
 

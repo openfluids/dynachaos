@@ -9,6 +9,7 @@ reconstructed from git history. 0.4.0 is the first public release.
 
 - Ensemble spread in linear units, with a finite-time growth rate, a bootstrap
   interval over runs, and peak amplification against a permutation null.
+  Ensembles accept float16, float32, float64, and integers exactly representable in float64.
 
 - The paper page computes the devil's staircase live: the rotation number
   rho(A) is drawn in the browser at a drive frequency D the reader sets with a
