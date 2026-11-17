@@ -116,8 +116,8 @@ def test_seeds_reproduce_every_field_and_do_not_couple_random_steps() -> None:
     changed_null = estimate(values, permutation_seed=1)
     np.testing.assert_array_equal(first.bootstrap_rates, changed_null.bootstrap_rates)
     assert not np.array_equal(first.null_samples, changed_null.null_samples)
-    # Allow 1e-14 relative roundoff when checking the input remains unchanged.
-    np.testing.assert_allclose(values, before, rtol=1e-14, atol=0)
+    # The estimator must not write to its input: the copy equals it bit for bit.
+    np.testing.assert_array_equal(values, before)
 
 
 def test_increment_null_and_bootstrap_against_direct_small_calculation() -> None:
